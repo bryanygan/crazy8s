@@ -11,9 +11,12 @@ router.post('/start', gameController.startGame);
 router.post('/move', gameController.makeMove);
 
 // Route to get the current game state
-router.get('/state', gameController.getGameState);
+router.get('/state/:gameId', gameController.getGameState);
 
 // Route to join a game
 router.post('/join', gameController.joinGame);
+
+// Route to draw cards
+router.post('/draw', gameController.drawCards);
 
 module.exports = router;
