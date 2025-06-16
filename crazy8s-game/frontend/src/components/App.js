@@ -83,19 +83,61 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect }
       {cards.map((card, index) => {
         const isPlayable = validCards.some(vc => vc.suit === card.suit && vc.rank === card.rank);
         const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
+        const selectedIndex = selectedCards.findIndex(sc => sc.suit === card.suit && sc.rank === card.rank);
+        const isBottomCard = selectedIndex === 0;
         
         return (
-          <Card
-            key={`${card.suit}-${card.rank}-${index}`}
-            card={card}
-            isPlayable={isPlayable}
-            isSelected={isSelected}
-            onClick={() => {
-              if (isPlayable) {
-                onCardSelect(card);
-              }
-            }}
-          />
+          <div key={`${card.suit}-${card.rank}-${index}`} style={{ position: 'relative', margin: '0 3px' }}>
+            {/* Bottom Card Indicator */}
+            {isBottomCard && (
+              <div style={{
+                position: 'absolute',
+                top: '-25px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                backgroundColor: '#e74c3c',
+                color: '#fff',
+                padding: '2px 6px',
+                borderRadius: '10px',
+                fontSize: '8px',
+                fontWeight: 'bold',
+                whiteSpace: 'nowrap',
+                zIndex: 10
+              }}>
+                Bottom Card
+              </div>
+            )}
+            
+            {/* Play Order Indicator */}
+            {isSelected && selectedIndex > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '-20px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                backgroundColor: '#3498db',
+                color: '#fff',
+                padding: '1px 5px',
+                borderRadius: '8px',
+                fontSize: '10px',
+                fontWeight: 'bold',
+                zIndex: 10
+              }}>
+                #{selectedIndex + 1}
+              </div>
+            )}
+            
+            <Card
+              card={card}
+              isPlayable={isPlayable}
+              isSelected={isSelected}
+              onClick={() => {
+                if (isPlayable) {
+                  onCardSelect(card);
+                }
+              }}
+            />
+          </div>
         );
       })}
       {cards.length === 0 && (
@@ -586,23 +628,49 @@ const App = () => {
       const topCard = parseTopCard(gameState.topCard);
       if (!topCard) return;
 
-      const valid = playerHand.filter(card => {
-        if (card.rank === '8') return true;
-        
-        if (gameState.drawStack > 0) {
-          return canCounterDraw(card, topCard);
-        }
-        
-        const suitToMatch = gameState.declaredSuit || topCard.suit;
-        return card.suit === suitToMatch || card.rank === topCard.rank;
-      });
+      let valid = [];
+
+      if (selectedCards.length === 0) {
+        // No cards selected - show cards that can be played as bottom card
+        valid = playerHand.filter(card => {
+          if (card.rank === '8') return true;
+          
+          if (gameState.drawStack > 0) {
+            return canCounterDraw(card, topCard);
+          }
+          
+          const suitToMatch = gameState.declaredSuit || topCard.suit;
+          return card.suit === suitToMatch || card.rank === topCard.rank;
+        });
+      } else {
+        // Cards already selected - show stackable cards
+        const bottomCard = selectedCards[0];
+        valid = playerHand.filter(card => {
+          // Already selected cards are always "valid" for reordering
+          const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
+          if (isSelected) return true;
+          
+          // Can stack cards of same rank as bottom card
+          if (card.rank === bottomCard.rank) {
+            // Special suit requirements for Aces and 2s
+            if (bottomCard.rank === 'Ace' || bottomCard.rank === '2') {
+              return card.suit === bottomCard.suit;
+            }
+            return true;
+          }
+          
+          // Can't stack different ranks
+          return false;
+        });
+      }
       
       console.log('🎯 Valid cards calculated:', valid.length, 'out of', playerHand.length);
+      console.log('🎯 Selected cards:', selectedCards.length);
       setValidCards(valid);
     } else {
       setValidCards([]);
     }
-  }, [playerHand, gameState]);
+  }, [playerHand, gameState, selectedCards]);
 
   const startGame = () => {
     console.log('🚀 Starting game:', gameState?.gameId);
@@ -640,34 +708,39 @@ const App = () => {
     const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
     
     if (isSelected) {
-      // If the card is already selected, deselect it
-      setSelectedCards(prev => prev.filter(sc => !(sc.suit === card.suit && sc.rank === card.rank)));
+      // If the card is already selected, handle reordering/deselection
+      if (selectedCards.length === 1) {
+        // Only one card selected (the bottom card) - deselect it
+        setSelectedCards([]);
+      } else {
+        // Multiple cards selected - remove this card for reordering
+        setSelectedCards(prev => prev.filter(sc => !(sc.suit === card.suit && sc.rank === card.rank)));
+      }
     } else {
       if (selectedCards.length === 0) {
-        // No cards selected, select this card
+        // No cards selected, select this card as bottom card
         setSelectedCards([card]);
       } else {
-        const firstCard = selectedCards[0];
+        const bottomCard = selectedCards[0];
         
-        // Check if we're trying to stack (same rank)
-        if (firstCard.rank === card.rank) {
-          // Stacking logic - add to existing selection
-          if (firstCard.rank === 'Ace' || firstCard.rank === '2') {
-            if (firstCard.suit === card.suit) {
+        // Check if we can stack this card
+        if (bottomCard.rank === card.rank) {
+          // Same rank - check special suit requirements
+          if (bottomCard.rank === 'Ace' || bottomCard.rank === '2') {
+            if (bottomCard.suit === card.suit) {
               setSelectedCards(prev => [...prev, card]);
             } else {
               setToast({ message: 'Aces and 2s can only be stacked with the same suit', type: 'error' });
             }
           } else {
+            // Regular stacking - same rank, any suit
             setSelectedCards(prev => [...prev, card]);
           }
         } else {
-          // Different rank - check if we should replace or show error
+          // Different rank - can't stack, but allow switching if only one card selected
           if (selectedCards.length === 1) {
-            // Only one card selected and different rank - replace it
             setSelectedCards([card]);
           } else {
-            // Multiple cards selected (stacking in progress) - can't switch
             setToast({ message: 'Cannot switch cards while stacking. Clear selection first.', type: 'error' });
           }
         }
@@ -684,8 +757,10 @@ const App = () => {
     const hasWild = selectedCards.some(card => card.rank === '8');
     
     if (hasWild) {
-      if (selectedCards.length > 1) {
-        setToast({ message: 'Cannot stack 8s with other cards', type: 'error' });
+      // Check if ALL selected cards are 8s (can't mix 8s with other ranks)
+      const allWilds = selectedCards.every(card => card.rank === '8');
+      if (!allWilds) {
+        setToast({ message: 'Cannot mix 8s with other cards', type: 'error' });
         return;
       }
       setShowSuitSelector(true);

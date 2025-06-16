@@ -223,13 +223,16 @@ class Game {
                 }
             }
 
-            // Special stacking rules for Aces and 2s
+            // Special stacking rules for Aces and 2s - they can stack with each other if same suit
             if (firstCard.rank === 'Ace' || firstCard.rank === '2') {
+                // Check if all cards are either Aces or 2s with the same suit
+                const baseSuit = firstCard.suit;
                 for (let i = 1; i < cardsToPlay.length; i++) {
-                    if (cardsToPlay[i].suit !== firstCard.suit) {
+                    const card = cardsToPlay[i];
+                    if (card.suit !== baseSuit || (card.rank !== 'Ace' && card.rank !== '2')) {
                         return { 
                             success: false, 
-                            error: `${firstCard.rank}s can only be stacked with the same suit` 
+                            error: 'Aces and 2s can only be stacked with other Aces/2s of the same suit' 
                         };
                     }
                 }
@@ -256,12 +259,8 @@ class Game {
         // Add cards to discard pile
         this.discardPile.push(...cardsToPlay);
 
-        // Handle special card effects for each card played
-        let totalDrawEffect = 0;
-        for (const card of cardsToPlay) {
-            const drawEffect = this.handleSpecialCard(card, declaredSuit);
-            totalDrawEffect += drawEffect;
-        }
+        // Handle multiple special card effects
+        const totalDrawEffect = this.handleMultipleSpecialCards(cardsToPlay, declaredSuit);
 
         // Add to draw stack if there were draw effects
         if (totalDrawEffect > 0) {
@@ -384,6 +383,70 @@ class Game {
         }
 
         return drawEffect;
+    }
+
+    // New method to handle multiple special card effects
+    handleMultipleSpecialCards(cards, declaredSuit = null) {
+        let totalDrawEffect = 0;
+        let skipCount = 0;
+        let reverseCount = 0;
+        let hasWild = false;
+
+        // Process each card's effect
+        for (const card of cards) {
+            switch (card.rank) {
+                case 'Jack': // Skip
+                    skipCount++;
+                    break;
+
+                case 'Queen': // Reverse
+                    if (this.activePlayers.length === 2) {
+                        // In 2-player game, Queen acts like Skip
+                        skipCount++;
+                    } else {
+                        reverseCount++;
+                    }
+                    break;
+
+                case 'Ace': // Draw 4
+                    totalDrawEffect += 4;
+                    break;
+
+                case '2': // Draw 2
+                    totalDrawEffect += 2;
+                    break;
+
+                case '8': // Wild card
+                    hasWild = true;
+                    break;
+
+                default:
+                    // Clear declared suit for non-special cards (only if no wilds)
+                    if (!hasWild) {
+                        this.declaredSuit = null;
+                    }
+                    break;
+            }
+        }
+
+        // Apply accumulated effects
+        
+        // Handle reverses (even number cancels out)
+        if (reverseCount % 2 === 1) {
+            this.direction *= -1;
+        }
+
+        // Handle skips
+        for (let i = 0; i < skipCount; i++) {
+            this.nextPlayer();
+        }
+
+        // Handle wild card suit declaration
+        if (hasWild && declaredSuit) {
+            this.declaredSuit = declaredSuit;
+        }
+
+        return totalDrawEffect;
     }
 
     drawCards(playerId, count = 1) {
