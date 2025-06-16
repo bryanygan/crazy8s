@@ -435,6 +435,12 @@ const App = () => {
     return false;
   };
 
+  const startGame = () => {
+    socket.emit('startGame', {
+      gameId: gameState?.gameId
+    });
+  };
+
   const joinGame = () => {
     if (!playerName.trim() || !gameId.trim()) {
       setError('Please enter both name and game ID');
@@ -682,6 +688,28 @@ const App = () => {
             <strong>Game ID:</strong> {gameState.gameId}
           </div>
         </div>
+        
+        {/* Start Game Button - only show if game hasn't started */}
+        {gameState.gameState === 'waiting' && gameState.players.length >= 2 && (
+          <div style={{ marginTop: '15px' }}>
+            <button
+              onClick={startGame}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#e74c3c',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: 'bold'
+              }}
+            >
+              Start Game ({gameState.players.length} players)
+            </button>
+          </div>
+        )}
+        
         {isMyTurn && (
           <div style={{
             marginTop: '10px',
