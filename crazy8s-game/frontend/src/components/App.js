@@ -640,13 +640,18 @@ const App = () => {
     const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
     
     if (isSelected) {
+      // If the card is already selected, deselect it
       setSelectedCards(prev => prev.filter(sc => !(sc.suit === card.suit && sc.rank === card.rank)));
     } else {
       if (selectedCards.length === 0) {
+        // No cards selected, select this card
         setSelectedCards([card]);
       } else {
         const firstCard = selectedCards[0];
+        
+        // Check if we're trying to stack (same rank)
         if (firstCard.rank === card.rank) {
+          // Stacking logic - add to existing selection
           if (firstCard.rank === 'Ace' || firstCard.rank === '2') {
             if (firstCard.suit === card.suit) {
               setSelectedCards(prev => [...prev, card]);
@@ -657,7 +662,14 @@ const App = () => {
             setSelectedCards(prev => [...prev, card]);
           }
         } else {
-          setToast({ message: 'Can only stack cards of the same rank', type: 'error' });
+          // Different rank - check if we should replace or show error
+          if (selectedCards.length === 1) {
+            // Only one card selected and different rank - replace it
+            setSelectedCards([card]);
+          } else {
+            // Multiple cards selected (stacking in progress) - can't switch
+            setToast({ message: 'Cannot switch cards while stacking. Clear selection first.', type: 'error' });
+          }
         }
       }
     }
