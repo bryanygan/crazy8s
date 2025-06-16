@@ -88,8 +88,8 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect }
         
         return (
           <div key={`${card.suit}-${card.rank}-${index}`} style={{ position: 'relative', margin: '0 3px' }}>
-            {/* Bottom Card Indicator */}
-            {isBottomCard && (
+            {/* Bottom Card Indicator - only show when stacking (2+ cards selected) */}
+            {isBottomCard && selectedCards.length > 1 && (
               <div style={{
                 position: 'absolute',
                 top: '-25px',
