@@ -63,9 +63,15 @@ class Game {
             };
         }
 
-        // Set game state to playing
+        // Set game state to playing and reset current player
         this.gameState = 'playing';
         this.currentPlayerIndex = 0;
+        
+        // Make sure activePlayers is properly set
+        this.activePlayers = this.players.filter(p => !p.isEliminated);
+
+        console.log(`Game ${this.id} started. Current player index: ${this.currentPlayerIndex}, Active players: ${this.activePlayers.length}`);
+        console.log('Active players:', this.activePlayers.map(p => p.name));
 
         return {
             success: true,
@@ -98,6 +104,8 @@ class Game {
         const currentPlayer = this.getCurrentPlayer();
         const topCard = this.getTopDiscardCard();
 
+        console.log(`Getting game state. Current player: ${currentPlayer ? currentPlayer.name : 'null'} (index: ${this.currentPlayerIndex})`);
+
         return {
             gameId: this.id,
             gameState: this.gameState,
@@ -123,10 +131,25 @@ class Game {
     }
 
     getCurrentPlayer() {
-        if (this.gameState !== 'playing' || this.activePlayers.length === 0) {
+        if (this.gameState !== 'playing') {
+            console.log('Game not in playing state:', this.gameState);
             return null;
         }
-        return this.activePlayers[this.currentPlayerIndex % this.activePlayers.length];
+        
+        if (this.activePlayers.length === 0) {
+            console.log('No active players');
+            return null;
+        }
+
+        // Ensure currentPlayerIndex is within bounds
+        if (this.currentPlayerIndex >= this.activePlayers.length) {
+            console.log(`Current player index ${this.currentPlayerIndex} out of bounds, resetting to 0`);
+            this.currentPlayerIndex = 0;
+        }
+
+        const currentPlayer = this.activePlayers[this.currentPlayerIndex];
+        console.log(`Current player: ${currentPlayer ? currentPlayer.name : 'null'} at index ${this.currentPlayerIndex}`);
+        return currentPlayer;
     }
 
     getTopDiscardCard() {
@@ -142,7 +165,13 @@ class Game {
         return player ? player.hand : [];
     }
 
-    playCard(playerId, card, declaredSuit = null) {
+    // Updated playCard method to handle both single cards and arrays
+    playCard(playerId, cards, declaredSuit = null) {
+        console.log(`playCard called by ${playerId} with cards:`, cards);
+        
+        // Normalize input - ensure cards is always an array
+        const cardsToPlay = Array.isArray(cards) ? cards : [cards];
+        
         // Validate player exists first
         const player = this.getPlayerById(playerId);
         if (!player) {
@@ -152,39 +181,92 @@ class Game {
             };
         }
 
+        // Validate game state
+        if (this.gameState !== 'playing') {
+            return { 
+                success: false, 
+                error: 'Game is not currently active' 
+            };
+        }
+
         // Validate it's the player's turn
         const currentPlayer = this.getCurrentPlayer();
+        console.log(`Current player: ${currentPlayer ? currentPlayer.name : 'null'}, Playing player: ${player.name}`);
+        
         if (!currentPlayer || currentPlayer.id !== playerId) {
             return { 
                 success: false, 
-                error: 'Not your turn' 
+                error: `Not your turn. Current player is ${currentPlayer ? currentPlayer.name : 'unknown'}` 
             };
         }
 
-        const cardIndex = this.findCardInHand(player.hand, card);
-        if (cardIndex === -1) {
-            return { 
-                success: false, 
-                error: 'You do not have this card' 
-            };
+        // Validate player has all the cards
+        for (const card of cardsToPlay) {
+            const cardIndex = this.findCardInHand(player.hand, card);
+            if (cardIndex === -1) {
+                return { 
+                    success: false, 
+                    error: `You do not have the ${card.rank} of ${card.suit}` 
+                };
+            }
         }
 
-        // Validate the play is legal
-        if (!this.isValidPlay(card, declaredSuit)) {
+        // Validate card stacking (if multiple cards)
+        if (cardsToPlay.length > 1) {
+            const firstCard = cardsToPlay[0];
+            for (let i = 1; i < cardsToPlay.length; i++) {
+                if (cardsToPlay[i].rank !== firstCard.rank) {
+                    return { 
+                        success: false, 
+                        error: 'All stacked cards must have the same rank' 
+                    };
+                }
+            }
+
+            // Special stacking rules for Aces and 2s
+            if (firstCard.rank === 'Ace' || firstCard.rank === '2') {
+                for (let i = 1; i < cardsToPlay.length; i++) {
+                    if (cardsToPlay[i].suit !== firstCard.suit) {
+                        return { 
+                            success: false, 
+                            error: `${firstCard.rank}s can only be stacked with the same suit` 
+                        };
+                    }
+                }
+            }
+        }
+
+        // Validate the play is legal using the first card
+        const bottomCard = cardsToPlay[0];
+        if (!this.isValidPlay(bottomCard, declaredSuit)) {
             return { 
                 success: false, 
                 error: 'Invalid card play' 
             };
         }
 
-        // Remove card from player's hand
-        player.hand.splice(cardIndex, 1);
+        // Remove cards from player's hand
+        for (const card of cardsToPlay) {
+            const cardIndex = this.findCardInHand(player.hand, card);
+            if (cardIndex !== -1) {
+                player.hand.splice(cardIndex, 1);
+            }
+        }
 
-        // Add card to discard pile
-        this.discardPile.push(card);
+        // Add cards to discard pile
+        this.discardPile.push(...cardsToPlay);
 
-        // Handle special card effects
-        this.handleSpecialCard(card, declaredSuit);
+        // Handle special card effects for each card played
+        let totalDrawEffect = 0;
+        for (const card of cardsToPlay) {
+            const drawEffect = this.handleSpecialCard(card, declaredSuit);
+            totalDrawEffect += drawEffect;
+        }
+
+        // Add to draw stack if there were draw effects
+        if (totalDrawEffect > 0) {
+            this.drawStack += totalDrawEffect;
+        }
 
         // Check win condition
         if (player.hand.length === 0) {
@@ -196,10 +278,31 @@ class Game {
             this.nextPlayer();
         }
 
+        console.log(`Card play successful. New current player: ${this.getCurrentPlayer()?.name}`);
+
         return {
             success: true,
-            gameState: this.getGameState()
+            message: this.generatePlayMessage(cardsToPlay, declaredSuit),
+            gameState: this.getGameState(),
+            cardsPlayed: cardsToPlay.map(card => this.cardToString(card))
         };
+    }
+
+    generatePlayMessage(cards, declaredSuit) {
+        if (cards.length === 1) {
+            const card = cards[0];
+            let message = `Played ${card.rank} of ${card.suit}`;
+            
+            if (card.rank === '8' && declaredSuit) {
+                message += ` and declared ${declaredSuit}`;
+            }
+            
+            return message;
+        } else {
+            const rank = cards[0].rank;
+            const suits = cards.map(card => card.suit).join(', ');
+            return `Played ${cards.length} ${rank}s: ${suits}`;
+        }
     }
 
     isValidPlay(card, declaredSuit = null) {
@@ -245,6 +348,8 @@ class Game {
     }
 
     handleSpecialCard(card, declaredSuit = null) {
+        let drawEffect = 0;
+
         switch (card.rank) {
             case 'Jack': // Skip
                 this.nextPlayer(); // Skip the next player
@@ -261,11 +366,11 @@ class Game {
                 break;
 
             case 'Ace': // Draw 4
-                this.drawStack += 4;
+                drawEffect = 4;
                 break;
 
             case '2': // Draw 2
-                this.drawStack += 2;
+                drawEffect = 2;
                 break;
 
             case '8': // Wild card
@@ -277,6 +382,8 @@ class Game {
                 this.declaredSuit = null;
                 break;
         }
+
+        return drawEffect;
     }
 
     drawCards(playerId, count = 1) {
@@ -285,6 +392,15 @@ class Game {
             return { 
                 success: false, 
                 error: 'Player not found' 
+            };
+        }
+
+        // Validate it's the player's turn
+        const currentPlayer = this.getCurrentPlayer();
+        if (!currentPlayer || currentPlayer.id !== playerId) {
+            return { 
+                success: false, 
+                error: 'Not your turn' 
             };
         }
 
@@ -330,7 +446,10 @@ class Game {
     nextPlayer() {
         if (this.activePlayers.length === 0) return;
 
+        const oldIndex = this.currentPlayerIndex;
         this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+        
+        console.log(`Next player: ${oldIndex} -> ${this.currentPlayerIndex} (${this.activePlayers[this.currentPlayerIndex]?.name})`);
     }
 
     checkRoundEnd() {

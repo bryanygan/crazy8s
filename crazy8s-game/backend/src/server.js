@@ -7,13 +7,34 @@ const Game = require('./models/game');
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: "http://localhost:3000", // Allow React app
+        origin: ["http://localhost:3000", "http://localhost:3001"], // Allow React app
         methods: ["GET", "POST"]
     }
 });
 
 // Store connected players
 const connectedPlayers = new Map();
+
+// Helper function to broadcast game state to all players in a game
+const broadcastGameState = (gameId) => {
+    const game = Game.findById(gameId);
+    if (game) {
+        const gameState = game.getGameState();
+        console.log(`Broadcasting game state for ${gameId}:`);
+        console.log(`  Current Player: ${gameState.currentPlayer} (ID: ${gameState.currentPlayerId})`);
+        console.log(`  Players: ${gameState.players.map(p => `${p.name}(${p.isCurrentPlayer ? 'CURRENT' : 'waiting'})`).join(', ')}`);
+        
+        // Send game state to all players in the game
+        io.to(gameId).emit('gameUpdate', gameState);
+        
+        // Send each player their updated hand
+        game.players.forEach(player => {
+            const hand = game.getPlayerHand(player.id);
+            console.log(`  Sending hand to ${player.name}: ${hand.length} cards`);
+            io.to(player.id).emit('handUpdate', hand);
+        });
+    }
+};
 
 // Set up Socket.IO connections
 io.on('connection', (socket) => {
@@ -42,11 +63,9 @@ io.on('connection', (socket) => {
             // Join socket room for this game
             socket.join(game.id);
 
+            console.log(`Game ${game.id} created by ${playerName} (${socket.id})`);
             socket.emit('success', `Game created! Game ID: ${game.id}`);
-            socket.emit('gameUpdate', game.getGameState());
-            socket.emit('handUpdate', game.getPlayerHand(socket.id));
-
-            console.log(`Game ${game.id} created by ${playerName}`);
+            broadcastGameState(game.id);
 
         } catch (error) {
             console.error('Error creating game:', error);
@@ -107,13 +126,11 @@ io.on('connection', (socket) => {
             // Join socket room for this game
             socket.join(gameId);
 
+            console.log(`${playerName} (${socket.id}) joined game ${gameId}`);
             socket.emit('success', `Joined game ${gameId}!`);
             
             // Notify all players in the game
-            io.to(gameId).emit('gameUpdate', game.getGameState());
-            socket.emit('handUpdate', game.getPlayerHand(socket.id));
-
-            console.log(`${playerName} joined game ${gameId}`);
+            broadcastGameState(gameId);
 
         } catch (error) {
             console.error('Error joining game:', error);
@@ -132,20 +149,17 @@ io.on('connection', (socket) => {
                 return;
             }
 
+            console.log(`Starting game ${gameId} with players:`, game.players.map(p => `${p.name}(${p.id})`));
+
             const result = game.startGame();
             
             if (result.success) {
+                console.log(`Game ${gameId} started successfully`);
                 // Notify all players
-                io.to(gameId).emit('gameUpdate', game.getGameState());
-                
-                // Send each player their hand
-                game.players.forEach(player => {
-                    io.to(player.id).emit('handUpdate', game.getPlayerHand(player.id));
-                });
-
+                broadcastGameState(game.id);
                 io.to(gameId).emit('success', 'Game started!');
-                console.log(`Game ${gameId} started`);
             } else {
+                console.log(`Failed to start game ${gameId}:`, result.error);
                 socket.emit('error', result.error);
             }
 
@@ -159,6 +173,17 @@ io.on('connection', (socket) => {
     socket.on('playCard', (data) => {
         try {
             const { gameId, cards, declaredSuit } = data;
+            
+            if (!gameId) {
+                socket.emit('error', 'Game ID is required');
+                return;
+            }
+
+            if (!cards || (Array.isArray(cards) && cards.length === 0)) {
+                socket.emit('error', 'No cards specified');
+                return;
+            }
+
             const game = Game.findById(gameId);
             
             if (!game) {
@@ -166,26 +191,41 @@ io.on('connection', (socket) => {
                 return;
             }
 
+            // Ensure the player is part of this game
+            const player = game.getPlayerById(socket.id);
+            if (!player) {
+                socket.emit('error', 'You are not part of this game');
+                return;
+            }
+
+            console.log(`${player.name} (${socket.id}) attempting to play cards:`, cards);
+            
             const result = game.playCard(socket.id, cards, declaredSuit);
             
             if (result.success) {
-                // Notify all players of game state update
-                io.to(gameId).emit('gameUpdate', game.getGameState());
+                console.log(`Card play successful by ${player.name}`);
                 
-                // Send updated hands to all players
-                game.players.forEach(player => {
-                    io.to(player.id).emit('handUpdate', game.getPlayerHand(player.id));
+                // Broadcast updated game state to all players in the game
+                broadcastGameState(gameId);
+                
+                // Send success message to the player who played
+                socket.emit('success', result.message || 'Card(s) played successfully');
+                
+                // Broadcast the play to all players in the game
+                io.to(gameId).emit('cardPlayed', {
+                    playerName: player.name,
+                    cardsPlayed: result.cardsPlayed,
+                    message: result.message
                 });
 
-                io.to(gameId).emit('success', result.message || 'Card played successfully');
-                console.log(`Card played in game ${gameId}`);
             } else {
+                console.log(`Card play failed by ${player.name}: ${result.error}`);
                 socket.emit('error', result.error);
             }
 
         } catch (error) {
             console.error('Error playing card:', error);
-            socket.emit('error', 'Failed to play card');
+            socket.emit('error', 'Failed to play card: ' + error.message);
         }
     });
 
@@ -200,18 +240,33 @@ io.on('connection', (socket) => {
                 return;
             }
 
+            // Ensure the player is part of this game
+            const player = game.getPlayerById(socket.id);
+            if (!player) {
+                socket.emit('error', 'You are not part of this game');
+                return;
+            }
+
+            console.log(`${player.name} attempting to draw cards`);
+
             const result = game.drawCards(socket.id);
             
             if (result.success) {
-                // Notify all players of game state update
-                io.to(gameId).emit('gameUpdate', game.getGameState());
+                console.log(`${player.name} drew ${result.drawnCards.length} cards`);
                 
-                // Send updated hand to the player who drew
-                socket.emit('handUpdate', game.getPlayerHand(socket.id));
-
+                // Broadcast updated game state to all players
+                broadcastGameState(gameId);
+                
                 socket.emit('success', `Drew ${result.drawnCards.length} card(s)`);
-                console.log(`Cards drawn in game ${gameId}`);
+                
+                // Notify other players that this player drew cards
+                socket.to(gameId).emit('playerDrewCards', {
+                    playerName: player.name,
+                    cardCount: result.drawnCards.length
+                });
+
             } else {
+                console.log(`Draw cards failed for ${player.name}: ${result.error}`);
                 socket.emit('error', result.error);
             }
 
@@ -223,10 +278,15 @@ io.on('connection', (socket) => {
 
     // Handle chat messages
     socket.on('chat message', (message) => {
-        const player = connectedPlayers.get(socket.id);
-        if (player) {
-            const formattedMessage = `${player.name}: ${message}`;
-            io.to(player.gameId).emit('chat message', formattedMessage);
+        try {
+            const player = connectedPlayers.get(socket.id);
+            if (player) {
+                const formattedMessage = `${player.name}: ${message}`;
+                io.to(player.gameId).emit('chat message', formattedMessage);
+                console.log(`Chat message in game ${player.gameId}: ${formattedMessage}`);
+            }
+        } catch (error) {
+            console.error('Error handling chat message:', error);
         }
     });
 
@@ -234,21 +294,81 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('A player disconnected:', socket.id);
         
-        const player = connectedPlayers.get(socket.id);
-        if (player) {
-            const game = Game.findById(player.gameId);
-            if (game) {
-                // Mark player as disconnected
-                const gamePlayer = game.players.find(p => p.id === socket.id);
-                if (gamePlayer) {
-                    gamePlayer.isConnected = false;
+        try {
+            const player = connectedPlayers.get(socket.id);
+            if (player) {
+                const game = Game.findById(player.gameId);
+                if (game) {
+                    // Mark player as disconnected
+                    const gamePlayer = game.players.find(p => p.id === socket.id);
+                    if (gamePlayer) {
+                        gamePlayer.isConnected = false;
+                        console.log(`${gamePlayer.name} disconnected from game ${player.gameId}`);
+                    }
+                    
+                    // Notify other players
+                    socket.to(player.gameId).emit('playerDisconnected', {
+                        playerName: player.name
+                    });
+                    
+                    // Broadcast updated game state
+                    broadcastGameState(player.gameId);
                 }
                 
-                // Notify other players
-                io.to(player.gameId).emit('gameUpdate', game.getGameState());
+                connectedPlayers.delete(socket.id);
             }
+        } catch (error) {
+            console.error('Error handling disconnect:', error);
+        }
+    });
+
+    // Handle reconnection
+    socket.on('reconnect', (data) => {
+        try {
+            const { gameId, playerName } = data;
             
-            connectedPlayers.delete(socket.id);
+            if (!gameId || !playerName) {
+                socket.emit('error', 'Game ID and player name are required for reconnection');
+                return;
+            }
+
+            const game = Game.findById(gameId);
+            if (!game) {
+                socket.emit('error', 'Game not found');
+                return;
+            }
+
+            // Find the player by name (since socket ID will be different)
+            const gamePlayer = game.players.find(p => p.name === playerName);
+            if (!gamePlayer) {
+                socket.emit('error', 'Player not found in this game');
+                return;
+            }
+
+            // Update player's socket ID and mark as connected
+            gamePlayer.id = socket.id;
+            gamePlayer.isConnected = true;
+
+            // Update stored player info
+            connectedPlayers.set(socket.id, {
+                name: playerName,
+                gameId: gameId
+            });
+
+            // Join socket room
+            socket.join(gameId);
+
+            // Send current game state
+            broadcastGameState(gameId);
+            
+            socket.emit('success', 'Reconnected successfully');
+            socket.to(gameId).emit('playerReconnected', { playerName });
+
+            console.log(`Player ${playerName} reconnected to game ${gameId}`);
+
+        } catch (error) {
+            console.error('Error handling reconnection:', error);
+            socket.emit('error', 'Failed to reconnect');
         }
     });
 });
