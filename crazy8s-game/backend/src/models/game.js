@@ -618,11 +618,10 @@ class Game {
         // Set pending turn pass flag - player needs to explicitly pass or play
         this.pendingTurnPass = playerId;
 
-        // If drawn from special card effect and no playable cards, auto-advance
-        if (isFromSpecialCard && !canPlayDrawnCard) {
-            this.pendingTurnPass = null;
-            this.nextPlayer();
-        }
+
+        // Previously, drawing from a special card with no playable counters would
+        // immediately advance the turn. To allow the player the option to play
+        // other cards after drawing, we keep the turn with the current player.
 
         return {
             success: true,
