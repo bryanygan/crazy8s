@@ -835,6 +835,7 @@ const App = () => {
     groupBySuit: false,
     experiencedMode: false
   });
+  const [copiedGameId, setCopiedGameId] = useState(false);
 
   // Load settings from localStorage on component mount
   useEffect(() => {
@@ -855,6 +856,27 @@ const App = () => {
     setSettings(newSettings);
     if (playerId) {
       localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(newSettings));
+    }
+  };
+
+  // Copy game ID to clipboard
+  const copyGameId = async () => {
+    if (gameState?.gameId) {
+      try {
+        await navigator.clipboard.writeText(gameState.gameId);
+        setCopiedGameId(true);
+        setTimeout(() => setCopiedGameId(false), 2000);
+      } catch (err) {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = gameState.gameId;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        setCopiedGameId(true);
+        setTimeout(() => setCopiedGameId(false), 2000);
+      }
     }
   };
 
@@ -1149,7 +1171,7 @@ const App = () => {
           padding: '30px'
         }}>
           <h1 style={{ textAlign: 'center', color: '#2c3e50', margin: '0 0 30px 0' }}>
-            🎴 Crazy 8's Game
+            🎴 Crazy 8's
           </h1>
           
           {/* Debug Info */}
@@ -1270,7 +1292,7 @@ const App = () => {
       overflow: 'hidden'
     }}>
       <h1 style={{ textAlign: 'center', color: '#2c3e50', margin: '0 0 20px 0' }}>
-        🎴 Crazy 8's Game
+        🎴 Crazy 8's
         <button
           onClick={() => setShowSettings(true)}
           style={{
@@ -1315,20 +1337,49 @@ const App = () => {
           <div>
             <strong>Round:</strong> {gameState.roundNumber}
           </div>
-          <div style={{ color: isMyTurn ? '#e74c3c' : '#2c3e50', fontWeight: isMyTurn ? 'bold' : 'normal' }}>
+          <div style={{ 
+            color: isMyTurn ? '#e74c3c' : '#2c3e50', 
+            fontWeight: isMyTurn ? 'bold' : 'normal',
+            textAlign: 'center',
+            flex: '1 1 200px'
+          }}>
             <strong>Current Player:</strong> {gameState.currentPlayer}
           </div>
-          <div>
-            <strong>Game ID:</strong> 
-            <span style={{ 
-              fontFamily: 'monospace', 
-              backgroundColor: '#f8f9fa', 
-              padding: '2px 6px', 
-              borderRadius: '4px',
-              marginLeft: '5px'
-            }}>
-              {gameState.gameId}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div>
+              <strong>Game ID:</strong> 
+              <span style={{ 
+                fontFamily: 'monospace', 
+                backgroundColor: '#f8f9fa', 
+                padding: '2px 6px', 
+                borderRadius: '4px',
+                marginLeft: '5px'
+              }}>
+                {gameState.gameId}
+              </span>
+            </div>
+            <button
+              onClick={copyGameId}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+                borderRadius: '4px',
+                backgroundColor: copiedGameId ? '#27ae60' : '#3498db',
+                color: '#fff',
+                fontSize: '12px',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '24px',
+                height: '24px'
+              }}
+              title={copiedGameId ? 'Copied!' : 'Copy Game ID'}
+            >
+              {copiedGameId ? '✓' : '📋'}
+            </button>
           </div>
         </div>
         
