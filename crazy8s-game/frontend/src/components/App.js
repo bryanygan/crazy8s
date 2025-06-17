@@ -655,6 +655,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
     </div>
   );
 };
+
 const Toast = ({ message, type = 'info', onClose }) => {
   useEffect(() => {
     const timer = setTimeout(onClose, 4000);
@@ -950,6 +951,111 @@ const App = () => {
     return false;
   };
 
+  // Enhanced turn control simulation (matching backend logic)
+  const simulateTurnControl = (cardStack, activePlayers) => {
+    if (cardStack.length === 0) return true;
+    
+    const isOneVsOne = activePlayers <= 2;
+    let currentPlayerHasTurn = true; // We start with control
+    
+    for (const card of cardStack) {
+      switch (card.rank) {
+        case 'Jack':
+          // Jack skips opponent, back to us
+          currentPlayerHasTurn = true;
+          break;
+          
+        case 'Queen':
+          if (isOneVsOne) {
+            // In 1v1, Queen acts as skip
+            currentPlayerHasTurn = true;
+          } else {
+            // In multiplayer, Queen reverses direction
+            currentPlayerHasTurn = !currentPlayerHasTurn;
+          }
+          break;
+          
+        case 'Ace':
+        case '2':
+        case '8':
+          // These have effects but pass turn to next player
+          currentPlayerHasTurn = false;
+          break;
+          
+        default:
+          // Non-special cards pass the turn
+          currentPlayerHasTurn = false;
+          break;
+      }
+    }
+    
+    return currentPlayerHasTurn;
+  };
+
+  // Enhanced card stack validation with strict turn logic
+  const validateCardStack = (cards, activePlayers) => {
+    if (cards.length <= 1) {
+      return { isValid: true };
+    }
+
+    console.log('🔍 Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+
+    // Check each card-to-card transition in the stack
+    for (let i = 1; i < cards.length; i++) {
+      const prevCard = cards[i - 1];
+      const currentCard = cards[i];
+      
+      console.log(`  Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
+      
+      // Cards must match by suit or rank
+      const matchesSuit = prevCard.suit === currentCard.suit;
+      const matchesRank = prevCard.rank === currentCard.rank;
+      
+      // Special case: Aces and 2s can stack with each other if same suit
+      const isAce2Cross = (
+        (prevCard.rank === 'Ace' && currentCard.rank === '2') ||
+        (prevCard.rank === '2' && currentCard.rank === 'Ace')
+      ) && prevCard.suit === currentCard.suit;
+      
+      console.log(`    Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+      
+      // Basic matching requirement
+      if (!matchesSuit && !matchesRank && !isAce2Cross) {
+        console.log(`    ❌ Invalid transition - no suit/rank match!`);
+        return {
+          isValid: false,
+          error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank.`
+        };
+      }
+      
+      // If different rank but same suit, validate turn chain logic
+      if (matchesSuit && !matchesRank && !isAce2Cross) {
+        const stackUpToHere = cards.slice(0, i);
+        const wouldHaveTurnControl = simulateTurnControl(stackUpToHere, activePlayers);
+        
+        if (!wouldHaveTurnControl) {
+          console.log(`    ❌ Invalid transition - no turn control after previous cards!`);
+          return {
+            isValid: false,
+            error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Previous cards don't maintain turn control.`
+          };
+        }
+      }
+      
+      console.log(`    ✅ Valid transition`);
+    }
+    
+    console.log('✅ Stack validation passed');
+    return { isValid: true };
+  };
+
+  // Enhanced card stacking check
+  const canStackCards = (existingCards, newCard, activePlayers) => {
+    const testStack = [...existingCards, newCard];
+    const validation = validateCardStack(testStack, activePlayers);
+    return validation.isValid;
+  };
+
   // Update valid cards when playerHand or gameState changes
   useEffect(() => {
     if (gameState && playerHand.length > 0) {
@@ -972,14 +1078,13 @@ const App = () => {
         });
       } else {
         // Cards already selected - show stackable cards
-        const lastCard = selectedCards[selectedCards.length - 1];
         valid = playerHand.filter(card => {
           // Already selected cards are always "valid" for reordering
           const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
           if (isSelected) return true;
           
-          // Check if this card can be stacked with the last selected card
-          return canStackCards(lastCard, card);
+          // Check if this card can be stacked with the current selection
+          return canStackCards(selectedCards, card, gameState.players?.length || 2);
         });
       }
       
@@ -1040,50 +1145,35 @@ const App = () => {
         // No cards selected, select this card as bottom card
         setSelectedCards([card]);
       } else {
-        // Check if this card can be stacked with the last selected card
-        const lastCard = selectedCards[selectedCards.length - 1];
+        // Check if this card can be stacked with the current selection
+        const activePlayers = gameState?.players?.length || 2;
         
-        if (canStackCards(lastCard, card, selectedCards.slice(0, -1))) {
+        if (canStackCards(selectedCards, card, activePlayers)) {
           setSelectedCards(prev => [...prev, card]);
         } else {
-          // Can't stack - check if we can replace (only if single card selected)
-          if (selectedCards.length === 1) {
-            setSelectedCards([card]);
-          } else {
-            setToast({ 
-              message: `Cannot stack ${card.rank} of ${card.suit} after ${lastCard.rank} of ${lastCard.suit}. Cards must match suit/rank or maintain turn control.`, 
-              type: 'error' 
-            });
-          }
+          // Can't stack - show error message
+          const validation = validateCardStack([...selectedCards, card], activePlayers);
+          setToast({ 
+            message: validation.error || `Cannot stack ${card.rank} of ${card.suit} with current selection.`, 
+            type: 'error' 
+          });
         }
       }
     }
   };
 
-  // Helper function to check if two cards can be stacked
-  const canStackCards = (firstCard, secondCard) => {
-    // Same rank always allowed
-    if (firstCard.rank === secondCard.rank) {
-      return true;
-    }
-    
-    // Same suit always allowed
-    if (firstCard.suit === secondCard.suit) {
-      return true;
-    }
-    
-    // Special Ace/2 cross-stacking (same suit)
-    if ((firstCard.rank === 'Ace' && secondCard.rank === '2') || 
-        (firstCard.rank === '2' && secondCard.rank === 'Ace')) {
-      return firstCard.suit === secondCard.suit;
-    }
-    
-    return false;
-  };
-
   const playSelectedCards = () => {
     if (selectedCards.length === 0) {
       setToast({ message: 'Please select at least one card', type: 'error' });
+      return;
+    }
+
+    // Final validation before sending to server
+    const activePlayers = gameState?.players?.length || 2;
+    const validation = validateCardStack(selectedCards, activePlayers);
+    
+    if (!validation.isValid) {
+      setToast({ message: validation.error, type: 'error' });
       return;
     }
 

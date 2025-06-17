@@ -242,23 +242,17 @@ class Game {
         // Add cards to discard pile
         this.discardPile.push(...cardsToPlay);
 
-        // Handle multiple special card effects
+        // Handle multiple special card effects with proper turn management
         const totalDrawEffect = this.handleMultipleSpecialCards(cardsToPlay, declaredSuit);
-
-        // Add to draw stack if there were draw effects
-        if (totalDrawEffect > 0) {
-            this.drawStack += totalDrawEffect;
-        }
 
         // Check win condition
         if (player.hand.length === 0) {
             player.isSafe = true;
             this.safeePlayers.push(player);
             this.checkRoundEnd();
-        } else {
-            // Move to next player (unless skipped by special card)
-            this.nextPlayer();
         }
+        // Note: We don't call nextPlayer() here anymore because 
+        // handleMultipleSpecialCards now manages turn control properly
 
         console.log(`Card play successful. New current player: ${this.getCurrentPlayer()?.name}`);
 
@@ -466,69 +460,103 @@ class Game {
         return currentPlayerHasTurn;
     }
 
-    // New method to handle multiple special card effects with proper turn logic
-    handleMultipleSpecialCards(cards, declaredSuit = null) {
-        let totalDrawEffect = 0;
-        let skipCount = 0;
-        let reverseCount = 0;
-        let hasWild = false;
+    // Fixed handleMultipleSpecialCards method for game.js
 
-        // Process each card's effect
-        for (const card of cards) {
+    handleMultipleSpecialCards(cards, declaredSuit = null) {
+        console.log('🎮 Processing multiple special cards:', cards.map(c => `${c.rank} of ${c.suit}`));
+        
+        let totalDrawEffect = 0;
+        let hasWild = false;
+        
+        // Instead of counting effects and applying at end, simulate actual turn flow
+        let currentPlayerHasTurn = true; // We start with the turn
+        
+        for (let i = 0; i < cards.length; i++) {
+            const card = cards[i];
+            console.log(`  Processing card ${i + 1}/${cards.length}: ${card.rank} of ${card.suit}, currentPlayerHasTurn: ${currentPlayerHasTurn}`);
+            
             switch (card.rank) {
                 case 'Jack': // Skip
-                    skipCount++;
+                    if (currentPlayerHasTurn) {
+                        // Jack skips opponent, we keep the turn
+                        console.log('    Jack: Skipping opponent, keeping turn');
+                        currentPlayerHasTurn = true;
+                    } else {
+                        // If we don't have turn, Jack gives it back to us
+                        console.log('    Jack: Getting turn back from skip');
+                        currentPlayerHasTurn = true;
+                    }
                     break;
 
                 case 'Queen': // Reverse
-                    reverseCount++;
+                    if (this.activePlayers.length === 2) {
+                        // In 2-player game, Queen acts as Skip
+                        if (currentPlayerHasTurn) {
+                            console.log('    Queen (2P): Skipping opponent, keeping turn');
+                            currentPlayerHasTurn = true;
+                        } else {
+                            console.log('    Queen (2P): Getting turn back from skip');
+                            currentPlayerHasTurn = true;
+                        }
+                    } else {
+                        // In multi-player, Queen reverses direction
+                        console.log('    Queen (Multi): Reversing direction');
+                        this.direction *= -1;
+                        // After reverse, turn passes to next player in new direction
+                        currentPlayerHasTurn = false;
+                    }
                     break;
 
                 case 'Ace': // Draw 4
+                    console.log('    Ace: +4 draw effect, passing turn');
                     totalDrawEffect += 4;
+                    currentPlayerHasTurn = false;
                     break;
 
                 case '2': // Draw 2
+                    console.log('    2: +2 draw effect, passing turn');
                     totalDrawEffect += 2;
+                    currentPlayerHasTurn = false;
                     break;
 
                 case '8': // Wild card
+                    console.log('    8: Wild card, passing turn');
                     hasWild = true;
+                    currentPlayerHasTurn = false;
                     break;
 
                 default:
-                    // Clear declared suit for non-special cards (only if no wilds)
-                    if (!hasWild) {
-                        this.declaredSuit = null;
-                    }
+                    // Normal cards pass the turn
+                    console.log('    Normal card: Passing turn');
+                    currentPlayerHasTurn = false;
                     break;
             }
         }
-
-        // Apply accumulated effects
         
-        // Handle reverses
-        if (this.activePlayers.length === 2) {
-            // In 2-player game, Queens act as Skip
-            skipCount += reverseCount;
-        } else {
-            // In multi-player, apply net reverse effect
-            if (reverseCount % 2 === 1) {
-                this.direction *= -1;
-            }
-        }
-
-        // Handle skips
-        for (let i = 0; i < skipCount; i++) {
-            this.nextPlayer();
+        console.log(`🎮 Final turn control after sequence: currentPlayerHasTurn = ${currentPlayerHasTurn}`);
+        
+        // Apply draw effects
+        if (totalDrawEffect > 0) {
+            this.drawStack += totalDrawEffect;
+            console.log(`🎮 Added ${totalDrawEffect} to draw stack, total: ${this.drawStack}`);
         }
 
         // Handle wild card suit declaration
         if (hasWild && declaredSuit) {
             this.declaredSuit = declaredSuit;
+            console.log(`🎮 Set declared suit to: ${declaredSuit}`);
         } else if (!hasWild) {
             // Clear declared suit if no wilds in the stack
             this.declaredSuit = null;
+            console.log('🎮 Cleared declared suit (no wilds)');
+        }
+
+        // If we don't have turn control after the sequence, advance to next player
+        if (!currentPlayerHasTurn) {
+            console.log('🎮 Turn control lost, advancing to next player');
+            this.nextPlayer();
+        } else {
+            console.log('🎮 Turn control maintained, staying with current player');
         }
 
         return totalDrawEffect;
