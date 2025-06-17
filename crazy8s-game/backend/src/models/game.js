@@ -19,6 +19,7 @@ class Game {
         this.activePlayers = [...this.players]; // Players still in the tournament
         this.safeePlayers = []; // Players who finished current round
         this.eliminatedPlayers = []; // Players eliminated from tournament
+        this.pendingTurnPass = null; // Track if player needs to pass turn after drawing
     }
 
     generateGameId() {
@@ -116,6 +117,7 @@ class Game {
             direction: this.direction,
             drawStack: this.drawStack,
             roundNumber: this.roundNumber,
+            pendingTurnPass: this.pendingTurnPass, // New field
             players: this.players.map(player => ({
                 id: player.id,
                 name: player.name,
@@ -198,6 +200,11 @@ class Game {
                 success: false, 
                 error: `Not your turn. Current player is ${currentPlayer ? currentPlayer.name : 'unknown'}` 
             };
+        }
+
+        // Clear any pending turn pass when player makes a play
+        if (this.pendingTurnPass === playerId) {
+            this.pendingTurnPass = null;
         }
 
         // Validate player has all the cards
@@ -461,7 +468,6 @@ class Game {
     }
 
     // Fixed handleMultipleSpecialCards method for game.js
-
     handleMultipleSpecialCards(cards, declaredSuit = null) {
         console.log('🎮 Processing multiple special cards:', cards.map(c => `${c.rank} of ${c.suit}`));
         
@@ -562,6 +568,7 @@ class Game {
         return totalDrawEffect;
     }
 
+    // Enhanced drawCards method that doesn't automatically advance turn
     drawCards(playerId, count = 1) {
         const player = this.getPlayerById(playerId);
         if (!player) {
@@ -580,10 +587,13 @@ class Game {
             };
         }
 
+        let isFromSpecialCard = false;
+        
         // Handle draw stack
         if (this.drawStack > 0) {
             count = this.drawStack;
             this.drawStack = 0;
+            isFromSpecialCard = true;
         }
 
         const drawnCards = [];
@@ -601,11 +611,153 @@ class Game {
             }
         }
 
-        this.nextPlayer();
+        // Check which drawn cards can be played immediately
+        const playableDrawnCards = this.getPlayableDrawnCards(drawnCards, playerId);
+        const canPlayDrawnCard = playableDrawnCards.length > 0;
+
+        // Set pending turn pass flag - player needs to explicitly pass or play
+        this.pendingTurnPass = playerId;
+
+        // If drawn from special card effect and no playable cards, auto-advance
+        if (isFromSpecialCard && !canPlayDrawnCard) {
+            this.pendingTurnPass = null;
+            this.nextPlayer();
+        }
 
         return {
             success: true,
             drawnCards: drawnCards.map(card => this.cardToString(card)),
+            playableDrawnCards: playableDrawnCards,
+            canPlayDrawnCard: canPlayDrawnCard,
+            fromSpecialCard: isFromSpecialCard,
+            gameState: this.getGameState()
+        };
+    }
+
+    // New method to get playable cards from drawn cards
+    getPlayableDrawnCards(drawnCards, playerId) {
+        const topCard = this.getTopDiscardCard();
+        if (!topCard) return [];
+
+        const playableCards = [];
+        
+        for (const card of drawnCards) {
+            if (this.isValidPlay(card)) {
+                playableCards.push(this.cardToString(card));
+            }
+        }
+
+        return playableCards;
+    }
+
+    // New method to play a specific drawn card
+    playDrawnCard(playerId, card, declaredSuit = null) {
+        const player = this.getPlayerById(playerId);
+        if (!player) {
+            return { 
+                success: false, 
+                error: 'Player not found' 
+            };
+        }
+
+        // Validate it's the player's turn and they have pending turn pass
+        const currentPlayer = this.getCurrentPlayer();
+        if (!currentPlayer || currentPlayer.id !== playerId) {
+            return { 
+                success: false, 
+                error: 'Not your turn' 
+            };
+        }
+
+        if (this.pendingTurnPass !== playerId) {
+            return {
+                success: false,
+                error: 'No pending card play available'
+            };
+        }
+
+        // Validate player has the card
+        const cardIndex = this.findCardInHand(player.hand, card);
+        if (cardIndex === -1) {
+            return { 
+                success: false, 
+                error: `You do not have the ${card.rank} of ${card.suit}` 
+            };
+        }
+
+        // Validate the play is legal
+        if (!this.isValidPlay(card, declaredSuit)) {
+            return { 
+                success: false, 
+                error: 'Invalid card play' 
+            };
+        }
+
+        // Remove card from player's hand
+        player.hand.splice(cardIndex, 1);
+
+        // Add card to discard pile
+        this.discardPile.push(card);
+
+        // Handle special card effects
+        const drawEffect = this.handleSpecialCard(card, declaredSuit);
+        if (drawEffect > 0) {
+            this.drawStack += drawEffect;
+        }
+
+        // Clear pending turn pass
+        this.pendingTurnPass = null;
+
+        // Check win condition
+        if (player.hand.length === 0) {
+            player.isSafe = true;
+            this.safeePlayers.push(player);
+            this.checkRoundEnd();
+        } else {
+            this.nextPlayer();
+        }
+
+        return {
+            success: true,
+            message: `Played ${card.rank} of ${card.suit}${card.rank === '8' && declaredSuit ? ` and declared ${declaredSuit}` : ''}`,
+            cardsPlayed: [this.cardToString(card)],
+            gameState: this.getGameState()
+        };
+    }
+
+    // New method to pass turn after drawing
+    passTurnAfterDraw(playerId) {
+        const player = this.getPlayerById(playerId);
+        if (!player) {
+            return { 
+                success: false, 
+                error: 'Player not found' 
+            };
+        }
+
+        // Validate it's the player's turn and they have pending turn pass
+        const currentPlayer = this.getCurrentPlayer();
+        if (!currentPlayer || currentPlayer.id !== playerId) {
+            return { 
+                success: false, 
+                error: 'Not your turn' 
+            };
+        }
+
+        if (this.pendingTurnPass !== playerId) {
+            return {
+                success: false,
+                error: 'No pending turn pass available'
+            };
+        }
+
+        // Clear pending turn pass and advance to next player
+        this.pendingTurnPass = null;
+        this.nextPlayer();
+
+        return {
+            success: true,
+            message: 'Turn passed',
             gameState: this.getGameState()
         };
     }
@@ -670,6 +822,7 @@ class Game {
         this.declaredSuit = null;
         this.direction = 1;
         this.currentPlayerIndex = 0;
+        this.pendingTurnPass = null;
 
         // Create new deck and deal cards
         this.deck = createDeck();
