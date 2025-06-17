@@ -232,7 +232,7 @@ io.on('connection', (socket) => {
     // Handle drawing cards
     socket.on('drawCard', (data) => {
         try {
-            const { gameId } = data;
+            const { gameId, count = 1 } = data;
             const game = Game.findById(gameId);
             
             if (!game) {
@@ -247,9 +247,9 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            console.log(`${player.name} attempting to draw cards`);
+            console.log(`${player.name} attempting to draw ${count} cards`);
 
-            const result = game.drawCards(socket.id);
+            const result = game.drawCards(socket.id, count);
             
             if (result.success) {
                 console.log(`${player.name} drew ${result.drawnCards.length} cards`);
@@ -257,12 +257,21 @@ io.on('connection', (socket) => {
                 // Broadcast updated game state to all players
                 broadcastGameState(gameId);
                 
-                socket.emit('success', `Drew ${result.drawnCards.length} card(s)`);
+                // Send success message with draw details
+                socket.emit('drawComplete', {
+                    success: true,
+                    message: `Drew ${result.drawnCards.length} card(s)`,
+                    drawnCards: result.drawnCards,
+                    playableDrawnCards: result.playableDrawnCards,
+                    canPlayDrawnCard: result.canPlayDrawnCard,
+                    fromSpecialCard: result.fromSpecialCard
+                });
                 
                 // Notify other players that this player drew cards
                 socket.to(gameId).emit('playerDrewCards', {
                     playerName: player.name,
-                    cardCount: result.drawnCards.length
+                    cardCount: result.drawnCards.length,
+                    canPlayDrawn: result.canPlayDrawnCard
                 });
 
             } else {
@@ -273,6 +282,99 @@ io.on('connection', (socket) => {
         } catch (error) {
             console.error('Error drawing cards:', error);
             socket.emit('error', 'Failed to draw cards');
+        }
+    });
+
+    // New event: Play a card that was just drawn
+    socket.on('playDrawnCard', (data) => {
+        try {
+            const { gameId, card, declaredSuit } = data;
+            const game = Game.findById(gameId);
+            
+            if (!game) {
+                socket.emit('error', 'Game not found');
+                return;
+            }
+
+            const player = game.getPlayerById(socket.id);
+            if (!player) {
+                socket.emit('error', 'You are not part of this game');
+                return;
+            }
+
+            console.log(`${player.name} attempting to play drawn card:`, card);
+
+            const result = game.playDrawnCard(socket.id, card, declaredSuit);
+            
+            if (result.success) {
+                console.log(`${player.name} played drawn card successfully`);
+                
+                // Broadcast updated game state to all players
+                broadcastGameState(gameId);
+                
+                socket.emit('success', result.message || 'Drawn card played successfully');
+                
+                // Broadcast the play to all players
+                io.to(gameId).emit('cardPlayed', {
+                    playerName: player.name,
+                    cardsPlayed: result.cardsPlayed,
+                    message: result.message,
+                    wasDrawnCard: true
+                });
+
+            } else {
+                console.log(`Play drawn card failed for ${player.name}: ${result.error}`);
+                socket.emit('error', result.error);
+            }
+
+        } catch (error) {
+            console.error('Error playing drawn card:', error);
+            socket.emit('error', 'Failed to play drawn card');
+        }
+    });
+
+    // New event: Pass turn after drawing
+    socket.on('passTurnAfterDraw', (data) => {
+        try {
+            const { gameId } = data;
+            const game = Game.findById(gameId);
+            
+            if (!game) {
+                socket.emit('error', 'Game not found');
+                return;
+            }
+
+            const player = game.getPlayerById(socket.id);
+            if (!player) {
+                socket.emit('error', 'You are not part of this game');
+                return;
+            }
+
+            console.log(`${player.name} passing turn after drawing`);
+
+            const result = game.passTurnAfterDraw(socket.id);
+            
+            if (result.success) {
+                console.log(`${player.name} passed turn successfully`);
+                
+                // Broadcast updated game state to all players
+                broadcastGameState(gameId);
+                
+                socket.emit('success', 'Turn passed');
+                
+                // Notify other players
+                socket.to(gameId).emit('playerPassedTurn', {
+                    playerName: player.name
+                });
+
+            } else {
+                console.log(`Pass turn failed for ${player.name}: ${result.error}`);
+                socket.emit('error', result.error);
+            }
+
+        } catch (error) {
+            console.error('Error passing turn:', error);
+            socket.emit('error', 'Failed to pass turn');
         }
     });
 

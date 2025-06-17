@@ -1,4 +1,4 @@
-// backend/src/controllers/gameController.js
+// Enhanced gameController.js with new draw mechanics
 
 const Game = require('../models/game');
 
@@ -100,7 +100,7 @@ exports.getGameState = (req, res) => {
     }
 };
 
-// Join a game (this was missing!)
+// Join a game
 exports.joinGame = (req, res) => {
     try {
         const { gameId, playerId, playerName } = req.body;
@@ -121,7 +121,6 @@ exports.joinGame = (req, res) => {
             });
         }
 
-        // Check if game is already full or started
         if (game.gameState === 'playing') {
             return res.status(400).json({
                 success: false,
@@ -173,7 +172,7 @@ exports.joinGame = (req, res) => {
     }
 };
 
-// Draw cards
+// Enhanced draw cards with optional play
 exports.drawCards = (req, res) => {
     try {
         const { gameId, playerId, count } = req.body;
@@ -193,7 +192,10 @@ exports.drawCards = (req, res) => {
                 success: true,
                 message: `Drew ${result.drawnCards.length} cards`, 
                 gameState: game.getGameState(),
-                drawnCards: result.drawnCards
+                drawnCards: result.drawnCards,
+                playableDrawnCards: result.playableDrawnCards,
+                canPlayDrawnCard: result.canPlayDrawnCard,
+                fromSpecialCard: result.fromSpecialCard
             });
         } else {
             res.status(400).json({ 
@@ -205,6 +207,77 @@ exports.drawCards = (req, res) => {
         res.status(500).json({ 
             success: false, 
             error: 'Failed to draw cards: ' + error.message 
+        });
+    }
+};
+
+// Play a card that was just drawn
+exports.playDrawnCard = (req, res) => {
+    try {
+        const { gameId, playerId, card, declaredSuit } = req.body;
+        const game = Game.findById(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Game not found' 
+            });
+        }
+
+        const result = game.playDrawnCard(playerId, card, declaredSuit);
+        
+        if (result.success) {
+            res.status(200).json({ 
+                success: true,
+                message: result.message, 
+                gameState: game.getGameState(),
+                cardsPlayed: result.cardsPlayed
+            });
+        } else {
+            res.status(400).json({ 
+                success: false,
+                error: result.error 
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to play drawn card: ' + error.message 
+        });
+    }
+};
+
+// Pass turn after drawing
+exports.passTurnAfterDraw = (req, res) => {
+    try {
+        const { gameId, playerId } = req.body;
+        const game = Game.findById(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Game not found' 
+            });
+        }
+
+        const result = game.passTurnAfterDraw(playerId);
+        
+        if (result.success) {
+            res.status(200).json({ 
+                success: true,
+                message: result.message, 
+                gameState: game.getGameState()
+            });
+        } else {
+            res.status(400).json({ 
+                success: false,
+                error: result.error 
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to pass turn: ' + error.message 
         });
     }
 };
