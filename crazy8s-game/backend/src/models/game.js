@@ -211,31 +211,14 @@ class Game {
             }
         }
 
-        // Validate card stacking (if multiple cards)
+        // Enhanced card stack validation with turn logic
         if (cardsToPlay.length > 1) {
-            const firstCard = cardsToPlay[0];
-            for (let i = 1; i < cardsToPlay.length; i++) {
-                if (cardsToPlay[i].rank !== firstCard.rank) {
-                    return { 
-                        success: false, 
-                        error: 'All stacked cards must have the same rank' 
-                    };
-                }
-            }
-
-            // Special stacking rules for Aces and 2s - they can stack with each other if same suit
-            if (firstCard.rank === 'Ace' || firstCard.rank === '2') {
-                // Check if all cards are either Aces or 2s with the same suit
-                const baseSuit = firstCard.suit;
-                for (let i = 1; i < cardsToPlay.length; i++) {
-                    const card = cardsToPlay[i];
-                    if (card.suit !== baseSuit || (card.rank !== 'Ace' && card.rank !== '2')) {
-                        return { 
-                            success: false, 
-                            error: 'Aces and 2s can only be stacked with other Aces/2s of the same suit' 
-                        };
-                    }
-                }
+            const stackValidation = this.validateCardStack(cardsToPlay);
+            if (!stackValidation.isValid) {
+                return {
+                    success: false,
+                    error: stackValidation.error
+                };
             }
         }
 
@@ -385,7 +368,105 @@ class Game {
         return drawEffect;
     }
 
-    // New method to handle multiple special card effects
+    // Enhanced card stack validation with turn simulation
+    validateCardStack(cards) {
+        if (cards.length <= 1) {
+            return { isValid: true };
+        }
+
+        console.log('Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+
+        // Check each card-to-card transition in the stack
+        for (let i = 1; i < cards.length; i++) {
+            const prevCard = cards[i - 1];
+            const currentCard = cards[i];
+            
+            console.log(`Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
+            
+            // Cards must match by suit or rank
+            const matchesSuit = prevCard.suit === currentCard.suit;
+            const matchesRank = prevCard.rank === currentCard.rank;
+            
+            // Special case: Aces and 2s can stack with each other if same suit
+            const isAce2Cross = (
+                (prevCard.rank === 'Ace' && currentCard.rank === '2') ||
+                (prevCard.rank === '2' && currentCard.rank === 'Ace')
+            ) && prevCard.suit === currentCard.suit;
+            
+            console.log(`  Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+            
+            // Basic matching requirement
+            if (!matchesSuit && !matchesRank && !isAce2Cross) {
+                console.log(`  ❌ Invalid transition - no suit/rank match!`);
+                return {
+                    isValid: false,
+                    error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank.`
+                };
+            }
+            
+            // If different rank but same suit, validate turn chain logic
+            if (matchesSuit && !matchesRank && !isAce2Cross) {
+                const stackUpToHere = cards.slice(0, i);
+                const wouldHaveTurnControl = this.simulateTurnControl(stackUpToHere);
+                
+                if (!wouldHaveTurnControl) {
+                    console.log(`  ❌ Invalid transition - no turn control after previous cards!`);
+                    return {
+                        isValid: false,
+                        error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Previous cards don't maintain turn control.`
+                    };
+                }
+            }
+            
+            console.log(`  ✅ Valid transition`);
+        }
+        
+        console.log('✅ Stack validation passed');
+        return { isValid: true };
+    }
+
+    // Simulate turn control for a card sequence
+    simulateTurnControl(cardStack) {
+        if (cardStack.length === 0) return true;
+        
+        const isOneVsOne = this.activePlayers.length === 2;
+        let currentPlayerHasTurn = true; // We start with control
+        
+        for (const card of cardStack) {
+            switch (card.rank) {
+                case 'Jack':
+                    // Jack skips opponent, back to us
+                    currentPlayerHasTurn = true;
+                    break;
+                    
+                case 'Queen':
+                    if (isOneVsOne) {
+                        // In 1v1, Queen acts as skip
+                        currentPlayerHasTurn = true;
+                    } else {
+                        // In multiplayer, Queen reverses direction
+                        currentPlayerHasTurn = !currentPlayerHasTurn;
+                    }
+                    break;
+                    
+                case 'Ace':
+                case '2':
+                case '8':
+                    // These have effects but pass turn to next player
+                    currentPlayerHasTurn = false;
+                    break;
+                    
+                default:
+                    // Non-special cards pass the turn
+                    currentPlayerHasTurn = false;
+                    break;
+            }
+        }
+        
+        return currentPlayerHasTurn;
+    }
+
+    // New method to handle multiple special card effects with proper turn logic
     handleMultipleSpecialCards(cards, declaredSuit = null) {
         let totalDrawEffect = 0;
         let skipCount = 0;
@@ -400,12 +481,7 @@ class Game {
                     break;
 
                 case 'Queen': // Reverse
-                    if (this.activePlayers.length === 2) {
-                        // In 2-player game, Queen acts like Skip
-                        skipCount++;
-                    } else {
-                        reverseCount++;
-                    }
+                    reverseCount++;
                     break;
 
                 case 'Ace': // Draw 4
@@ -431,9 +507,15 @@ class Game {
 
         // Apply accumulated effects
         
-        // Handle reverses (even number cancels out)
-        if (reverseCount % 2 === 1) {
-            this.direction *= -1;
+        // Handle reverses
+        if (this.activePlayers.length === 2) {
+            // In 2-player game, Queens act as Skip
+            skipCount += reverseCount;
+        } else {
+            // In multi-player, apply net reverse effect
+            if (reverseCount % 2 === 1) {
+                this.direction *= -1;
+            }
         }
 
         // Handle skips
@@ -444,6 +526,9 @@ class Game {
         // Handle wild card suit declaration
         if (hasWild && declaredSuit) {
             this.declaredSuit = declaredSuit;
+        } else if (!hasWild) {
+            // Clear declared suit if no wilds in the stack
+            this.declaredSuit = null;
         }
 
         return totalDrawEffect;

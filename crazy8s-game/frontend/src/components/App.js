@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { io } from 'socket.io-client';
 
-// Card component
-const Card = ({ card, onClick, isPlayable = false, isSelected = false }) => {
+// Card component with experienced mode support
+const Card = ({ card, onClick, isPlayable = false, isSelected = false, experiencedMode = false }) => {
   const getCardColor = (suit) => {
     return suit === 'Hearts' || suit === 'Diamonds' ? '#e74c3c' : '#2c3e50';
   };
@@ -17,6 +17,10 @@ const Card = ({ card, onClick, isPlayable = false, isSelected = false }) => {
     return symbols[suit] || '';
   };
 
+  // In experienced mode, don't gray out cards or change opacity
+  const opacity = experiencedMode ? 1 : (isPlayable ? 1 : 0.6);
+  const borderColor = experiencedMode ? '#333' : (isPlayable ? '#27ae60' : '#bdc3c7');
+
   return (
     <div 
       className={`card ${isPlayable ? 'playable' : ''} ${isSelected ? 'selected' : ''}`}
@@ -24,9 +28,9 @@ const Card = ({ card, onClick, isPlayable = false, isSelected = false }) => {
       style={{
         width: '60px',
         height: '90px',
-        border: isPlayable ? '2px solid #27ae60' : '2px solid #bdc3c7',
+        border: `2px solid ${borderColor}`,
         borderRadius: '8px',
-        margin: '0 3px',
+        margin: '0 1px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -38,8 +42,12 @@ const Card = ({ card, onClick, isPlayable = false, isSelected = false }) => {
         fontSize: '10px',
         padding: '4px',
         color: getCardColor(card.suit),
-        boxShadow: isSelected ? '0 4px 8px rgba(0,0,0,0.3)' : isPlayable ? '0 2px 6px rgba(39, 174, 96, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
-        opacity: isPlayable ? 1 : 0.6
+        boxShadow: isSelected ? '0 4px 8px rgba(0,0,0,0.3)' : 
+                   (isPlayable && !experiencedMode ? '0 2px 6px rgba(39, 174, 96, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)'),
+        opacity: opacity,
+        flexShrink: 0,
+        minWidth: '50px',
+        maxWidth: '60px'
       }}
     >
       <div style={{ fontWeight: 'bold', fontSize: '8px' }}>
@@ -55,94 +63,206 @@ const Card = ({ card, onClick, isPlayable = false, isSelected = false }) => {
   );
 };
 
-// PlayerHand component
-const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect }) => {
+// PlayerHand component with sorting and grouping
+const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, settings = {} }) => {
+  // Helper function to get rank value for sorting
+  const getRankValue = (rank) => {
+    const rankOrder = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace'];
+    return rankOrder.indexOf(rank);
+  };
+
+  // Helper function to get suit order
+  const getSuitValue = (suit) => {
+    const suitOrder = ['Hearts', 'Diamonds', 'Clubs', 'Spades'];
+    return suitOrder.indexOf(suit);
+  };
+
+  // Sort and group cards based on settings
+  const organizeCards = () => {
+    let organizedCards = [...cards];
+
+    if (settings.sortByRank) {
+      organizedCards.sort((a, b) => {
+        const rankA = getRankValue(a.rank);
+        const rankB = getRankValue(b.rank);
+        if (rankA !== rankB) return rankA - rankB;
+        // If same rank, sort by suit
+        return getSuitValue(a.suit) - getSuitValue(b.suit);
+      });
+    }
+
+    if (settings.groupBySuit) {
+      organizedCards.sort((a, b) => {
+        const suitA = getSuitValue(a.suit);
+        const suitB = getSuitValue(b.suit);
+        if (suitA !== suitB) return suitA - suitB;
+        // If same suit, sort by rank if enabled
+        if (settings.sortByRank) {
+          return getRankValue(a.rank) - getRankValue(b.rank);
+        }
+        return 0;
+      });
+    }
+
+    return organizedCards;
+  };
+
+  const organizedCards = organizeCards();
+
+  // Group cards by suit if grouping is enabled
+  const getCardGroups = () => {
+    if (!settings.groupBySuit) {
+      return [{ suit: null, cards: organizedCards }];
+    }
+
+    const groups = [];
+    const suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades'];
+    
+    suits.forEach(suit => {
+      const suitCards = organizedCards.filter(card => card.suit === suit);
+      if (suitCards.length > 0) {
+        groups.push({ suit, cards: suitCards });
+      }
+    });
+
+    return groups;
+  };
+
+  const cardGroups = getCardGroups();
+
+  const getSuitSymbol = (suit) => {
+    const symbols = {
+      'Hearts': '♥',
+      'Diamonds': '♦',
+      'Clubs': '♣',
+      'Spades': '♠'
+    };
+    return symbols[suit] || '';
+  };
+
+  const getSuitColor = (suit) => {
+    return suit === 'Hearts' || suit === 'Diamonds' ? '#e74c3c' : '#2c3e50';
+  };
+
   return (
     <div style={{
       display: 'flex',
-      justifyContent: 'center',
-      flexWrap: 'wrap',
+      flexDirection: 'column',
+      alignItems: 'center',
       margin: '20px 0',
-      padding: '15px',
+      padding: '15px 15px 25px 15px', // Added extra bottom padding
       backgroundColor: '#2ecc71',
       borderRadius: '15px',
       minHeight: '120px',
-      alignItems: 'center',
-      boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
+      boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+      width: '100%',
+      maxWidth: '100vw',
+      boxSizing: 'border-box'
     }}>
       <div style={{ 
         color: '#fff', 
         fontSize: '14px', 
         fontWeight: 'bold', 
         marginBottom: '10px',
-        width: '100%',
         textAlign: 'center'
       }}>
         Your Hand ({cards.length} cards)
       </div>
-      {cards.map((card, index) => {
-        const isPlayable = validCards.some(vc => vc.suit === card.suit && vc.rank === card.rank);
-        const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
-        const selectedIndex = selectedCards.findIndex(sc => sc.suit === card.suit && sc.rank === card.rank);
-        const isBottomCard = selectedIndex === 0;
-        
-        return (
-          <div key={`${card.suit}-${card.rank}-${index}`} style={{ position: 'relative', margin: '0 3px' }}>
-            {/* Bottom Card Indicator - only show when stacking (2+ cards selected) */}
-            {isBottomCard && selectedCards.length > 1 && (
-              <div style={{
-                position: 'absolute',
-                top: '-25px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                backgroundColor: '#e74c3c',
-                color: '#fff',
-                padding: '2px 6px',
-                borderRadius: '10px',
-                fontSize: '8px',
-                fontWeight: 'bold',
-                whiteSpace: 'nowrap',
-                zIndex: 10
-              }}>
-                Bottom Card
-              </div>
-            )}
-            
-            {/* Play Order Indicator */}
-            {isSelected && selectedIndex > 0 && (
-              <div style={{
-                position: 'absolute',
-                top: '-20px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                backgroundColor: '#3498db',
-                color: '#fff',
-                padding: '1px 5px',
-                borderRadius: '8px',
-                fontSize: '10px',
-                fontWeight: 'bold',
-                zIndex: 10
-              }}>
-                #{selectedIndex + 1}
-              </div>
-            )}
-            
-            <Card
-              card={card}
-              isPlayable={isPlayable}
-              isSelected={isSelected}
-              onClick={() => {
-                if (isPlayable) {
-                  onCardSelect(card);
-                }
-              }}
-            />
-          </div>
-        );
-      })}
-      {cards.length === 0 && (
+      
+      {cards.length === 0 ? (
         <div style={{ color: '#fff', fontSize: '16px', fontStyle: 'italic' }}>
           No cards in hand
+        </div>
+      ) : (
+        <div style={{ 
+          display: 'flex', 
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+          alignItems: 'flex-end', // Changed from 'center' to 'flex-end'
+          width: '100%',
+          maxWidth: '100%',
+          overflow: 'visible', // Changed from 'hidden' to 'visible'
+          paddingTop: '30px', // Added padding for indicators
+          paddingBottom: '15px' // Added padding for selected cards
+        }}>
+          {cardGroups.map((group, groupIndex) => (
+            <div key={groupIndex} style={{
+              display: 'flex',
+              alignItems: 'flex-end', // Changed to flex-end
+              flexWrap: 'wrap',
+              justifyContent: 'center'
+            }}>
+              {/* Cards in this group */}
+              {group.cards.map((card, cardIndex) => {
+                const isPlayable = validCards.some(vc => vc.suit === card.suit && vc.rank === card.rank);
+                const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
+                const selectedIndex = selectedCards.findIndex(sc => sc.suit === card.suit && sc.rank === card.rank);
+                const isBottomCard = selectedIndex === 0;
+                
+                return (
+                  <div key={`${card.suit}-${card.rank}-${cardIndex}`} style={{ 
+                    position: 'relative', 
+                    margin: '2px',
+                    flexShrink: 0,
+                    minWidth: '60px',
+                    // Add extra space for selected cards
+                    marginTop: isSelected ? '10px' : '0px'
+                  }}>
+                    {/* Bottom Card Indicator - only show when stacking (2+ cards selected) */}
+                    {isBottomCard && selectedCards.length > 1 && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '-35px', // Moved up more
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        backgroundColor: '#e74c3c',
+                        color: '#fff',
+                        padding: '2px 6px',
+                        borderRadius: '10px',
+                        fontSize: '8px',
+                        fontWeight: 'bold',
+                        whiteSpace: 'nowrap',
+                        zIndex: 10
+                      }}>
+                        Bottom Card
+                      </div>
+                    )}
+                    
+                    {/* Play Order Indicator */}
+                    {isSelected && selectedIndex > 0 && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '-30px', // Moved up more
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        backgroundColor: '#3498db',
+                        color: '#fff',
+                        padding: '1px 5px',
+                        borderRadius: '8px',
+                        fontSize: '10px',
+                        fontWeight: 'bold',
+                        zIndex: 10
+                      }}>
+                        #{selectedIndex + 1}
+                      </div>
+                    )}
+                    
+                    <Card
+                      card={card}
+                      isPlayable={isPlayable}
+                      isSelected={isSelected}
+                      experiencedMode={settings.experiencedMode}
+                      onClick={() => {
+                        if (isPlayable || settings.experiencedMode) {
+                          onCardSelect(card);
+                        }
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -376,7 +496,165 @@ const SuitSelector = ({ onSuitSelect, onCancel }) => {
   );
 };
 
-// Toast notification component
+// Settings component
+const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
+  if (!isOpen) return null;
+
+  const handleSettingChange = (key, value) => {
+    onSettingsChange({ ...settings, [key]: value });
+  };
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: '#fff',
+        padding: '30px',
+        borderRadius: '15px',
+        maxWidth: '500px',
+        width: '90%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '25px'
+        }}>
+          <h2 style={{ margin: 0, color: '#2c3e50' }}>⚙️ Game Settings</h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '24px',
+              cursor: 'pointer',
+              color: '#95a5a6'
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Card Display Settings */}
+        <div style={{ marginBottom: '25px' }}>
+          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>🃏 Card Display</h3>
+          
+          {/* Sort by Rank */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '15px',
+            padding: '10px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px'
+          }}>
+            <div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Sort by Rank</div>
+              <div style={{ fontSize: '12px', color: '#6c757d' }}>
+                Order cards by rank (2, 3, 4... Jack, Queen, King, Ace)
+              </div>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={settings.sortByRank}
+                onChange={(e) => handleSettingChange('sortByRank', e.target.checked)}
+                style={{ marginRight: '8px', transform: 'scale(1.2)' }}
+              />
+            </label>
+          </div>
+
+          {/* Group by Suit */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '15px',
+            padding: '10px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px'
+          }}>
+            <div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Group by Suit</div>
+              <div style={{ fontSize: '12px', color: '#6c757d' }}>
+                Group cards by suit (Hearts, Diamonds, Clubs, Spades)
+              </div>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={settings.groupBySuit}
+                onChange={(e) => handleSettingChange('groupBySuit', e.target.checked)}
+                style={{ marginRight: '8px', transform: 'scale(1.2)' }}
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* Gameplay Settings */}
+        <div style={{ marginBottom: '25px' }}>
+          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>🎮 Gameplay</h3>
+          
+          {/* Experienced Mode */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px'
+          }}>
+            <div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Experienced Mode</div>
+              <div style={{ fontSize: '12px', color: '#6c757d' }}>
+                Show all cards clearly - removes graying out of unplayable cards
+              </div>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={settings.experiencedMode}
+                onChange={(e) => handleSettingChange('experiencedMode', e.target.checked)}
+                style={{ marginRight: '8px', transform: 'scale(1.2)' }}
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* Close Button */}
+        <div style={{ textAlign: 'center' }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '12px 25px',
+              backgroundColor: '#3498db',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: 'bold'
+            }}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 const Toast = ({ message, type = 'info', onClose }) => {
   useEffect(() => {
     const timer = setTimeout(onClose, 4000);
@@ -551,6 +829,34 @@ const App = () => {
   const [showSuitSelector, setShowSuitSelector] = useState(false);
   const [validCards, setValidCards] = useState([]);
   const [toast, setToast] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState({
+    sortByRank: false,
+    groupBySuit: false,
+    experiencedMode: false
+  });
+
+  // Load settings from localStorage on component mount
+  useEffect(() => {
+    if (playerId) {
+      const savedSettings = localStorage.getItem(`crazy8s_settings_${playerId}`);
+      if (savedSettings) {
+        try {
+          setSettings(JSON.parse(savedSettings));
+        } catch (error) {
+          console.log('Error loading settings:', error);
+        }
+      }
+    }
+  }, [playerId]);
+
+  // Save settings to localStorage whenever they change
+  const handleSettingsChange = (newSettings) => {
+    setSettings(newSettings);
+    if (playerId) {
+      localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(newSettings));
+    }
+  };
 
   // Initialize socket connection
   useEffect(() => {
@@ -644,23 +950,14 @@ const App = () => {
         });
       } else {
         // Cards already selected - show stackable cards
-        const bottomCard = selectedCards[0];
+        const lastCard = selectedCards[selectedCards.length - 1];
         valid = playerHand.filter(card => {
           // Already selected cards are always "valid" for reordering
           const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
           if (isSelected) return true;
           
-          // Can stack cards of same rank as bottom card
-          if (card.rank === bottomCard.rank) {
-            // Special suit requirements for Aces and 2s
-            if (bottomCard.rank === 'Ace' || bottomCard.rank === '2') {
-              return card.suit === bottomCard.suit;
-            }
-            return true;
-          }
-          
-          // Can't stack different ranks
-          return false;
+          // Check if this card can be stacked with the last selected card
+          return canStackCards(lastCard, card);
         });
       }
       
@@ -721,31 +1018,45 @@ const App = () => {
         // No cards selected, select this card as bottom card
         setSelectedCards([card]);
       } else {
-        const bottomCard = selectedCards[0];
+        // Check if this card can be stacked with the last selected card
+        const lastCard = selectedCards[selectedCards.length - 1];
         
-        // Check if we can stack this card
-        if (bottomCard.rank === card.rank) {
-          // Same rank - check special suit requirements
-          if (bottomCard.rank === 'Ace' || bottomCard.rank === '2') {
-            if (bottomCard.suit === card.suit) {
-              setSelectedCards(prev => [...prev, card]);
-            } else {
-              setToast({ message: 'Aces and 2s can only be stacked with the same suit', type: 'error' });
-            }
-          } else {
-            // Regular stacking - same rank, any suit
-            setSelectedCards(prev => [...prev, card]);
-          }
+        if (canStackCards(lastCard, card, selectedCards.slice(0, -1))) {
+          setSelectedCards(prev => [...prev, card]);
         } else {
-          // Different rank - can't stack, but allow switching if only one card selected
+          // Can't stack - check if we can replace (only if single card selected)
           if (selectedCards.length === 1) {
             setSelectedCards([card]);
           } else {
-            setToast({ message: 'Cannot switch cards while stacking. Clear selection first.', type: 'error' });
+            setToast({ 
+              message: `Cannot stack ${card.rank} of ${card.suit} after ${lastCard.rank} of ${lastCard.suit}. Cards must match suit/rank or maintain turn control.`, 
+              type: 'error' 
+            });
           }
         }
       }
     }
+  };
+
+  // Helper function to check if two cards can be stacked
+  const canStackCards = (firstCard, secondCard) => {
+    // Same rank always allowed
+    if (firstCard.rank === secondCard.rank) {
+      return true;
+    }
+    
+    // Same suit always allowed
+    if (firstCard.suit === secondCard.suit) {
+      return true;
+    }
+    
+    // Special Ace/2 cross-stacking (same suit)
+    if ((firstCard.rank === 'Ace' && secondCard.rank === '2') || 
+        (firstCard.rank === '2' && secondCard.rank === 'Ace')) {
+      return firstCard.suit === secondCard.suit;
+    }
+    
+    return false;
   };
 
   const playSelectedCards = () => {
@@ -757,11 +1068,15 @@ const App = () => {
     const hasWild = selectedCards.some(card => card.rank === '8');
     
     if (hasWild) {
-      // Check if ALL selected cards are 8s (can't mix 8s with other ranks)
-      const allWilds = selectedCards.every(card => card.rank === '8');
-      if (!allWilds) {
-        setToast({ message: 'Cannot mix 8s with other cards', type: 'error' });
-        return;
+      // Check if ALL selected cards are 8s (can't mix 8s with other ranks unless same suit)
+      const non8Cards = selectedCards.filter(card => card.rank !== '8');
+      if (non8Cards.length > 0) {
+        // Check if all cards (including 8s) are same suit
+        const allSameSuit = selectedCards.every(card => card.suit === selectedCards[0].suit);
+        if (!allSameSuit) {
+          setToast({ message: 'When playing 8s with other cards, all must be the same suit', type: 'error' });
+          return;
+        }
       }
       setShowSuitSelector(true);
     } else {
@@ -948,10 +1263,30 @@ const App = () => {
       padding: '20px',
       backgroundColor: '#ecf0f1',
       minHeight: '100vh',
-      fontFamily: 'Arial, sans-serif'
+      fontFamily: 'Arial, sans-serif',
+      width: '100vw',
+      maxWidth: '100vw',
+      boxSizing: 'border-box',
+      overflow: 'hidden'
     }}>
       <h1 style={{ textAlign: 'center', color: '#2c3e50', margin: '0 0 20px 0' }}>
         🎴 Crazy 8's Game
+        <button
+          onClick={() => setShowSettings(true)}
+          style={{
+            marginLeft: '15px',
+            padding: '8px 12px',
+            backgroundColor: '#95a5a6',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 'bold'
+          }}
+        >
+          ⚙️ Settings
+        </button>
       </h1>
 
       {/* Debug Info */}
@@ -1209,6 +1544,7 @@ const App = () => {
         validCards={validCards}
         selectedCards={selectedCards}
         onCardSelect={handleCardSelect}
+        settings={settings}
       />
 
       {/* Game Over */}
@@ -1252,6 +1588,14 @@ const App = () => {
           onClose={() => setToast(null)}
         />
       )}
+
+      {/* Settings Modal */}
+      <Settings 
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        settings={settings}
+        onSettingsChange={handleSettingsChange}
+      />
 
       {/* Suit Selector Modal */}
       {showSuitSelector && (
