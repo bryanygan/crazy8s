@@ -1,4 +1,292 @@
-# Crazy 8's Game Rules
+# 🎴 Crazy 8's Multiplayer Game
+
+A real-time multiplayer implementation of the classic Crazy 8's card game with advanced stacking mechanics and tournament-style elimination rounds.
+
+## 🎮 Game Overview
+
+Crazy 8's is a strategic card game similar to Uno, played with a standard 52-card deck. Players compete to be the first to empty their hand while navigating special card effects and complex stacking combinations.
+
+### Key Features
+- **Real-time multiplayer** (2-4 players)
+- **Advanced card stacking** with turn logic simulation
+- **Tournament elimination** format across multiple rounds
+- **Complex special card interactions** (Jack, Queen, Ace, 2, 8)
+- **Customizable settings** (card sorting, experienced mode)
+- **Responsive design** with mobile support
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js (v14+ recommended)
+- npm or yarn
+
+### Installation & Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/bryanygan/crazy8s.git
+   cd crazy8s-game
+   ```
+
+2. **Install backend dependencies**
+   ```bash
+   cd backend
+   npm install
+   ```
+
+3. **Install frontend dependencies**
+   ```bash
+   cd ../frontend
+   npm install
+   ```
+
+4. **Start the backend server**
+   ```bash
+   cd ../backend
+   npm start
+   # Server runs on http://localhost:3001
+   ```
+
+5. **Start the frontend application**
+   ```bash
+   cd ../frontend
+   npm start
+   # App runs on http://localhost:3000
+   ```
+
+6. **Play the game**
+   - Open your browser to `http://localhost:3000`
+   - Create or join a game
+   - Start playing!
+
+## 🎯 How to Play
+
+### Basic Gameplay
+
+1. **Starting**: Each player receives 8 cards, with one card face-up as the discard pile
+2. **Playing**: On your turn, play a card that matches the top card's **suit** or **rank**
+3. **Drawing**: If you can't play, draw a card from the deck
+4. **Winning**: First player to empty their hand is "safe" and advances to the next round
+5. **Elimination**: Last player with cards is eliminated from the tournament
+
+### Special Cards
+
+| Card | Effect |
+|------|--------|
+| **Jack** | Skip next player |
+| **Queen** | Reverse direction (Skip in 2-player) |
+| **Ace** | Next player draws 4 cards |
+| **2** | Next player draws 2 cards |
+| **8** | Wild card - declare new suit |
+
+### Advanced Stacking
+
+**Same Rank Stacking**: Play multiple cards of the same rank in one turn
+- Example: `7♥ + 7♣ + 7♠` (any combination of suits)
+
+**Turn Chain Stacking**: Special cards that maintain turn control can chain together
+- Example: `Jack♦ → Queen♦ → Queen♣ → King♣` (valid in 1v1)
+- Logic: Jack skips opponent, 2 Queens reverse twice (back to you), King ends turn
+
+**Draw Effect Stacking**: Aces and 2s accumulate draw penalties
+- Example: `Ace♠ + 2♠ = +6 cards` to next player
+- Counter with matching Ace/2 or draw the penalty
+
+### Stacking Rules
+
+✅ **Valid Stacking**:
+- Same rank: `5♦ → 5♣ → 5♠`
+- Special card chains: `Jack♦ → Queen♦` (both special, same suit)
+- Cross effects: `Ace♠ → 2♠` (special rule)
+
+❌ **Invalid Stacking**:
+- Different rank/suit: `5♦ → King♦` (5 doesn't maintain turn)
+- Non-special chains: `3♥ → 7♥` (neither maintains turn)
+
+## 🏗️ Project Structure
+
+```
+crazy8s-game/
+├── backend/
+│   ├── src/
+│   │   ├── models/           # Game logic & data structures
+│   │   │   ├── game.js       # Main game engine
+│   │   │   ├── Card.js       # Card entity
+│   │   │   ├── Deck.js       # Deck management
+│   │   │   └── Player.js     # Player entity
+│   │   ├── controllers/      # API request handlers
+│   │   │   └── gameController.js
+│   │   ├── routes/           # Express route definitions
+│   │   │   └── gameRoutes.js
+│   │   ├── utils/            # Utility functions
+│   │   │   └── deck.js       # Deck operations
+│   │   ├── app.js           # Express app setup
+│   │   └── server.js        # Socket.IO server
+│   ├── tests/               # Test suites
+│   └── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── components/      # React components
+│   │   │   └── App.js       # Main game interface
+│   │   ├── styles/          # CSS styling
+│   │   └── index.js         # React entry point
+│   ├── public/
+│   └── package.json
+└── README.md
+```
+
+## 🔧 Technical Implementation
+
+### Backend Architecture
+- **Express.js** for RESTful API endpoints
+- **Socket.IO** for real-time multiplayer communication
+- **Node.js** game engine with comprehensive rule validation
+- **In-memory storage** for game state (easily extensible to database)
+
+### Frontend Architecture
+- **React** for responsive UI components
+- **Socket.IO Client** for real-time server communication
+- **Local Storage** for user settings persistence
+- **Responsive CSS** for mobile and desktop support
+
+### Key Features
+
+#### Real-time Multiplayer
+- Instant game state synchronization
+- Live player actions and chat
+- Automatic reconnection handling
+- Player disconnect/reconnect support
+
+#### Advanced Game Logic
+- Complete Crazy 8's rule implementation
+- Complex card stacking validation
+- Special card effect processing
+- Tournament elimination system
+
+#### User Experience
+- Visual card selection with stacking indicators
+- Drag-and-drop card organization
+- Customizable game settings
+- Toast notifications for all actions
+
+## ⚙️ Game Settings
+
+Access via the ⚙️ Settings button:
+
+### Card Display
+- **Sort by Rank**: Order cards 2→3→4...→Jack→Queen→King→Ace
+- **Group by Suit**: Organize cards by suit (♥♦♣♠)
+
+### Gameplay
+- **Experienced Mode**: Remove visual hints, show all cards clearly
+
+## 🎯 API Documentation
+
+### REST Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/games/start` | Start a new game |
+| POST | `/api/games/join` | Join existing game |
+| POST | `/api/games/move` | Make a card play |
+| POST | `/api/games/draw` | Draw cards |
+| GET | `/api/games/state/:id` | Get game state |
+
+### Socket.IO Events
+
+#### Client → Server
+- `createGame` - Create new game room
+- `joinGame` - Join game by ID
+- `startGame` - Begin gameplay
+- `playCard` - Play card(s)
+- `drawCard` - Draw from deck
+- `chat message` - Send chat message
+
+#### Server → Client
+- `gameUpdate` - Game state changes
+- `handUpdate` - Player hand updates
+- `cardPlayed` - Card play notifications
+- `success/error` - Action feedback
+
+## 🧪 Testing
+
+### Backend Testing
+```bash
+cd backend
+npm test                    # Run all tests
+npm run test:watch         # Watch mode
+npm run test:coverage      # Coverage report
+```
+
+### Test Coverage
+- Game logic validation
+- Card stacking mechanics
+- Special card effects
+- Tournament progression
+- API endpoint functionality
+
+## 🚧 Development Roadmap
+
+### Current Features ✅
+- [x] Core game mechanics
+- [x] Real-time multiplayer
+- [x] Advanced card stacking
+- [x] Special card effects
+- [x] User settings system
+- [x] Responsive UI
+
+### Planned Features 🔄
+- [ ] Tournament format completion
+- [ ] User accounts & authentication
+- [ ] Game statistics & leaderboards
+- [ ] Custom game rules
+- [ ] Spectator mode
+- [ ] Mobile app (React Native)
+- [ ] AI opponents
+- [ ] Replay system
+
+### Known Issues 🐛
+- Tournament elimination needs refinement
+- Reconnection during mid-game needs improvement
+- Performance optimization for large hands
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
+
+### Development Guidelines
+- Follow existing code style
+- Add tests for new features
+- Update documentation
+- Test multiplayer scenarios
+
+## 📝 License
+
+This project is licensed under the MIT License.
+
+## 🙏 Acknowledgments
+
+- Classic Crazy 8's card game rules
+- Socket.IO for real-time communication
+- React community for excellent documentation
+- Contributors and testers
+
+## 📞 Support
+
+For questions, issues, or feature requests:
+- Open an issue on GitHub
+- Check existing documentation
+- Review test files for examples
+
+---
+
+**Enjoy playing Crazy 8's!** 🎴✨
+
+## Crazy 8's Game Rules
 
 ## Overview
 Crazy 8's is a card game similar to Uno, played with a standard 52-card deck. The objective is to be the first player to get rid of all your cards and avoid being the last player remaining across multiple rounds.
