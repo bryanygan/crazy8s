@@ -20,6 +20,7 @@ class Game {
         this.safeePlayers = []; // Players who finished current round
         this.eliminatedPlayers = []; // Players eliminated from tournament
         this.pendingTurnPass = null; // Track if player needs to pass turn after drawing
+        this.playersWhoHaveDrawn = new Set(); // Track who has drawn this turn
     }
 
     generateGameId() {
@@ -196,9 +197,9 @@ class Game {
         console.log(`Current player: ${currentPlayer ? currentPlayer.name : 'null'}, Playing player: ${player.name}`);
         
         if (!currentPlayer || currentPlayer.id !== playerId) {
-            return { 
-                success: false, 
-                error: `Not your turn. Current player is ${currentPlayer ? currentPlayer.name : 'unknown'}` 
+            return {
+                success: false,
+                error: 'Not your turn'
             };
         }
 
@@ -207,13 +208,15 @@ class Game {
             this.pendingTurnPass = null;
         }
 
+        this.playersWhoHaveDrawn.delete(playerId);
+
         // Validate player has all the cards
         for (const card of cardsToPlay) {
             const cardIndex = this.findCardInHand(player.hand, card);
             if (cardIndex === -1) {
-                return { 
-                    success: false, 
-                    error: `You do not have the ${card.rank} of ${card.suit}` 
+                return {
+                    success: false,
+                    error: 'You do not have this card'
                 };
             }
         }
@@ -483,15 +486,10 @@ class Game {
             
             switch (card.rank) {
                 case 'Jack': // Skip
-                    if (currentPlayerHasTurn) {
-                        // Jack skips opponent, we keep the turn
-                        console.log('    Jack: Skipping opponent, keeping turn');
-                        currentPlayerHasTurn = true;
-                    } else {
-                        // If we don't have turn, Jack gives it back to us
-                        console.log('    Jack: Getting turn back from skip');
-                        currentPlayerHasTurn = true;
-                    }
+                    console.log('    Jack: Skipping next player');
+                    // Skip one player and end our turn
+                    this.nextPlayer();
+                    currentPlayerHasTurn = false;
                     break;
 
                 case 'Queen': // Reverse
@@ -570,69 +568,89 @@ class Game {
 
     // Enhanced drawCards method that doesn't automatically advance turn
     drawCards(playerId, count = 1) {
-        const player = this.getPlayerById(playerId);
-        if (!player) {
-            return { 
-                success: false, 
-                error: 'Player not found' 
-            };
-        }
-
-        // Validate it's the player's turn
-        const currentPlayer = this.getCurrentPlayer();
-        if (!currentPlayer || currentPlayer.id !== playerId) {
-            return { 
-                success: false, 
-                error: 'Not your turn' 
-            };
-        }
-
-        let isFromSpecialCard = false;
-        
-        // Handle draw stack
-        if (this.drawStack > 0) {
-            count = this.drawStack;
-            this.drawStack = 0;
-            isFromSpecialCard = true;
-        }
-
-        const drawnCards = [];
-        for (let i = 0; i < count; i++) {
-            if (this.drawPile.length === 0) {
-                this.reshuffleDiscardPile();
-            }
-
-            if (this.drawPile.length > 0) {
-                const card = this.drawPile.pop();
-                player.hand.push(card);
-                drawnCards.push(card);
-            } else {
-                break; // No more cards available
-            }
-        }
-
-        // Check which drawn cards can be played immediately
-        const playableDrawnCards = this.getPlayableDrawnCards(drawnCards, playerId);
-        const canPlayDrawnCard = playableDrawnCards.length > 0;
-
-        // Set pending turn pass flag - player needs to explicitly pass or play
-        this.pendingTurnPass = playerId;
-
-        // If drawn from special card effect and no playable cards, auto-advance
-        if (isFromSpecialCard && !canPlayDrawnCard) {
-            this.pendingTurnPass = null;
-            this.nextPlayer();
-        }
-
-        return {
-            success: true,
-            drawnCards: drawnCards.map(card => this.cardToString(card)),
-            playableDrawnCards: playableDrawnCards,
-            canPlayDrawnCard: canPlayDrawnCard,
-            fromSpecialCard: isFromSpecialCard,
-            gameState: this.getGameState()
+    const player = this.getPlayerById(playerId);
+    if (!player) {
+        return { 
+            success: false, 
+            error: 'Player not found' 
         };
     }
+
+    // Validate it's the player's turn
+    const currentPlayer = this.getCurrentPlayer();
+    if (!currentPlayer || currentPlayer.id !== playerId) {
+        return { 
+            success: false, 
+            error: 'Not your turn' 
+        };
+    }
+
+    // Check if player has already drawn this turn
+    if (this.playersWhoHaveDrawn.has(playerId) && this.drawStack === 0) {
+        return {
+            success: false,
+            error: 'You have already drawn a card this turn'
+        };
+    }
+
+    let isFromSpecialCard = false;
+    let actualDrawCount = count;
+    
+    // Handle draw stack
+    if (this.drawStack > 0) {
+        actualDrawCount = this.drawStack;
+        this.drawStack = 0;
+        isFromSpecialCard = true;
+    }
+
+    const drawnCards = [];
+    for (let i = 0; i < actualDrawCount; i++) {
+        if (this.drawPile.length === 0) {
+            this.reshuffleDiscardPile();
+        }
+
+        if (this.drawPile.length > 0) {
+            const card = this.drawPile.pop();
+            player.hand.push(card);
+            drawnCards.push(card);
+        } else {
+            break; // No more cards available
+        }
+    }
+
+    // Mark player as having drawn this turn (unless it's from special card effect)
+    if (!isFromSpecialCard) {
+        this.playersWhoHaveDrawn.add(playerId);
+    }
+
+    // Check which drawn cards can be played immediately
+    const playableDrawnCards = this.getPlayableDrawnCards(drawnCards, playerId);
+    const canPlayDrawnCard = playableDrawnCards.length > 0;
+
+    // Set pending turn pass flag only if cards can be played
+    if (canPlayDrawnCard) {
+        this.pendingTurnPass = playerId;
+    } else {
+        // No playable cards drawn - auto-advance turn
+        this.pendingTurnPass = null;
+        if (isFromSpecialCard) {
+            // Special card draw - auto advance
+            this.nextPlayer();
+        } else {
+            // Regular draw with no playable cards - set pending for frontend to handle
+            this.pendingTurnPass = playerId;
+        }
+    }
+
+    return {
+        success: true,
+        drawnCards: drawnCards.map(card => this.cardToString(card)),
+        playableDrawnCards: playableDrawnCards,
+        canPlayDrawnCard: canPlayDrawnCard,
+        fromSpecialCard: isFromSpecialCard,
+        gameState: this.getGameState()
+    };
+}
 
     // New method to get playable cards from drawn cards
     getPlayableDrawnCards(drawnCards, playerId) {
@@ -679,9 +697,9 @@ class Game {
         // Validate player has the card
         const cardIndex = this.findCardInHand(player.hand, card);
         if (cardIndex === -1) {
-            return { 
-                success: false, 
-                error: `You do not have the ${card.rank} of ${card.suit}` 
+            return {
+                success: false,
+                error: 'You do not have this card'
             };
         }
 
@@ -753,6 +771,7 @@ class Game {
 
         // Clear pending turn pass and advance to next player
         this.pendingTurnPass = null;
+        this.playersWhoHaveDrawn.delete(playerId); // Clear draw tracking
         this.nextPlayer();
 
         return {
@@ -777,6 +796,7 @@ class Game {
         const oldIndex = this.currentPlayerIndex;
         this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
         
+        this.playersWhoHaveDrawn.clear();
         console.log(`Next player: ${oldIndex} -> ${this.currentPlayerIndex} (${this.activePlayers[this.currentPlayerIndex]?.name})`);
     }
 
@@ -823,6 +843,7 @@ class Game {
         this.direction = 1;
         this.currentPlayerIndex = 0;
         this.pendingTurnPass = null;
+        this.playersWhoHaveDrawn.clear();
 
         // Create new deck and deal cards
         this.deck = createDeck();

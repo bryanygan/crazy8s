@@ -1014,6 +1014,8 @@ const App = () => {
     experiencedMode: false
   });
   const [copiedGameId, setCopiedGameId] = useState(false);
+  const [hasDrawnThisTurn, setHasDrawnThisTurn] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
 
   // Load settings from localStorage on component mount
   useEffect(() => {
@@ -1080,6 +1082,11 @@ const App = () => {
       console.log('  📊 Current Player:', data.currentPlayer, '(ID:', data.currentPlayerId, ')');
       console.log('  🆔 My Player ID:', newSocket.id);
       console.log('  🎯 Is My Turn:', data.currentPlayerId === newSocket.id);
+      if (data.currentPlayerId !== newSocket.id) {
+        setHasDrawnThisTurn(false);
+        setIsDrawing(false);
+    }
+
       setGameState(data);
     });
 
@@ -1113,6 +1120,9 @@ const App = () => {
 
     newSocket.on('drawComplete', (data) => {
       console.log('🎲 Draw completed:', data);
+      setIsDrawing(false);
+      setHasDrawnThisTurn(true);
+
       if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
         setDrawnCards(data.drawnCards);
         setPlayableDrawnCards(data.playableDrawnCards);
@@ -1122,12 +1132,11 @@ const App = () => {
           type: 'info' 
         });
       } else {
-        setToast({ 
-          message: `Drew ${data.drawnCards.length} cards. No playable cards drawn.`, 
-          type: 'info' 
+        setToast({
+          message: `Drew ${data.drawnCards.length} cards. No playable cards drawn.`,
+          type: 'info'
         });
-        // Auto-pass turn if no playable cards
-        newSocket.emit('passTurnAfterDraw', { gameId: gameState?.gameId });
+        // Player keeps the turn and may choose to skip manually
       }
     });
 
@@ -1403,6 +1412,8 @@ const App = () => {
         cards: selectedCards
       });
       setSelectedCards([]);
+      setHasDrawnThisTurn(false);
+      setIsDrawing(false);
     }
   };
 
@@ -1415,14 +1426,22 @@ const App = () => {
     });
     setSelectedCards([]);
     setShowSuitSelector(false);
+    setHasDrawnThisTurn(false);
+    setIsDrawing(false);
   };
 
   const drawCard = () => {
-    console.log('📚 Drawing card');
-    socket.emit('drawCard', {
-      gameId: gameState?.gameId
-    });
-  };
+  if (isDrawing || hasDrawnThisTurn) {
+    setToast({ message: 'You have already drawn cards this turn', type: 'error' });
+    return;
+  }
+
+  console.log('📚 Drawing card');
+  setIsDrawing(true);
+  socket.emit('drawCard', {
+    gameId: gameState?.gameId
+  });
+};
 
   const playDrawnCard = (card, declaredSuit = null) => {
     console.log('🎲 Playing drawn card:', card);
@@ -1434,16 +1453,21 @@ const App = () => {
     setShowDrawnCardOptions(false);
     setDrawnCards([]);
     setPlayableDrawnCards([]);
+    setHasDrawnThisTurn(false);
+    setIsDrawing(false);
   };
 
-  const passTurnAfterDraw = () => {
-    console.log('👋 Passing turn after draw');
+  // Allow the player to manually skip their turn after drawing
+  const skipTurn = () => {
+    console.log('👋 Skipping turn');
     socket.emit('passTurnAfterDraw', {
       gameId: gameState?.gameId
     });
     setShowDrawnCardOptions(false);
     setDrawnCards([]);
     setPlayableDrawnCards([]);
+    setHasDrawnThisTurn(false);
+    setIsDrawing(false);
   };
 
   if (!isConnected) {
@@ -1799,7 +1823,12 @@ const App = () => {
           borderRadius: '10px',
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
         }}>
-          <div style={{ marginBottom: '15px' }}>
+          <div style={{
+            marginBottom: '15px',
+            display: 'flex',
+            justifyContent: 'center',
+            gap: '15px'
+          }}>
             <button
               onClick={playSelectedCards}
               disabled={selectedCards.length === 0}
@@ -1810,7 +1839,6 @@ const App = () => {
                 border: 'none',
                 borderRadius: '8px',
                 cursor: selectedCards.length > 0 ? 'pointer' : 'not-allowed',
-                marginRight: '15px',
                 fontSize: '16px',
                 fontWeight: 'bold',
                 boxShadow: selectedCards.length > 0 ? '0 2px 4px rgba(0,0,0,0.2)' : 'none',
@@ -1820,21 +1848,41 @@ const App = () => {
               🎴 Play {selectedCards.length} Card{selectedCards.length !== 1 ? 's' : ''}
             </button>
             <button
-              onClick={drawCard}
-              style={{
+            onClick={drawCard}
+            disabled={isDrawing || hasDrawnThisTurn}
+            style={{
                 padding: '12px 25px',
-                backgroundColor: '#e67e22',
+                backgroundColor: (isDrawing || hasDrawnThisTurn) ? '#95a5a6' : '#e67e22',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '8px',
-                cursor: 'pointer',
+                cursor: (isDrawing || hasDrawnThisTurn) ? 'not-allowed' : 'pointer',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                boxShadow: (isDrawing || hasDrawnThisTurn) ? 'none' : '0 2px 4px rgba(0,0,0,0.2)',
+                transition: 'all 0.2s ease',
+                opacity: (isDrawing || hasDrawnThisTurn) ? 0.6 : 1
+            }}
+            >
+            {isDrawing ? '⏳ Drawing...' : hasDrawnThisTurn ? '✅ Already Drew' : '📚 Draw Card'}
+            </button>
+            <button
+              onClick={skipTurn}
+              disabled={gameState.pendingTurnPass !== playerId}
+              style={{
+                padding: '12px 25px',
+                backgroundColor: '#95a5a6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: gameState.pendingTurnPass === playerId ? 'pointer' : 'not-allowed',
                 fontSize: '16px',
                 fontWeight: 'bold',
                 boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                 transition: 'all 0.2s ease'
               }}
             >
-              📚 Draw Card
+              ⏭️ Skip Turn
             </button>
           </div>
           
@@ -1860,31 +1908,57 @@ const App = () => {
             </div>
           )}
           
-          {validCards.length === 0 && gameState.drawStack === 0 && (
+          {validCards.length === 0 && gameState.drawStack === 0 && !hasDrawnThisTurn && (
             <div style={{
-              marginTop: '10px',
-              padding: '10px',
-              backgroundColor: '#f39c12',
-              color: '#fff',
-              borderRadius: '6px',
-              fontSize: '14px'
+                marginTop: '10px',
+                padding: '10px',
+                backgroundColor: '#f39c12',
+                color: '#fff',
+                borderRadius: '6px',
+                fontSize: '14px'
             }}>
-              ⚠️ No valid cards to play - you must draw a card
+                ⚠️ No valid cards to play - you must draw a card
             </div>
-          )}
+            )}
+
+            {hasDrawnThisTurn && validCards.length === 0 && (
+            <div style={{
+                marginTop: '10px',
+                padding: '10px',
+                backgroundColor: '#95a5a6',
+                color: '#fff',
+                borderRadius: '6px',
+                fontSize: '14px'
+            }}>
+                💡 No playable cards after drawing - your turn will end automatically
+            </div>
+            )}
           
-          {gameState.drawStack > 0 && validCards.length === 0 && (
-            <div style={{
-              marginTop: '10px',
-              padding: '10px',
-              backgroundColor: '#e74c3c',
-              color: '#fff',
-              borderRadius: '6px',
-              fontSize: '14px'
-            }}>
-              🚨 You must draw {gameState.drawStack} cards or play a counter card
-            </div>
-          )}
+          {gameState.drawStack > 0 && validCards.length === 0 && !hasDrawnThisTurn && (
+  <div style={{
+    marginTop: '10px',
+    padding: '10px',
+    backgroundColor: '#e74c3c',
+    color: '#fff',
+    borderRadius: '6px',
+    fontSize: '14px'
+  }}>
+    🚨 You must draw {gameState.drawStack} cards or play a counter card
+  </div>
+)}
+
+    {gameState.drawStack > 0 && hasDrawnThisTurn && (
+    <div style={{
+        marginTop: '10px',
+        padding: '10px',
+        backgroundColor: '#27ae60',
+        color: '#fff',
+        borderRadius: '6px',
+        fontSize: '14px'
+    }}>
+        ✅ Drew {gameState.drawStack} cards from draw stack - turn complete
+    </div>
+    )}
         </div>
       )}
 
@@ -1971,13 +2045,11 @@ const App = () => {
           drawnCards={drawnCards}
           playableDrawnCards={playableDrawnCards}
           onPlayCard={playDrawnCard}
-          onPassTurn={passTurnAfterDraw}
+          onPassTurn={skipTurn}
           onCancel={() => {
             setShowDrawnCardOptions(false);
             setDrawnCards([]);
             setPlayableDrawnCards([]);
-            // Auto-pass if user cancels
-            socket.emit('passTurnAfterDraw', { gameId: gameState?.gameId });
           }}
         />
       )}
