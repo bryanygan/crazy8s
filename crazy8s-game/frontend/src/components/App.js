@@ -1122,12 +1122,11 @@ const App = () => {
           type: 'info' 
         });
       } else {
-        setToast({ 
-          message: `Drew ${data.drawnCards.length} cards. No playable cards drawn.`, 
-          type: 'info' 
+        setToast({
+          message: `Drew ${data.drawnCards.length} cards. No playable cards drawn.`,
+          type: 'info'
         });
-        // Auto-pass turn if no playable cards
-        newSocket.emit('passTurnAfterDraw', { gameId: gameState?.gameId });
+        // Player keeps the turn and may choose to skip manually
       }
     });
 
@@ -1436,8 +1435,9 @@ const App = () => {
     setPlayableDrawnCards([]);
   };
 
-  const passTurnAfterDraw = () => {
-    console.log('👋 Passing turn after draw');
+  // Allow the player to manually skip their turn after drawing
+  const skipTurn = () => {
+    console.log('👋 Skipping turn');
     socket.emit('passTurnAfterDraw', {
       gameId: gameState?.gameId
     });
@@ -1799,7 +1799,12 @@ const App = () => {
           borderRadius: '10px',
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
         }}>
-          <div style={{ marginBottom: '15px' }}>
+          <div style={{
+            marginBottom: '15px',
+            display: 'flex',
+            justifyContent: 'center',
+            gap: '15px'
+          }}>
             <button
               onClick={playSelectedCards}
               disabled={selectedCards.length === 0}
@@ -1810,7 +1815,6 @@ const App = () => {
                 border: 'none',
                 borderRadius: '8px',
                 cursor: selectedCards.length > 0 ? 'pointer' : 'not-allowed',
-                marginRight: '15px',
                 fontSize: '16px',
                 fontWeight: 'bold',
                 boxShadow: selectedCards.length > 0 ? '0 2px 4px rgba(0,0,0,0.2)' : 'none',
@@ -1835,6 +1839,24 @@ const App = () => {
               }}
             >
               📚 Draw Card
+            </button>
+            <button
+              onClick={skipTurn}
+              disabled={gameState.pendingTurnPass !== playerId}
+              style={{
+                padding: '12px 25px',
+                backgroundColor: '#95a5a6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: gameState.pendingTurnPass === playerId ? 'pointer' : 'not-allowed',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              ⏭️ Skip Turn
             </button>
           </div>
           
@@ -1971,13 +1993,11 @@ const App = () => {
           drawnCards={drawnCards}
           playableDrawnCards={playableDrawnCards}
           onPlayCard={playDrawnCard}
-          onPassTurn={passTurnAfterDraw}
+          onPassTurn={skipTurn}
           onCancel={() => {
             setShowDrawnCardOptions(false);
             setDrawnCards([]);
             setPlayableDrawnCards([]);
-            // Auto-pass if user cancels
-            socket.emit('passTurnAfterDraw', { gameId: gameState?.gameId });
           }}
         />
       )}
