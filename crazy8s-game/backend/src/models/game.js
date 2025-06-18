@@ -196,9 +196,9 @@ class Game {
         console.log(`Current player: ${currentPlayer ? currentPlayer.name : 'null'}, Playing player: ${player.name}`);
         
         if (!currentPlayer || currentPlayer.id !== playerId) {
-            return { 
-                success: false, 
-                error: `Not your turn. Current player is ${currentPlayer ? currentPlayer.name : 'unknown'}` 
+            return {
+                success: false,
+                error: 'Not your turn'
             };
         }
 
@@ -211,9 +211,9 @@ class Game {
         for (const card of cardsToPlay) {
             const cardIndex = this.findCardInHand(player.hand, card);
             if (cardIndex === -1) {
-                return { 
-                    success: false, 
-                    error: `You do not have the ${card.rank} of ${card.suit}` 
+                return {
+                    success: false,
+                    error: 'You do not have this card'
                 };
             }
         }
@@ -483,15 +483,10 @@ class Game {
             
             switch (card.rank) {
                 case 'Jack': // Skip
-                    if (currentPlayerHasTurn) {
-                        // Jack skips opponent, we keep the turn
-                        console.log('    Jack: Skipping opponent, keeping turn');
-                        currentPlayerHasTurn = true;
-                    } else {
-                        // If we don't have turn, Jack gives it back to us
-                        console.log('    Jack: Getting turn back from skip');
-                        currentPlayerHasTurn = true;
-                    }
+                    console.log('    Jack: Skipping next player');
+                    // Skip one player and end our turn
+                    this.nextPlayer();
+                    currentPlayerHasTurn = false;
                     break;
 
                 case 'Queen': // Reverse
@@ -618,11 +613,9 @@ class Game {
         // Set pending turn pass flag - player needs to explicitly pass or play
         this.pendingTurnPass = playerId;
 
-        // If drawn from special card effect and no playable cards, auto-advance
-        if (isFromSpecialCard && !canPlayDrawnCard) {
-            this.pendingTurnPass = null;
-            this.nextPlayer();
-        }
+
+        // Do not automatically advance the turn after drawing from a special
+        // card. The player keeps the turn and must explicitly play or pass.
 
         return {
             success: true,
@@ -679,9 +672,9 @@ class Game {
         // Validate player has the card
         const cardIndex = this.findCardInHand(player.hand, card);
         if (cardIndex === -1) {
-            return { 
-                success: false, 
-                error: `You do not have the ${card.rank} of ${card.suit}` 
+            return {
+                success: false,
+                error: 'You do not have this card'
             };
         }
 
