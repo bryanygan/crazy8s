@@ -338,7 +338,13 @@ class Game {
 
         switch (card.rank) {
             case 'Jack': // Skip
-                this.nextPlayer(); // Skip the next player
+                if (this.activePlayers.length === 2) {
+                    // In 1v1, Jack acts as a normal card (no skip effect)
+                    // Turn will pass normally after this play
+                } else {
+                    // Skip the next player in multiplayer games
+                    this.nextPlayer();
+                }
                 break;
 
             case 'Queen': // Reverse
@@ -439,8 +445,13 @@ class Game {
         for (const card of cardStack) {
             switch (card.rank) {
                 case 'Jack':
-                    // Jack skips opponent, back to us
-                    currentPlayerHasTurn = true;
+                    if (isOneVsOne) {
+                        // In 1v1, Jack acts as a normal card (turn passes)
+                        currentPlayerHasTurn = false;
+                    } else {
+                        // Jack skips opponent, back to us
+                        currentPlayerHasTurn = true;
+                    }
                     break;
                     
                 case 'Queen':
@@ -486,10 +497,15 @@ class Game {
             
             switch (card.rank) {
                 case 'Jack': // Skip
-                    console.log('    Jack: Skipping next player');
-                    // Skip one player and end our turn
-                    this.nextPlayer();
-                    currentPlayerHasTurn = false;
+                    if (this.activePlayers.length === 2) {
+                        console.log('    Jack (1v1): Acts as normal card');
+                        currentPlayerHasTurn = false;
+                    } else {
+                        console.log('    Jack: Skipping next player');
+                        // Skip one player and end our turn
+                        this.nextPlayer();
+                        currentPlayerHasTurn = false;
+                    }
                     break;
 
                 case 'Queen': // Reverse
