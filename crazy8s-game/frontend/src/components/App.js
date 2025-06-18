@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 
 // Card component with experienced mode support
@@ -496,181 +496,6 @@ const SuitSelector = ({ onSuitSelect, onCancel }) => {
   );
 };
 
-// DrawnCardOptions component
-const DrawnCardOptions = ({ drawnCards, playableDrawnCards, onPlayCard, onPassTurn, onCancel }) => {
-  const [selectedDrawnCard, setSelectedDrawnCard] = useState(null);
-  const [showSuitSelector, setShowSuitSelector] = useState(false);
-
-  const parseCard = (cardString) => {
-    const parts = cardString.split(' of ');
-    if (parts.length !== 2) return null;
-    return { rank: parts[0], suit: parts[1] };
-  };
-
-  const handlePlayCard = (cardString) => {
-    const card = parseCard(cardString);
-    if (!card) return;
-
-    if (card.rank === '8') {
-      setSelectedDrawnCard(card);
-      setShowSuitSelector(true);
-    } else {
-      onPlayCard(card);
-    }
-  };
-
-  const handleSuitSelect = (suit) => {
-    onPlayCard(selectedDrawnCard, suit);
-    setShowSuitSelector(false);
-    setSelectedDrawnCard(null);
-  };
-
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.8)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
-      <div style={{
-        backgroundColor: '#fff',
-        padding: '30px',
-        borderRadius: '15px',
-        maxWidth: '600px',
-        width: '90%',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-        textAlign: 'center'
-      }}>
-        <h3 style={{ margin: '0 0 20px 0', color: '#2c3e50' }}>
-          🎲 Cards Drawn! Choose your action:
-        </h3>
-        
-        <div style={{ marginBottom: '20px', fontSize: '14px', color: '#7f8c8d' }}>
-          You drew {drawnCards.length} card(s). {playableDrawnCards.length} can be played now.
-        </div>
-
-        {playableDrawnCards.length > 0 && (
-          <div style={{ marginBottom: '25px' }}>
-            <h4 style={{ color: '#27ae60', marginBottom: '15px' }}>Playable Cards:</h4>
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              {playableDrawnCards.map((cardString, index) => {
-                const card = parseCard(cardString);
-                return (
-                  <button
-                    key={index}
-                    onClick={() => handlePlayCard(cardString)}
-                    style={{
-                      padding: '10px 15px',
-                      backgroundColor: '#27ae60',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      fontWeight: 'bold',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = '#229954'}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = '#27ae60'}
-                  >
-                    🎴 Play {card?.rank} of {card?.suit}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
-          <button
-            onClick={onPassTurn}
-            style={{
-              padding: '12px 25px',
-              backgroundColor: '#95a5a6',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '16px',
-              fontWeight: 'bold'
-            }}
-          >
-            👋 Pass Turn
-          </button>
-          <button
-            onClick={onCancel}
-            style={{
-              padding: '12px 25px',
-              backgroundColor: '#e74c3c',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '16px',
-              fontWeight: 'bold'
-            }}
-          >
-            ❌ Cancel
-          </button>
-        </div>
-
-        {/* Suit Selector for Wild Cards */}
-        {showSuitSelector && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1001
-          }}>
-            <div style={{
-              backgroundColor: '#fff',
-              padding: '20px',
-              borderRadius: '10px',
-              textAlign: 'center'
-            }}>
-              <h4 style={{ margin: '0 0 15px 0' }}>Choose a Suit for your 8</h4>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                {['Hearts', 'Diamonds', 'Clubs', 'Spades'].map(suit => (
-                  <button
-                    key={suit}
-                    onClick={() => handleSuitSelect(suit)}
-                    style={{
-                      width: '60px',
-                      height: '80px',
-                      fontSize: '20px',
-                      color: suit === 'Hearts' || suit === 'Diamonds' ? '#e74c3c' : '#2c3e50',
-                      backgroundColor: '#fff',
-                      border: '2px solid #ddd',
-                      borderRadius: '8px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <div style={{ fontSize: '24px' }}>
-                      {suit === 'Hearts' ? '♥' : suit === 'Diamonds' ? '♦' : suit === 'Clubs' ? '♣' : '♠'}
-                    </div>
-                    <div style={{ fontSize: '10px' }}>{suit}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
 const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
   if (!isOpen) return null;
 
@@ -1005,9 +830,6 @@ const App = () => {
   const [validCards, setValidCards] = useState([]);
   const [toast, setToast] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [drawnCards, setDrawnCards] = useState([]);
-  const [playableDrawnCards, setPlayableDrawnCards] = useState([]);
-  const [showDrawnCardOptions, setShowDrawnCardOptions] = useState(false);
   const [settings, setSettings] = useState({
     sortByRank: false,
     groupBySuit: false,
@@ -1124,12 +946,9 @@ const App = () => {
       setHasDrawnThisTurn(true);
 
       if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
-        setDrawnCards(data.drawnCards);
-        setPlayableDrawnCards(data.playableDrawnCards);
-        setShowDrawnCardOptions(true);
-        setToast({ 
-          message: `Drew ${data.drawnCards.length} cards. ${data.playableDrawnCards.length} can be played!`, 
-          type: 'info' 
+        setToast({
+          message: `Drew ${data.drawnCards.length} cards. ${data.playableDrawnCards.length} can be played!`,
+          type: 'info'
         });
       } else {
         setToast({
@@ -1443,19 +1262,6 @@ const App = () => {
   });
 };
 
-  const playDrawnCard = (card, declaredSuit = null) => {
-    console.log('🎲 Playing drawn card:', card);
-    socket.emit('playDrawnCard', {
-      gameId: gameState?.gameId,
-      card: card,
-      declaredSuit: declaredSuit
-    });
-    setShowDrawnCardOptions(false);
-    setDrawnCards([]);
-    setPlayableDrawnCards([]);
-    setHasDrawnThisTurn(false);
-    setIsDrawing(false);
-  };
 
   // Allow the player to manually skip their turn after drawing
   const skipTurn = () => {
@@ -1463,9 +1269,6 @@ const App = () => {
     socket.emit('passTurnAfterDraw', {
       gameId: gameState?.gameId
     });
-    setShowDrawnCardOptions(false);
-    setDrawnCards([]);
-    setPlayableDrawnCards([]);
     setHasDrawnThisTurn(false);
     setIsDrawing(false);
   };
@@ -2039,20 +1842,6 @@ const App = () => {
         onSettingsChange={handleSettingsChange}
       />
 
-      {/* DrawnCardOptions Modal */}
-      {showDrawnCardOptions && (
-        <DrawnCardOptions
-          drawnCards={drawnCards}
-          playableDrawnCards={playableDrawnCards}
-          onPlayCard={playDrawnCard}
-          onPassTurn={skipTurn}
-          onCancel={() => {
-            setShowDrawnCardOptions(false);
-            setDrawnCards([]);
-            setPlayableDrawnCards([]);
-          }}
-        />
-      )}
 
       {/* Suit Selector Modal */}
       {showSuitSelector && (
