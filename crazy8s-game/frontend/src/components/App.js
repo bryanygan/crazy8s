@@ -270,6 +270,9 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
 };
 
 // GameBoard component
+// In App.js, find the GameBoard component (around line 180-250) and update the top card rendering:
+
+// GameBoard component
 const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
   return (
     <div style={{
@@ -327,7 +330,7 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
           →
         </div>
 
-        {/* Discard Pile */}
+        {/* Discard Pile - UPDATED */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -338,13 +341,47 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
             Top Card
           </div>
           {topCard ? (
-            <Card card={topCard} />
+            <div 
+              style={{
+                width: '90px',        // Increased from 60px
+                height: '135px',      // Increased from 90px
+                border: '3px solid #fff',  // Made border white and thicker
+                borderRadius: '12px',  // Slightly larger border radius
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: '#fff',
+                fontSize: '14px',     // Increased font size
+                padding: '6px',       // Increased padding
+                color: topCard.suit === 'Hearts' || topCard.suit === 'Diamonds' ? '#e74c3c' : '#2c3e50',
+                boxShadow: '0 6px 12px rgba(0,0,0,0.3)',  // Enhanced shadow
+                transform: 'scale(1)',
+                transition: 'transform 0.2s ease',
+                opacity: 1,           // Ensure it's not greyed out
+                flexShrink: 0,
+                minWidth: '90px',
+                maxWidth: '90px'
+              }}
+            >
+              <div style={{ fontWeight: 'bold', fontSize: '12px' }}>
+                {topCard.rank}
+              </div>
+              <div style={{ fontSize: '24px' }}>  {/* Increased symbol size */}
+                {topCard.suit === 'Hearts' ? '♥' : 
+                 topCard.suit === 'Diamonds' ? '♦' : 
+                 topCard.suit === 'Clubs' ? '♣' : '♠'}
+              </div>
+              <div style={{ fontWeight: 'bold', fontSize: '12px', transform: 'rotate(180deg)' }}>
+                {topCard.rank}
+              </div>
+            </div>
           ) : (
             <div style={{
-              width: '60px',
-              height: '90px',
+              width: '90px',        // Increased to match
+              height: '135px',      // Increased to match
               border: '2px dashed #fff',
-              borderRadius: '8px',
+              borderRadius: '12px', // Increased to match
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -356,7 +393,7 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
         </div>
       </div>
 
-      {/* Game Status Indicators */}
+      {/* Game Status Indicators - rest remains the same */}
       <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', justifyContent: 'center' }}>
         {gameState.declaredSuit && (
           <div style={{
@@ -694,7 +731,7 @@ const Toast = ({ message, type = 'info', onClose }) => {
 const Chat = ({ socket }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(true); // Changed from false to true
 
   useEffect(() => {
     if (!socket) return;
@@ -1091,43 +1128,46 @@ const App = () => {
 
   // Update valid cards when playerHand or gameState changes
   useEffect(() => {
-    if (gameState && playerHand.length > 0) {
-      const topCard = parseTopCard(gameState.topCard);
-      if (!topCard) return;
+  if (gameState && playerHand.length > 0) {
+    const topCard = parseTopCard(gameState.topCard);
+    if (!topCard) return;
 
-      let valid = [];
+    let valid = [];
 
-      if (selectedCards.length === 0) {
-        // No cards selected - show cards that can be played as bottom card
-        valid = playerHand.filter(card => {
-          if (card.rank === '8') return true;
-          
-          if (gameState.drawStack > 0) {
-            return canCounterDraw(card, topCard);
-          }
-          
-          const suitToMatch = gameState.declaredSuit || topCard.suit;
-          return card.suit === suitToMatch || card.rank === topCard.rank;
-        });
-      } else {
-        // Cards already selected - show stackable cards
-        valid = playerHand.filter(card => {
-          // Already selected cards are always "valid" for reordering
-          const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
-          if (isSelected) return true;
-          
-          // Check if this card can be stacked with the current selection
-          return canStackCards(selectedCards, card, gameState.players?.length || 2);
-        });
-      }
-      
-      console.log('🎯 Valid cards calculated:', valid.length, 'out of', playerHand.length);
-      console.log('🎯 Selected cards:', selectedCards.length);
-      setValidCards(valid);
+    if (selectedCards.length === 0) {
+      // No cards selected - show cards that can be played as bottom card
+      valid = playerHand.filter(card => {
+        // When there's a draw stack, ONLY counter cards are valid (no 8s allowed)
+        if (gameState.drawStack > 0) {
+          return canCounterDraw(card, topCard);
+        }
+        
+        // 8s can be played on anything (except when draw stack is present)
+        if (card.rank === '8') return true;
+        
+        const suitToMatch = gameState.declaredSuit || topCard.suit;
+        return card.suit === suitToMatch || card.rank === topCard.rank;
+      });
     } else {
-      setValidCards([]);
+      // Cards already selected - show stackable cards
+      valid = playerHand.filter(card => {
+        // Already selected cards are always "valid" for reordering
+        const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
+        if (isSelected) return true;
+        
+        // Check if this card can be stacked with the current selection
+        return canStackCards(selectedCards, card, gameState.players?.length || 2);
+      });
     }
-  }, [playerHand, gameState, selectedCards]);
+    
+    console.log('🎯 Valid cards calculated:', valid.length, 'out of', playerHand.length);
+    console.log('🎯 Selected cards:', selectedCards.length);
+    console.log('🎯 Draw stack:', gameState.drawStack);
+    setValidCards(valid);
+  } else {
+    setValidCards([]);
+  }
+}, [playerHand, gameState, selectedCards]);
 
   const startGame = () => {
     console.log('🚀 Starting game:', gameState?.gameId);
