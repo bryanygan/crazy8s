@@ -338,17 +338,16 @@ class Game {
 
         switch (card.rank) {
             case 'Jack': // Skip
-                this.nextPlayer(); // Skip the next player
+                // Always skip the next player
+                this.nextPlayer();
+                // In a 1v1 game, the outer nextPlayer call will rotate
+                // back to the current player, effectively keeping the turn
                 break;
 
             case 'Queen': // Reverse
-                if (this.activePlayers.length === 2) {
-                    // In 2-player game, Queen acts like Skip
-                    this.nextPlayer();
-                } else {
-                    // Reverse direction
-                    this.direction *= -1;
-                }
+                // Always reverse direction
+                this.direction *= -1;
+                // No implicit skip - turn advancement handled by caller
                 break;
 
             case 'Ace': // Draw 4
@@ -439,18 +438,13 @@ class Game {
         for (const card of cardStack) {
             switch (card.rank) {
                 case 'Jack':
-                    // Jack skips opponent, back to us
+                    // Jack always skips the next player and returns turn
                     currentPlayerHasTurn = true;
                     break;
                     
                 case 'Queen':
-                    if (isOneVsOne) {
-                        // In 1v1, Queen acts as skip
-                        currentPlayerHasTurn = true;
-                    } else {
-                        // In multiplayer, Queen reverses direction
-                        currentPlayerHasTurn = !currentPlayerHasTurn;
-                    }
+                    // Reverse always toggles turn control
+                    currentPlayerHasTurn = !currentPlayerHasTurn;
                     break;
                     
                 case 'Ace':
@@ -487,28 +481,22 @@ class Game {
             switch (card.rank) {
                 case 'Jack': // Skip
                     console.log('    Jack: Skipping next player');
-                    // Skip one player and end our turn
                     this.nextPlayer();
-                    currentPlayerHasTurn = false;
+                    if (this.activePlayers.length === 2) {
+                        // In 1v1, skip opponent and keep turn
+                        this.nextPlayer();
+                        currentPlayerHasTurn = true;
+                    } else {
+                        // In multiplayer, turn moves to the following player
+                        currentPlayerHasTurn = false;
+                    }
                     break;
 
                 case 'Queen': // Reverse
-                    if (this.activePlayers.length === 2) {
-                        // In 2-player game, Queen acts as Skip
-                        if (currentPlayerHasTurn) {
-                            console.log('    Queen (2P): Skipping opponent, keeping turn');
-                            currentPlayerHasTurn = true;
-                        } else {
-                            console.log('    Queen (2P): Getting turn back from skip');
-                            currentPlayerHasTurn = true;
-                        }
-                    } else {
-                        // In multi-player, Queen reverses direction
-                        console.log('    Queen (Multi): Reversing direction');
-                        this.direction *= -1;
-                        // After reverse, turn passes to next player in new direction
-                        currentPlayerHasTurn = false;
-                    }
+                    console.log('    Queen: Reversing direction');
+                    this.direction *= -1;
+                    // Toggle turn control when a reverse is played
+                    currentPlayerHasTurn = !currentPlayerHasTurn;
                     break;
 
                 case 'Ace': // Draw 4
