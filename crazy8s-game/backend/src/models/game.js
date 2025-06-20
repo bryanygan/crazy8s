@@ -345,13 +345,9 @@ class Game {
                 break;
 
             case 'Queen': // Reverse
-                if (this.activePlayers.length === 2) {
-                    // In 2-player game, Queen acts like Skip
-                    this.nextPlayer();
-                } else {
-                    // Reverse direction
-                    this.direction *= -1;
-                }
+                // Always reverse direction
+                this.direction *= -1;
+                // No implicit skip - turn advancement handled by caller
                 break;
 
             case 'Ace': // Draw 4
@@ -447,13 +443,8 @@ class Game {
                     break;
                     
                 case 'Queen':
-                    if (isOneVsOne) {
-                        // In 1v1, Queen acts as skip
-                        currentPlayerHasTurn = true;
-                    } else {
-                        // In multiplayer, Queen reverses direction
-                        currentPlayerHasTurn = !currentPlayerHasTurn;
-                    }
+                    // Reverse always toggles turn control
+                    currentPlayerHasTurn = !currentPlayerHasTurn;
                     break;
                     
                 case 'Ace':
@@ -502,22 +493,10 @@ class Game {
                     break;
 
                 case 'Queen': // Reverse
-                    if (this.activePlayers.length === 2) {
-                        // In 2-player game, Queen acts as Skip
-                        if (currentPlayerHasTurn) {
-                            console.log('    Queen (2P): Skipping opponent, keeping turn');
-                            currentPlayerHasTurn = true;
-                        } else {
-                            console.log('    Queen (2P): Getting turn back from skip');
-                            currentPlayerHasTurn = true;
-                        }
-                    } else {
-                        // In multi-player, Queen reverses direction
-                        console.log('    Queen (Multi): Reversing direction');
-                        this.direction *= -1;
-                        // After reverse, turn passes to next player in new direction
-                        currentPlayerHasTurn = false;
-                    }
+                    console.log('    Queen: Reversing direction');
+                    this.direction *= -1;
+                    // Toggle turn control when a reverse is played
+                    currentPlayerHasTurn = !currentPlayerHasTurn;
                     break;
 
                 case 'Ace': // Draw 4
