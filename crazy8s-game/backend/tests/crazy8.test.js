@@ -66,16 +66,19 @@ describe('Crazy 8s Game Integration Tests', () => {
 
         test('should handle card drawing', () => {
             game.startGame();
-            
+
             const player = game.getPlayerById('p1');
             const initialHandSize = player.hand.length;
-            
+
             const drawResult = game.drawCards('p1', 2);
             expect(drawResult.success).toBe(true);
             expect(player.hand.length).toBe(initialHandSize + 2);
             expect(drawResult.drawnCards).toHaveLength(2);
-            
-            // Turn should advance after drawing
+            // Player must pass turn after drawing
+            const passResult = game.passTurnAfterDraw('p1');
+            expect(passResult.success).toBe(true);
+
+            // Turn should advance after passing
             expect(game.getCurrentPlayer().name).toBe('Bob');
         });
 

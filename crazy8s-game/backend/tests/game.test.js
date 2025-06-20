@@ -239,6 +239,19 @@ describe('Game Class Tests', () => {
             }
         });
 
+        test('Jack should pass turn in 1v1 game', () => {
+            const duelGame = new Game(['p1', 'p2'], ['Alice', 'Bob']);
+            duelGame.startGame();
+            const jack = { suit: 'Hearts', rank: 'Jack' };
+            duelGame.discardPile = [{ suit: 'Hearts', rank: '7' }];
+            duelGame.players[0].hand.push(jack);
+
+            const initialIndex = duelGame.currentPlayerIndex;
+            const result = duelGame.playCard(duelGame.players[0].id, jack);
+            expect(result.success).toBe(true);
+            expect(duelGame.currentPlayerIndex).toBe((initialIndex + 1) % 2);
+        });
+
         test('should handle Queen (Reverse)', () => {
             const queen = { suit: 'Hearts', rank: 'Queen' };
             const currentPlayer = game.getCurrentPlayer();
