@@ -338,13 +338,10 @@ class Game {
 
         switch (card.rank) {
             case 'Jack': // Skip
-                if (this.activePlayers.length === 2) {
-                    // In 1v1, Jack acts as a normal card (no skip effect)
-                    // Turn will pass normally after this play
-                } else {
-                    // Skip the next player in multiplayer games
-                    this.nextPlayer();
-                }
+                // Always skip the next player
+                this.nextPlayer();
+                // In a 1v1 game, the outer nextPlayer call will rotate
+                // back to the current player, effectively keeping the turn
                 break;
 
             case 'Queen': // Reverse
@@ -445,13 +442,8 @@ class Game {
         for (const card of cardStack) {
             switch (card.rank) {
                 case 'Jack':
-                    if (isOneVsOne) {
-                        // In 1v1, Jack acts as a normal card (turn passes)
-                        currentPlayerHasTurn = false;
-                    } else {
-                        // Jack skips opponent, back to us
-                        currentPlayerHasTurn = true;
-                    }
+                    // Jack always skips the next player and returns turn
+                    currentPlayerHasTurn = true;
                     break;
                     
                 case 'Queen':
@@ -497,13 +489,14 @@ class Game {
             
             switch (card.rank) {
                 case 'Jack': // Skip
+                    console.log('    Jack: Skipping next player');
+                    this.nextPlayer();
                     if (this.activePlayers.length === 2) {
-                        console.log('    Jack (1v1): Acts as normal card');
-                        currentPlayerHasTurn = false;
-                    } else {
-                        console.log('    Jack: Skipping next player');
-                        // Skip one player and end our turn
+                        // In 1v1, skip opponent and keep turn
                         this.nextPlayer();
+                        currentPlayerHasTurn = true;
+                    } else {
+                        // In multiplayer, turn moves to the following player
                         currentPlayerHasTurn = false;
                     }
                     break;
