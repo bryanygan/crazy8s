@@ -839,6 +839,33 @@ const Chat = ({ socket }) => {
   );
 };
 
+const TurnTimer = ({ timeLeft, isWarning, isVisible }) => {
+  if (!isVisible) return null;
+  
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = timeLeft % 60;
+  
+  return (
+    <div style={{
+      fontSize: '9px',
+      marginTop: '3px',
+      padding: '2px 8px',
+      borderRadius: '10px',
+      backgroundColor: isWarning ? '#e74c3c' : 'rgba(255,255,255,0.2)',
+      color: '#fff',
+      fontWeight: 'bold',
+      minHeight: '16px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      animation: isWarning ? 'pulse 1s infinite' : 'none'
+    }}>
+      {isWarning ? '⚠️ ' : '⏱️ '}
+      {minutes}:{seconds.toString().padStart(2, '0')}
+    </div>
+  );
+};
+
 // Main App component
 const App = () => {
   const [socket, setSocket] = useState(null);
@@ -861,6 +888,9 @@ const App = () => {
   const [copiedGameId, setCopiedGameId] = useState(false);
   const [hasDrawnThisTurn, setHasDrawnThisTurn] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [turnTimer, setTurnTimer] = useState(60);
+  const [timerActive, setTimerActive] = useState(false);
+  const [timerWarning, setTimerWarning] = useState(false);
 
   // Load settings from localStorage on component mount
   useEffect(() => {
@@ -976,6 +1006,8 @@ const App = () => {
     newSocket.on('cardPlayed', (data) => {
       console.log('🃏 Card played:', data);
       setToast({ message: `${data.playerName} played: ${data.cardsPlayed.join(', ')}`, type: 'info' });
+      setTurnTimer(60);
+      setTimerWarning(false);
     });
 
     newSocket.on('playerDrewCards', (data) => {
@@ -990,6 +1022,9 @@ const App = () => {
       console.log('🎲 Draw completed:', data);
       setIsDrawing(false);
       setHasDrawnThisTurn(true);
+
+      setTurnTimer(60);
+      setTimerWarning(false);
 
       if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
         setToast({
@@ -1178,6 +1213,64 @@ const App = () => {
   }
 }, [playerHand, gameState, selectedCards, canStackCards]);
 
+useEffect(() => {
+  if (!timerActive || gameState?.currentPlayerId !== playerId || gameState?.gameState !== 'playing') {
+    return;
+  }
+  
+  const interval = setInterval(() => {
+    setTurnTimer(prev => {
+      if (prev <= 1) {
+        // Auto-draw when timer expires
+        console.log('⏰ Timer expired - auto drawing card');
+        if (socket && gameState?.gameId) {
+            // Check if player has already drawn this turn
+            if (hasDrawnThisTurn) {
+            // Player has already drawn, so skip/pass turn
+            console.log('⏰ Player already drew, passing turn');
+            socket.emit('passTurnAfterDraw', { gameId: gameState.gameId });
+            } else {
+            // Player hasn't drawn yet, so draw a card
+            console.log('⏰ Player hasn\'t drawn, drawing card');
+            socket.emit('drawCard', { gameId: gameState.gameId });
+            }
+        }
+  
+  setTimerActive(false);
+  setTimerWarning(false);
+  return 60; // Reset for next turn
+}
+      
+      if (prev <= 15 && !timerWarning) {
+        setTimerWarning(true);
+      }
+      
+      return prev - 1;
+    });
+  }, 1000);
+  
+  return () => clearInterval(interval);
+}, [timerActive, gameState?.currentPlayerId, playerId, gameState?.gameState, timerWarning, socket, gameState?.gameId, hasDrawnThisTurn]);
+
+// Timer reset logic
+useEffect(() => {
+  if (gameState?.gameState === 'playing') {
+    // Reset timer when turn changes
+    if (gameState.currentPlayerId !== playerId) {
+      setTimerActive(false);
+      setTimerWarning(false);
+    } else {
+      // It's my turn - start timer
+      setTurnTimer(60);
+      setTimerActive(true);
+      setTimerWarning(false);
+    }
+  } else {
+    setTimerActive(false);
+    setTimerWarning(false);
+  }
+}, [gameState?.currentPlayerId, gameState?.gameState, playerId]);
+
   const startGame = () => {
     console.log('🚀 Starting game:', gameState?.gameId);
     socket.emit('startGame', {
@@ -1282,6 +1375,9 @@ const App = () => {
       setSelectedCards([]);
       setHasDrawnThisTurn(false);
       setIsDrawing(false);
+
+      setTurnTimer(60);
+      setTimerWarning(false);
     }
   };
 
@@ -1296,6 +1392,8 @@ const App = () => {
     setShowSuitSelector(false);
     setHasDrawnThisTurn(false);
     setIsDrawing(false);
+    setTurnTimer(60);
+    setTimerWarning(false);
   };
 
   const drawCard = () => {
@@ -1624,38 +1722,45 @@ const App = () => {
         flexWrap: 'wrap'
       }}>
         {gameState.players.map((player, index) => (
-          <div
+        <div
             key={index}
             style={{
-              padding: '12px 18px',
-              backgroundColor: player.isCurrentPlayer ? '#3498db' : '#95a5a6',
-              color: '#fff',
-              borderRadius: '25px',
-              fontWeight: 'bold',
-              textAlign: 'center',
-              minWidth: '140px',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-              transform: player.isCurrentPlayer ? 'scale(1.05)' : 'scale(1)',
-              transition: 'all 0.3s ease',
-              position: 'relative'
+            padding: '12px 18px',
+            backgroundColor: player.isCurrentPlayer ? '#3498db' : '#95a5a6',
+            color: '#fff',
+            borderRadius: '25px',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            minWidth: '140px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            transform: player.isCurrentPlayer ? 'scale(1.05)' : 'scale(1)',
+            transition: 'all 0.3s ease',
+            position: 'relative'
             }}
-          >
+        >
             <div style={{ fontSize: '14px' }}>
-              {player.name}
-              {!player.isConnected && ' 🔴'}
-              {player.id === playerId && ' (YOU)'}
+            {player.name}
+            {!player.isConnected && ' 🔴'}
+            {player.id === playerId && ' (YOU)'}
             </div>
             <div style={{ fontSize: '12px', opacity: 0.9 }}>
-              {player.handSize} cards
-              {player.isSafe && ' ✅'}
-              {player.isEliminated && ' ❌'}
+            {player.handSize} cards
+            {player.isSafe && ' ✅'}
+            {player.isEliminated && ' ❌'}
             </div>
             <div style={{ fontSize: '10px', opacity: 0.7 }}>
-              ID: {player.id?.slice(-4)}
+            ID: {player.id?.slice(-4)}
             </div>
-          </div>
+            
+            {/* TIMER COMPONENT ADDED HERE */}
+            <TurnTimer 
+            timeLeft={turnTimer}
+            isWarning={timerWarning}
+            isVisible={player.isCurrentPlayer && gameState.gameState === 'playing'}
+            />
+        </div>
         ))}
-      </div>
+    </div>
 
       {/* Game Board */}
       <GameBoard 
