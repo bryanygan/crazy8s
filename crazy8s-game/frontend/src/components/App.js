@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { io } from 'socket.io-client';
 
 // Card component with experienced mode support
@@ -1129,14 +1129,13 @@ const App = () => {
   };
 
   // Enhanced card stacking check
-  const canStackCards = (existingCards, newCard, activePlayers) => {
+    const canStackCards = useCallback((existingCards, newCard, activePlayers) => {
     const testStack = [...existingCards, newCard];
     const validation = validateCardStack(testStack, activePlayers);
     return validation.isValid;
-  };
+    }, []);
 
   // Update valid cards when playerHand or gameState changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
   if (gameState && playerHand.length > 0) {
     const topCard = parseTopCard(gameState.topCard);
@@ -1177,7 +1176,7 @@ const App = () => {
   } else {
     setValidCards([]);
   }
-}, [playerHand, gameState, selectedCards]);
+}, [playerHand, gameState, selectedCards, canStackCards]);
 
   const startGame = () => {
     console.log('🚀 Starting game:', gameState?.gameId);
