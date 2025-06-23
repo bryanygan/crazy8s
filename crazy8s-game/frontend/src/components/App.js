@@ -1136,6 +1136,7 @@ const App = () => {
   };
 
   // Update valid cards when playerHand or gameState changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
   if (gameState && playerHand.length > 0) {
     const topCard = parseTopCard(gameState.topCard);
