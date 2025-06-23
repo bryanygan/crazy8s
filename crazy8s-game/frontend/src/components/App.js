@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { io } from 'socket.io-client';
 
 // Card component with experienced mode support
@@ -1072,12 +1072,12 @@ const App = () => {
   };
 
   // Enhanced card stack validation with strict turn logic
-  const validateCardStack = (cards, activePlayers) => {
+    const validateCardStack = useCallback((cards, activePlayers) => {
     if (cards.length <= 1) {
-      return { isValid: true };
+        return { isValid: true };
     }
 
-    console.log('🔍 Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+      console.log('🔍 Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
 
     // Check each card-to-card transition in the stack
     for (let i = 1; i < cards.length; i++) {
@@ -1126,14 +1126,14 @@ const App = () => {
     
     console.log('✅ Stack validation passed');
     return { isValid: true };
-  };
+  }, []);
 
   // Enhanced card stacking check
-  const canStackCards = (existingCards, newCard, activePlayers) => {
+    const canStackCards = useCallback((existingCards, newCard, activePlayers) => {
     const testStack = [...existingCards, newCard];
     const validation = validateCardStack(testStack, activePlayers);
     return validation.isValid;
-  };
+    }, [validateCardStack]);
 
   // Update valid cards when playerHand or gameState changes
   useEffect(() => {
@@ -1176,7 +1176,7 @@ const App = () => {
   } else {
     setValidCards([]);
   }
-}, [playerHand, gameState, selectedCards]);
+}, [playerHand, gameState, selectedCards, canStackCards]);
 
   const startGame = () => {
     console.log('🚀 Starting game:', gameState?.gameId);
