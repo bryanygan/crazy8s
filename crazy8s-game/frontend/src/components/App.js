@@ -839,33 +839,6 @@ const Chat = ({ socket }) => {
   );
 };
 
-const TurnTimer = ({ timeLeft, isWarning, isVisible }) => {
-  if (!isVisible) return null;
-
-  const minutes = Math.floor(timeLeft / 60);
-  const seconds = timeLeft % 60;
-
-  return (
-    <div style={{
-      fontSize: '9px',
-      marginTop: '3px',
-      padding: '2px 8px',
-      borderRadius: '10px',
-      backgroundColor: isWarning ? '#e74c3c' : 'rgba(255,255,255,0.2)',
-      color: '#fff',
-      fontWeight: 'bold',
-      minHeight: '16px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      animation: isWarning ? 'pulse 1s infinite' : 'none'
-    }}>
-      {isWarning ? '⚠️ ' : '⏱️ '}
-      {minutes}:{seconds.toString().padStart(2, '0')}
-    </div>
-  );
-};
-
 // Main App component
 const App = () => {
   const [socket, setSocket] = useState(null);
@@ -888,10 +861,6 @@ const App = () => {
   const [copiedGameId, setCopiedGameId] = useState(false);
   const [hasDrawnThisTurn, setHasDrawnThisTurn] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
-
-  const [turnTimer, setTurnTimer] = useState(60);
-  const [timerActive, setTimerActive] = useState(false);
-  const [timerWarning, setTimerWarning] = useState(false);
 
   // Load settings from localStorage on component mount
   useEffect(() => {
@@ -981,20 +950,12 @@ const App = () => {
       console.log('  📊 Current Player:', data.currentPlayer, '(ID:', data.currentPlayerId, ')');
       console.log('  🆔 My Player ID:', newSocket.id);
       console.log('  🎯 Is My Turn:', data.currentPlayerId === newSocket.id);
-
       if (data.currentPlayerId !== newSocket.id) {
         setHasDrawnThisTurn(false);
         setIsDrawing(false);
-      }
+    }
 
-      setGameState(prev => {
-        if (data.currentPlayerId !== prev?.currentPlayerId) {
-          setTurnTimer(60);
-          setTimerWarning(false);
-          setTimerActive(data.gameState === 'playing');
-        }
-        return data;
-      });
+      setGameState(data);
     });
 
     newSocket.on('handUpdate', (hand) => {
@@ -1015,8 +976,6 @@ const App = () => {
     newSocket.on('cardPlayed', (data) => {
       console.log('🃏 Card played:', data);
       setToast({ message: `${data.playerName} played: ${data.cardsPlayed.join(', ')}`, type: 'info' });
-      setTurnTimer(60);
-      setTimerWarning(false);
     });
 
     newSocket.on('playerDrewCards', (data) => {
@@ -1031,8 +990,6 @@ const App = () => {
       console.log('🎲 Draw completed:', data);
       setIsDrawing(false);
       setHasDrawnThisTurn(true);
-      setTurnTimer(60);
-      setTimerWarning(false);
 
       if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
         setToast({
@@ -1055,34 +1012,6 @@ const App = () => {
 
     return () => newSocket.close();
   }, []);
-
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on('gameUpdate', (data) => {
-      if (data.currentPlayerId !== gameState?.currentPlayerId) {
-        setTurnTimer(60);
-        setTimerWarning(false);
-        setTimerActive(data.gameState === 'playing');
-      }
-    });
-
-    socket.on('cardPlayed', () => {
-      setTurnTimer(60);
-      setTimerWarning(false);
-    });
-
-    socket.on('drawComplete', () => {
-      setTurnTimer(60);
-      setTimerWarning(false);
-    });
-
-    return () => {
-      socket.off('gameUpdate');
-      socket.off('cardPlayed');
-      socket.off('drawComplete');
-    };
-  }, [socket, gameState?.currentPlayerId]);
 
   const parseTopCard = (cardString) => {
     if (!cardString) return null;
@@ -1392,63 +1321,6 @@ const App = () => {
     setHasDrawnThisTurn(false);
     setIsDrawing(false);
   };
-
-  // Timer countdown logic
-  useEffect(() => {
-    if (!timerActive || gameState?.currentPlayerId !== playerId || gameState?.gameState !== 'playing') {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setTurnTimer(prev => {
-        if (prev <= 1) {
-          console.log('⏰ Timer expired - auto drawing card');
-          if (socket && gameState?.gameId) {
-            socket.emit('drawCard', { gameId: gameState.gameId });
-          }
-          setTimerActive(false);
-          setTimerWarning(false);
-          return 60;
-        }
-
-        if (prev <= 15 && !timerWarning) {
-          setTimerWarning(true);
-        }
-
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [timerActive, gameState?.currentPlayerId, playerId, gameState?.gameState, timerWarning, socket, gameState?.gameId]);
-
-  // Timer reset logic
-  useEffect(() => {
-    if (gameState?.gameState === 'playing') {
-      if (gameState.currentPlayerId !== playerId) {
-        setTimerActive(false);
-        setTimerWarning(false);
-      } else {
-        setTurnTimer(60);
-        setTimerActive(true);
-        setTimerWarning(false);
-      }
-    } else {
-      setTimerActive(false);
-      setTimerWarning(false);
-    }
-  }, [gameState?.currentPlayerId, gameState?.gameState, playerId]);
-
-  useEffect(() => {
-    console.log('⏰ Timer State:', {
-      turnTimer,
-      timerActive,
-      timerWarning,
-      currentPlayer: gameState?.currentPlayerId,
-      myId: playerId,
-      isMyTurn: gameState?.currentPlayerId === playerId
-    });
-  }, [turnTimer, timerActive, timerWarning, gameState?.currentPlayerId, playerId]);
 
   if (!isConnected) {
     return (
@@ -1781,11 +1653,6 @@ const App = () => {
             <div style={{ fontSize: '10px', opacity: 0.7 }}>
               ID: {player.id?.slice(-4)}
             </div>
-            <TurnTimer
-              timeLeft={turnTimer}
-              isWarning={timerWarning}
-              isVisible={player.isCurrentPlayer && gameState.gameState === 'playing'}
-            />
           </div>
         ))}
       </div>
