@@ -981,18 +981,20 @@ const App = () => {
       console.log('  📊 Current Player:', data.currentPlayer, '(ID:', data.currentPlayerId, ')');
       console.log('  🆔 My Player ID:', newSocket.id);
       console.log('  🎯 Is My Turn:', data.currentPlayerId === newSocket.id);
+
       if (data.currentPlayerId !== newSocket.id) {
         setHasDrawnThisTurn(false);
         setIsDrawing(false);
       }
 
-      if (data.currentPlayerId !== gameState?.currentPlayerId) {
-        setTurnTimer(60);
-        setTimerWarning(false);
-        setTimerActive(data.gameState === 'playing');
-      }
-
-      setGameState(data);
+      setGameState(prev => {
+        if (data.currentPlayerId !== prev?.currentPlayerId) {
+          setTurnTimer(60);
+          setTimerWarning(false);
+          setTimerActive(data.gameState === 'playing');
+        }
+        return data;
+      });
     });
 
     newSocket.on('handUpdate', (hand) => {
