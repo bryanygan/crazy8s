@@ -130,20 +130,6 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
 
   const cardGroups = getCardGroups();
 
-  const getSuitSymbol = (suit) => {
-    const symbols = {
-      'Hearts': '♥',
-      'Diamonds': '♦',
-      'Clubs': '♣',
-      'Spades': '♠'
-    };
-    return symbols[suit] || '';
-  };
-
-  const getSuitColor = (suit) => {
-    return suit === 'Hearts' || suit === 'Diamonds' ? '#e74c3c' : '#2c3e50';
-  };
-
   return (
     <div style={{
       display: 'flex',
@@ -921,20 +907,43 @@ const App = () => {
 
   // Initialize socket connection
   useEffect(() => {
-    const newSocket = io('http://localhost:3001');
-    setSocket(newSocket);
+  // Determine backend URL based on environment
+  const BACKEND_URL = process.env.NODE_ENV === 'production' 
+    ? 'https://crazy8s-production.up.railway.app' // Replace with your Railway URL
+    : 'http://localhost:3001';
+
+  console.log('🔌 Connecting to:', BACKEND_URL);
+
+  const newSocket = io(BACKEND_URL, {
+    transports: ['websocket', 'polling'], // Enable fallback transport
+    upgrade: true,
+    rememberUpgrade: true,
+    timeout: 20000,
+    forceNew: false,
+    autoConnect: true
+  });
+
+  setSocket(newSocket);
+  setPlayerId(newSocket.id);
+
+  newSocket.on('connect', () => {
+    setIsConnected(true);
+    console.log('🔌 Connected to server with ID:', newSocket.id);
     setPlayerId(newSocket.id);
+  });
 
-    newSocket.on('connect', () => {
-      setIsConnected(true);
-      console.log('🔌 Connected to server with ID:', newSocket.id);
-      setPlayerId(newSocket.id);
-    });
+  newSocket.on('disconnect', () => {
+    setIsConnected(false);
+    console.log('❌ Disconnected from server');
+  });
 
-    newSocket.on('disconnect', () => {
-      setIsConnected(false);
-      console.log('❌ Disconnected from server');
+  newSocket.on('connect_error', (error) => {
+    console.error('❌ Connection error:', error);
+    setToast({ 
+      message: 'Connection failed. Please check your internet connection.', 
+      type: 'error' 
     });
+  });
 
     newSocket.on('gameUpdate', (data) => {
       console.log('🎮 Game state updated:', data);
