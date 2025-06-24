@@ -1221,36 +1221,29 @@ useEffect(() => {
   const interval = setInterval(() => {
     setTurnTimer(prev => {
       if (prev <= 1) {
-        // Auto-draw when timer expires
-        console.log('⏰ Timer expired - auto drawing card');
+        // Timer expired: draw a card, then skip turn
+        console.log('⏰ Timer expired - auto drawing card and skipping turn');
         if (socket && gameState?.gameId) {
-            // Check if player has already drawn this turn
-            if (hasDrawnThisTurn) {
-            // Player has already drawn, so skip/pass turn
-            console.log('⏰ Player already drew, passing turn');
+          // Draw a card first
+          socket.emit('drawCard', { gameId: gameState.gameId });
+          // Then skip turn after a short delay to ensure draw completes
+          setTimeout(() => {
             socket.emit('passTurnAfterDraw', { gameId: gameState.gameId });
-            } else {
-            // Player hasn't drawn yet, so draw a card
-            console.log('⏰ Player hasn\'t drawn, drawing card');
-            socket.emit('drawCard', { gameId: gameState.gameId });
-            }
+          }, 500); // 0.5s delay
         }
-  
-  setTimerActive(false);
-  setTimerWarning(false);
-  return 60; // Reset for next turn
-}
-      
+        setTimerActive(false);
+        setTimerWarning(false);
+        return 60; // Reset for next turn
+      }
       if (prev <= 15 && !timerWarning) {
         setTimerWarning(true);
       }
-      
       return prev - 1;
     });
   }, 1000);
   
   return () => clearInterval(interval);
-}, [timerActive, gameState?.currentPlayerId, playerId, gameState?.gameState, timerWarning, socket, gameState?.gameId, hasDrawnThisTurn]);
+}, [timerActive, gameState?.currentPlayerId, playerId, gameState?.gameState, timerWarning, socket, gameState?.gameId]);
 
 // Timer reset logic
 useEffect(() => {
