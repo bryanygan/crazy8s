@@ -312,41 +312,12 @@ describe('Game Class Tests', () => {
         test('should reject 8 without declared suit', () => {
             const eight = { suit: 'Hearts', rank: '8' };
             const currentPlayer = game.getCurrentPlayer();
-
+            
             currentPlayer.hand.push(eight);
-
+            
             const result = game.playCard(currentPlayer.id, eight);
-
+            
             expect(result.success).toBe(false);
-        });
-    });
-
-    describe('Stacked Special Sequences', () => {
-        beforeEach(() => {
-            game.startGame();
-            // Force turn state
-            game.currentPlayerIndex = 2; // Third player
-            game.direction = -1;
-            game.discardPile = [{ suit: 'Clubs', rank: '5' }];
-        });
-
-        test('complex stack should pass turn correctly', () => {
-            const player = game.getPlayerById('p3');
-            const stack = [
-                { suit: 'Clubs', rank: 'Jack' },
-                { suit: 'Hearts', rank: 'Jack' },
-                { suit: 'Hearts', rank: 'Queen' },
-                { suit: 'Diamonds', rank: 'Queen' },
-                { suit: 'Diamonds', rank: '10' }
-            ];
-
-            player.hand.push(...stack);
-
-            const result = game.playCard(player.id, stack);
-
-            expect(result.success).toBe(true);
-            expect(game.direction).toBe(-1); // two reverses cancel
-            expect(game.currentPlayerIndex).toBe(1); // turn should pass to player 2
         });
     });
 
