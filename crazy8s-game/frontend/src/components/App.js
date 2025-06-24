@@ -1043,6 +1043,25 @@ const TurnTimer = ({ timeLeft, isWarning, isVisible }) => {
   );
 };
 
+// Simple Debug Panel
+const DebugPanel = ({ isOpen, logs, onClose, onStart }) => {
+  if (!isOpen) return null;
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, overflow: 'auto' }}>
+      <div style={{ background: '#fff', margin: '40px auto', padding: '20px', borderRadius: '8px', maxWidth: '800px' }}>
+        <h2>Debug Panel</h2>
+        <button onClick={onClose} style={{ marginBottom: '10px' }}>Close</button>
+        <button onClick={onStart} style={{ marginLeft: '10px' }}>Start Debug Game</button>
+        <div style={{ marginTop: '20px', maxHeight: '400px', overflow: 'auto', fontFamily: 'monospace', fontSize: '12px', border: '1px solid #ccc', padding: '10px' }}>
+          {logs.map(l => (
+            <div key={l.id}>[{l.timestamp}] {l.message}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main App component
 const App = () => {
   const [socket, setSocket] = useState(null);
@@ -1071,6 +1090,17 @@ const App = () => {
   const [turnTimer, setTurnTimer] = useState(60);
   const [timerActive, setTimerActive] = useState(false);
   const [timerWarning, setTimerWarning] = useState(false);
+
+  // Debug mode state
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugGameSetup] = useState({
+    playerCount: 2,
+    playerNames: ['Debug Player 1', 'Debug Player 2'],
+    customHands: [[], []],
+    startingCard: { suit: 'Hearts', rank: '7' }
+  });
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [debugLogs, setDebugLogs] = useState([]);
 
   // Refs to access latest timer values inside stable callbacks
   const timerDurationRef = useRef(settings.timerDuration);
@@ -1105,6 +1135,34 @@ const App = () => {
     }
   }, [playerId]);
 
+  // Debug mode activation - secret keyboard combo Ctrl+Shift+D then EBUG
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyD') {
+        const sequence = ['KeyE', 'KeyB', 'KeyU', 'KeyG'];
+        let index = 0;
+        const seqHandler = (evt) => {
+          if (evt.code === sequence[index]) {
+            index++;
+            if (index === sequence.length) {
+              setDebugMode(true);
+              setShowDebugPanel(true);
+              addDebugLog('Debug mode activated', 'system');
+              document.removeEventListener('keydown', seqHandler);
+            }
+          } else {
+            index = 0;
+            document.removeEventListener('keydown', seqHandler);
+          }
+        };
+        document.addEventListener('keydown', seqHandler);
+        setTimeout(() => document.removeEventListener('keydown', seqHandler), 5000);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const validateTimerSettings = (newSettings) => {
     const validated = { ...newSettings };
     if (validated.timerDuration < 15) validated.timerDuration = 15;
@@ -1133,6 +1191,20 @@ const App = () => {
       currentTime: turnTimer
     });
   }, [settings.enableTimer, settings.timerDuration, settings.timerWarningTime, timerActive, turnTimer]);
+
+  // Debug logging helper
+  const addDebugLog = (message, type = 'info', data = null) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const entry = {
+      id: Date.now(),
+      timestamp,
+      message,
+      type,
+      data
+    };
+    setDebugLogs((prev) => [...prev.slice(-50), entry]);
+    console.log(`🐛 [${timestamp}] ${message}`, data || '');
+  };
 
   // Copy game ID to clipboard
   const copyGameId = async () => {
@@ -1489,6 +1561,23 @@ useEffect(() => {
     socket.emit('startGame', {
       gameId: gameState?.gameId
     });
+  };
+
+  // Create a debug game on the server
+  const startDebugGame = () => {
+    if (!socket) return;
+    const ids = [
+      socket.id,
+      ...Array.from({ length: debugGameSetup.playerCount - 1 }, (_, i) => `debug_${i + 1}`)
+    ];
+    socket.emit('createDebugGame', {
+      playerIds: ids,
+      playerNames: debugGameSetup.playerNames,
+      customHands: debugGameSetup.customHands,
+      startingCard: debugGameSetup.startingCard,
+      debugMode: true
+    });
+    setShowDebugPanel(false);
   };
 
   const joinGame = () => {
@@ -2274,6 +2363,19 @@ useEffect(() => {
       }}>
         <Chat socket={socket} />
       </div>
+
+      {debugMode && (
+        <div style={{ position: 'fixed', top: '10px', left: '10px', background: '#e74c3c', color: '#fff', padding: '6px 12px', borderRadius: '12px', cursor: 'pointer', zIndex: 1500 }} onClick={() => setShowDebugPanel(true)}>
+          🐛 DEBUG MODE
+        </div>
+      )}
+
+      <DebugPanel
+        isOpen={showDebugPanel}
+        logs={debugLogs}
+        onClose={() => setShowDebugPanel(false)}
+        onStart={startDebugGame}
+      />
 
       {/* Add some CSS animations */}
       <style>{`
