@@ -21,6 +21,7 @@ class Game {
         this.eliminatedPlayers = []; // Players eliminated from tournament
         this.pendingTurnPass = null; // Track if player needs to pass turn after drawing
         this.playersWhoHaveDrawn = new Set(); // Track who has drawn this turn
+        this.debugMode = false; // Enable verbose debug logging
     }
 
     generateGameId() {
@@ -170,7 +171,19 @@ class Game {
 
     // Updated playCard method to handle both single cards and arrays
     playCard(playerId, cards, declaredSuit = null) {
-        console.log(`playCard called by ${playerId} with cards:`, cards);
+        if (this.debugMode) {
+            console.log('🐛 [DEBUG] playCard called:', {
+                playerId,
+                cards,
+                declaredSuit,
+                topCard: this.getTopDiscardCard()
+                    ? this.cardToString(this.getTopDiscardCard())
+                    : 'none',
+                drawStack: this.drawStack
+            });
+        } else {
+            console.log(`playCard called by ${playerId} with cards:`, cards);
+        }
         
         // Normalize input - ensure cards is always an array
         const cardsToPlay = Array.isArray(cards) ? cards : [cards];
@@ -264,7 +277,15 @@ class Game {
         // Note: We don't call nextPlayer() here anymore because 
         // handleMultipleSpecialCards now manages turn control properly
 
-        console.log(`Card play successful. New current player: ${this.getCurrentPlayer()?.name}`);
+        if (this.debugMode) {
+            console.log('🐛 [DEBUG] playCard result:', {
+                newTopCard: this.cardToString(this.getTopDiscardCard()),
+                drawStack: this.drawStack,
+                nextPlayer: this.getCurrentPlayer()?.name
+            });
+        } else {
+            console.log(`Card play successful. New current player: ${this.getCurrentPlayer()?.name}`);
+        }
 
         return {
             success: true,
@@ -377,7 +398,11 @@ class Game {
             return { isValid: true };
         }
 
-        console.log('Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+        if (this.debugMode) {
+            console.log('🐛 [DEBUG] validating stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+        } else {
+            console.log('Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+        }
 
         // Check each card-to-card transition in the stack
         for (let i = 1; i < cards.length; i++) {
@@ -424,44 +449,63 @@ class Game {
             console.log(`  ✅ Valid transition`);
         }
         
-        console.log('✅ Stack validation passed');
+        if (this.debugMode) {
+            console.log('🐛 [DEBUG] stack validation passed');
+        } else {
+            console.log('✅ Stack validation passed');
+        }
         return { isValid: true };
     }
 
     // Simulate turn control for a card sequence
     simulateTurnControl(cardStack) {
         if (cardStack.length === 0) return true;
-        
-        const isOneVsOne = this.activePlayers.length === 2;
-        let currentPlayerHasTurn = true; // We start with control
-        
+
+        const playerCount = this.activePlayers.length;
+        let currentIndex = 0; // Start relative to the current player
+        let direction = this.direction;
+        let pendingSkips = 0;
+
         for (const card of cardStack) {
+            if (card.rank === 'Jack') {
+                // Accumulate skip effects; actual move applied when a non-Jack is processed
+                if (playerCount !== 2) {
+                    pendingSkips += 1;
+                }
+                continue;
+            }
+
+            if (pendingSkips > 0) {
+                if (playerCount !== 2) {
+                    currentIndex = (currentIndex + pendingSkips + 1) % playerCount;
+                }
+                pendingSkips = 0;
+            }
+
             switch (card.rank) {
-                case 'Jack':
-                    // Jack always skips the next player and returns turn
-                    currentPlayerHasTurn = true;
-                    break;
-                    
                 case 'Queen':
-                    // Reverse always toggles turn control
-                    currentPlayerHasTurn = !currentPlayerHasTurn;
+                    direction *= -1;
+                    currentIndex = (currentIndex + direction + playerCount) % playerCount;
                     break;
-                    
                 case 'Ace':
                 case '2':
                 case '8':
-                    // These have effects but pass turn to next player
-                    currentPlayerHasTurn = false;
+                    currentIndex = (currentIndex + direction + playerCount) % playerCount;
                     break;
-                    
                 default:
-                    // Non-special cards pass the turn
-                    currentPlayerHasTurn = false;
+                    currentIndex = (currentIndex + direction + playerCount) % playerCount;
                     break;
             }
         }
-        
-        return currentPlayerHasTurn;
+
+        if (pendingSkips > 0) {
+            if (playerCount !== 2) {
+                currentIndex = (currentIndex + pendingSkips + 1) % playerCount;
+            }
+        }
+
+        // Player keeps the turn only if we end back at index 0
+        return currentIndex === 0;
     }
 
     // Fixed handleMultipleSpecialCards method for game.js
@@ -471,61 +515,76 @@ class Game {
         let totalDrawEffect = 0;
         let hasWild = false;
         
-        // Instead of counting effects and applying at end, simulate actual turn flow
-        let currentPlayerHasTurn = true; // We start with the turn
+        // Track the current player index during the sequence
+        let currentIndex = this.currentPlayerIndex;
         
+        let pendingSkips = 0;
+
+        // Process each card in sequence
         for (let i = 0; i < cards.length; i++) {
             const card = cards[i];
-            console.log(`  Processing card ${i + 1}/${cards.length}: ${card.rank} of ${card.suit}, currentPlayerHasTurn: ${currentPlayerHasTurn}`);
-            
-            switch (card.rank) {
-                case 'Jack': // Skip
-                    console.log('    Jack: Skipping next player');
-                    this.nextPlayer();
-                    if (this.activePlayers.length === 2) {
-                        // In 1v1, skip opponent and keep turn
-                        this.nextPlayer();
-                        currentPlayerHasTurn = true;
-                    } else {
-                        // In multiplayer, turn moves to the following player
-                        currentPlayerHasTurn = false;
-                    }
-                    break;
+            console.log(`  Processing card ${i + 1}/${cards.length}: ${card.rank} of ${card.suit}, currentIndex: ${currentIndex}`);
 
+            if (card.rank === 'Jack') {
+                console.log('    Jack: Skipping next player');
+                if (this.activePlayers.length !== 2) {
+                    pendingSkips += 1;
+                }
+                continue;
+            }
+
+            if (pendingSkips > 0) {
+                if (this.activePlayers.length !== 2) {
+                    currentIndex = (currentIndex + pendingSkips + 1) % this.activePlayers.length;
+                }
+                pendingSkips = 0;
+            }
+
+            switch (card.rank) {
                 case 'Queen': // Reverse
                     console.log('    Queen: Reversing direction');
                     this.direction *= -1;
-                    // Toggle turn control when a reverse is played
-                    currentPlayerHasTurn = !currentPlayerHasTurn;
+                    currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
                     break;
 
                 case 'Ace': // Draw 4
                     console.log('    Ace: +4 draw effect, passing turn');
                     totalDrawEffect += 4;
-                    currentPlayerHasTurn = false;
+                    currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
                     break;
 
                 case '2': // Draw 2
                     console.log('    2: +2 draw effect, passing turn');
                     totalDrawEffect += 2;
-                    currentPlayerHasTurn = false;
+                    currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
                     break;
 
                 case '8': // Wild card
                     console.log('    8: Wild card, passing turn');
                     hasWild = true;
-                    currentPlayerHasTurn = false;
+                    currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
                     break;
 
                 default:
                     // Normal cards pass the turn
                     console.log('    Normal card: Passing turn');
-                    currentPlayerHasTurn = false;
+                    currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
                     break;
             }
+            
+            console.log(`    After ${card.rank}: currentIndex = ${currentIndex} (${this.activePlayers[currentIndex]?.name})`);
         }
-        
-        console.log(`🎮 Final turn control after sequence: currentPlayerHasTurn = ${currentPlayerHasTurn}`);
+
+        if (pendingSkips > 0) {
+            if (this.activePlayers.length !== 2) {
+                currentIndex = (currentIndex + pendingSkips + 1) % this.activePlayers.length;
+            }
+            pendingSkips = 0;
+        }
+
+        // Set the final current player index
+        this.currentPlayerIndex = currentIndex;
+        console.log(`🎮 Final current player after sequence: ${this.activePlayers[currentIndex]?.name} at index ${currentIndex}`);
         
         // Apply draw effects
         if (totalDrawEffect > 0) {
@@ -543,13 +602,8 @@ class Game {
             console.log('🎮 Cleared declared suit (no wilds)');
         }
 
-        // If we don't have turn control after the sequence, advance to next player
-        if (!currentPlayerHasTurn) {
-            console.log('🎮 Turn control lost, advancing to next player');
-            this.nextPlayer();
-        } else {
-            console.log('🎮 Turn control maintained, staying with current player');
-        }
+        // DO NOT call nextPlayer() here - we've already set the correct currentPlayerIndex
+        console.log('🎮 Turn management complete, no additional nextPlayer() call needed');
 
         return totalDrawEffect;
     }
@@ -783,9 +837,18 @@ class Game {
 
         const oldIndex = this.currentPlayerIndex;
         this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
-        
+
         this.playersWhoHaveDrawn.clear();
-        console.log(`Next player: ${oldIndex} -> ${this.currentPlayerIndex} (${this.activePlayers[this.currentPlayerIndex]?.name})`);
+        if (this.debugMode) {
+            console.log('🐛 [DEBUG] nextPlayer:', {
+                from: oldIndex,
+                to: this.currentPlayerIndex,
+                player: this.activePlayers[this.currentPlayerIndex]?.name,
+                direction: this.direction
+            });
+        } else {
+            console.log(`Next player: ${oldIndex} -> ${this.currentPlayerIndex} (${this.activePlayers[this.currentPlayerIndex]?.name})`);
+        }
     }
 
     checkRoundEnd() {
