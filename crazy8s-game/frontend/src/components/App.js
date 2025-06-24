@@ -1062,6 +1062,7 @@ const DebugPanel = ({ isOpen, logs, onClose, onStart, players, currentId, onSwit
             </select>
           </div>
         )}
+
         <div style={{ marginTop: '20px', maxHeight: '400px', overflow: 'auto', fontFamily: 'monospace', fontSize: '12px', border: '1px solid #ccc', padding: '10px' }}>
           {logs.map(l => (
             <div key={l.id}>[{l.timestamp}] {l.message}</div>
@@ -1112,6 +1113,7 @@ const App = () => {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [debugLogs, setDebugLogs] = useState([]);
   const [debugPlayers, setDebugPlayers] = useState([]);
+
 
   // Refs to access latest timer values inside stable callbacks
   const timerDurationRef = useRef(settings.timerDuration);
@@ -2401,6 +2403,7 @@ useEffect(() => {
             setPlayerId(id);
           }
         }}
+
       />
 
       {/* Add some CSS animations */}

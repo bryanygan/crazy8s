@@ -178,7 +178,7 @@ io.on('connection', (socket) => {
             socket.emit('error', 'Failed to switch player');
         }
     });
-
+  
     // Handle joining an existing game
     socket.on('joinGame', (data) => {
         try {
