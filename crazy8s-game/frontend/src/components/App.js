@@ -1044,7 +1044,7 @@ const TurnTimer = ({ timeLeft, isWarning, isVisible }) => {
 };
 
 // Simple Debug Panel
-const DebugPanel = ({ isOpen, logs, onClose, onStart }) => {
+const DebugPanel = ({ isOpen, logs, onClose, onStart, players, currentId, onSwitch }) => {
   if (!isOpen) return null;
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, overflow: 'auto' }}>
@@ -1052,6 +1052,17 @@ const DebugPanel = ({ isOpen, logs, onClose, onStart }) => {
         <h2>Debug Panel</h2>
         <button onClick={onClose} style={{ marginBottom: '10px' }}>Close</button>
         <button onClick={onStart} style={{ marginLeft: '10px' }}>Start Debug Game</button>
+        {players.length > 0 && (
+          <div style={{ marginTop: '10px' }}>
+            <label style={{ marginRight: '5px' }}>Control Player:</label>
+            <select value={currentId} onChange={e => onSwitch(e.target.value)}>
+              {players.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div style={{ marginTop: '20px', maxHeight: '400px', overflow: 'auto', fontFamily: 'monospace', fontSize: '12px', border: '1px solid #ccc', padding: '10px' }}>
           {logs.map(l => (
             <div key={l.id}>[{l.timestamp}] {l.message}</div>
@@ -1101,16 +1112,23 @@ const App = () => {
   });
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [debugLogs, setDebugLogs] = useState([]);
+  const [debugPlayers, setDebugPlayers] = useState([]);
+
 
   // Refs to access latest timer values inside stable callbacks
   const timerDurationRef = useRef(settings.timerDuration);
   const timerWarningTimeRef = useRef(settings.timerWarningTime);
+  const playerIdRef = useRef(playerId);
 
   // Keep refs in sync with settings
   useEffect(() => {
     timerDurationRef.current = settings.timerDuration;
     timerWarningTimeRef.current = settings.timerWarningTime;
   }, [settings.timerDuration, settings.timerWarningTime]);
+
+  useEffect(() => {
+    playerIdRef.current = playerId;
+  }, [playerId]);
 
   // Load settings from localStorage on component mount
   useEffect(() => {
@@ -1270,12 +1288,12 @@ const App = () => {
     newSocket.on('gameUpdate', (data) => {
       console.log('🎮 Game state updated:', data);
       console.log('  📊 Current Player:', data.currentPlayer, '(ID:', data.currentPlayerId, ')');
-      console.log('  🆔 My Player ID:', newSocket.id);
-      console.log('  🎯 Is My Turn:', data.currentPlayerId === newSocket.id);
-      if (data.currentPlayerId !== newSocket.id) {
+      console.log('  🆔 My Player ID:', playerIdRef.current);
+      console.log('  🎯 Is My Turn:', data.currentPlayerId === playerIdRef.current);
+      if (data.currentPlayerId !== playerIdRef.current) {
         setHasDrawnThisTurn(false);
         setIsDrawing(false);
-    }
+      }
 
       setGameState(data);
     });
@@ -1570,7 +1588,8 @@ useEffect(() => {
       socket.id,
       ...Array.from({ length: debugGameSetup.playerCount - 1 }, (_, i) => `debug_${i + 1}`)
     ];
-
+    setDebugPlayers(ids.map((id, idx) => ({ id, name: debugGameSetup.playerNames[idx] })));
+    setPlayerId(ids[0]);
     socket.emit('createDebugGame', {
       playerIds: ids,
       playerNames: debugGameSetup.playerNames,
@@ -2376,6 +2395,15 @@ useEffect(() => {
         logs={debugLogs}
         onClose={() => setShowDebugPanel(false)}
         onStart={startDebugGame}
+        players={debugPlayers}
+        currentId={playerId}
+        onSwitch={(id) => {
+          if (socket) {
+            socket.emit('switchPlayer', { newPlayerId: id });
+            setPlayerId(id);
+          }
+        }}
+
       />
 
       {/* Add some CSS animations */}
