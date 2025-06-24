@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 
 // Card component with experienced mode support
@@ -537,7 +537,8 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000
+      zIndex: 1000,
+      overflowY: 'auto'
     }}>
       <div style={{
         backgroundColor: '#fff',
@@ -545,6 +546,8 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
         borderRadius: '15px',
         maxWidth: '500px',
         width: '90%',
+        maxHeight: '90vh',
+        overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
       }}>
         <div style={{
@@ -653,6 +656,180 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
               />
             </label>
           </div>
+        </div>
+
+        {/* Timer Settings Section */}
+        <div style={{ marginBottom: '25px' }}>
+          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>⏰ Turn Timer</h3>
+
+          {/* Enable Timer Toggle */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '15px',
+            padding: '10px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px'
+          }}>
+            <div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Enable Turn Timer</div>
+              <div style={{ fontSize: '12px', color: '#6c757d' }}>
+                Show countdown timer and auto-draw when time expires
+              </div>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={settings.enableTimer}
+                onChange={(e) => handleSettingChange('enableTimer', e.target.checked)}
+                style={{ marginRight: '8px', transform: 'scale(1.2)' }}
+              />
+            </label>
+          </div>
+
+          {/* Timer Duration Controls - Only show when timer is enabled */}
+          {settings.enableTimer && (
+            <>
+              {/* Preset Duration Buttons */}
+              <div style={{
+                padding: '15px',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '8px',
+                marginBottom: '15px'
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '10px' }}>Quick Presets:</div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '15px' }}>
+                  {[30, 60, 90, 120, 180].map(duration => (
+                    <button
+                      key={duration}
+                      onClick={() => handleSettingChange('timerDuration', duration)}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: settings.timerDuration === duration ? '#3498db' : '#e9ecef',
+                        color: settings.timerDuration === duration ? '#fff' : '#495057',
+                        border: 'none',
+                        borderRadius: '15px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      {duration < 60 ? `${duration}s` : `${Math.floor(duration/60)}:${(duration%60).toString().padStart(2,'0')}`}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Slider Control */}
+                <div style={{ marginBottom: '15px' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    marginBottom: '8px'
+                  }}>
+                    <label style={{ fontWeight: 'bold', fontSize: '14px' }}>
+                      Timer Duration: {Math.floor(settings.timerDuration/60)}:{(settings.timerDuration%60).toString().padStart(2,'0')}
+                    </label>
+                    <span style={{ fontSize: '12px', color: '#6c757d' }}>
+                      ({settings.timerDuration} seconds)
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="15"
+                    max="300"
+                    step="5"
+                    value={settings.timerDuration}
+                    onChange={(e) => handleSettingChange('timerDuration', parseInt(e.target.value))}
+                    style={{
+                      width: '100%',
+                      height: '6px',
+                      borderRadius: '3px',
+                      background: `linear-gradient(to right, #3498db 0%, #3498db ${((settings.timerDuration-15)/(300-15))*100}%, #ddd ${((settings.timerDuration-15)/(300-15))*100}%, #ddd 100%)`,
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    fontSize: '10px', 
+                    color: '#6c757d',
+                    marginTop: '5px'
+                  }}>
+                    <span>15s</span>
+                    <span>5:00</span>
+                  </div>
+                </div>
+
+                {/* Custom Input */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <label style={{ fontWeight: 'bold', fontSize: '14px', minWidth: 'fit-content' }}>
+                    Custom:
+                  </label>
+                  <input
+                    type="number"
+                    min="15"
+                    max="300"
+                    value={settings.timerDuration}
+                    onChange={(e) => {
+                      const value = Math.max(15, Math.min(300, parseInt(e.target.value) || 15));
+                      handleSettingChange('timerDuration', value);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      border: '2px solid #ddd',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      width: '80px',
+                      textAlign: 'center'
+                    }}
+                  />
+                  <span style={{ fontSize: '12px', color: '#6c757d' }}>seconds</span>
+                </div>
+              </div>
+
+              {/* Warning Time Setting */}
+              <div style={{
+                padding: '15px',
+                backgroundColor: '#fff3cd',
+                borderRadius: '8px',
+                border: '1px solid #ffeaa7'
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#856404' }}>
+                  ⚠️ Warning Threshold:
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '14px', minWidth: 'fit-content' }}>Show warning at:</span>
+                  <input
+                    type="number"
+                    min="5"
+                    max={Math.floor(settings.timerDuration * 0.5)}
+                    value={settings.timerWarningTime}
+                    onChange={(e) => {
+                      const maxWarning = Math.floor(settings.timerDuration * 0.5);
+                      const value = Math.max(5, Math.min(maxWarning, parseInt(e.target.value) || 15));
+                      handleSettingChange('timerWarningTime', value);
+                    }}
+                    style={{
+                      padding: '6px 10px',
+                      border: '2px solid #ddd',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      width: '60px',
+                      textAlign: 'center'
+                    }}
+                  />
+                  <span style={{ fontSize: '12px', color: '#856404' }}>seconds remaining</span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#856404', fontStyle: 'italic' }}>
+                  Timer will turn red and pulse when warning threshold is reached
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Close Button */}
@@ -839,6 +1016,33 @@ const Chat = ({ socket }) => {
   );
 };
 
+const TurnTimer = ({ timeLeft, isWarning, isVisible }) => {
+  if (!isVisible) return null;
+  
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = timeLeft % 60;
+  
+  return (
+    <div style={{
+      fontSize: '9px',
+      marginTop: '3px',
+      padding: '2px 8px',
+      borderRadius: '10px',
+      backgroundColor: isWarning ? '#e74c3c' : 'rgba(255,255,255,0.2)',
+      color: '#fff',
+      fontWeight: 'bold',
+      minHeight: '16px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      animation: isWarning ? 'pulse 1s infinite' : 'none'
+    }}>
+      {isWarning ? '⚠️ ' : '⏱️ '}
+      {minutes}:{seconds.toString().padStart(2, '0')}
+    </div>
+  );
+};
+
 // Main App component
 const App = () => {
   const [socket, setSocket] = useState(null);
@@ -856,11 +1060,27 @@ const App = () => {
   const [settings, setSettings] = useState({
     sortByRank: false,
     groupBySuit: false,
-    experiencedMode: false
+    experiencedMode: false,
+    enableTimer: true,
+    timerDuration: 60,
+    timerWarningTime: 15
   });
   const [copiedGameId, setCopiedGameId] = useState(false);
   const [hasDrawnThisTurn, setHasDrawnThisTurn] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [turnTimer, setTurnTimer] = useState(60);
+  const [timerActive, setTimerActive] = useState(false);
+  const [timerWarning, setTimerWarning] = useState(false);
+
+  // Refs to access latest timer values inside stable callbacks
+  const timerDurationRef = useRef(settings.timerDuration);
+  const timerWarningTimeRef = useRef(settings.timerWarningTime);
+
+  // Keep refs in sync with settings
+  useEffect(() => {
+    timerDurationRef.current = settings.timerDuration;
+    timerWarningTimeRef.current = settings.timerWarningTime;
+  }, [settings.timerDuration, settings.timerWarningTime]);
 
   // Load settings from localStorage on component mount
   useEffect(() => {
@@ -868,7 +1088,16 @@ const App = () => {
       const savedSettings = localStorage.getItem(`crazy8s_settings_${playerId}`);
       if (savedSettings) {
         try {
-          setSettings(JSON.parse(savedSettings));
+          const parsed = JSON.parse(savedSettings);
+          setSettings({
+            sortByRank: false,
+            groupBySuit: false,
+            experiencedMode: false,
+            enableTimer: true,
+            timerDuration: 60,
+            timerWarningTime: 15,
+            ...parsed
+          });
         } catch (error) {
           console.log('Error loading settings:', error);
         }
@@ -876,13 +1105,34 @@ const App = () => {
     }
   }, [playerId]);
 
+  const validateTimerSettings = (newSettings) => {
+    const validated = { ...newSettings };
+    if (validated.timerDuration < 15) validated.timerDuration = 15;
+    if (validated.timerDuration > 300) validated.timerDuration = 300;
+    const maxWarning = Math.floor(validated.timerDuration * 0.5);
+    if (validated.timerWarningTime < 5) validated.timerWarningTime = 5;
+    if (validated.timerWarningTime > maxWarning) validated.timerWarningTime = maxWarning;
+    return validated;
+  };
+
   // Save settings to localStorage whenever they change
   const handleSettingsChange = (newSettings) => {
-    setSettings(newSettings);
+    const validatedSettings = validateTimerSettings(newSettings);
+    setSettings(validatedSettings);
     if (playerId) {
-      localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(newSettings));
+      localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(validatedSettings));
     }
   };
+
+  useEffect(() => {
+    console.log('⏰ Timer Settings Updated:', {
+      enableTimer: settings.enableTimer,
+      timerDuration: settings.timerDuration,
+      timerWarningTime: settings.timerWarningTime,
+      isActive: timerActive,
+      currentTime: turnTimer
+    });
+  }, [settings.enableTimer, settings.timerDuration, settings.timerWarningTime, timerActive, turnTimer]);
 
   // Copy game ID to clipboard
   const copyGameId = async () => {
@@ -976,6 +1226,8 @@ const App = () => {
     newSocket.on('cardPlayed', (data) => {
       console.log('🃏 Card played:', data);
       setToast({ message: `${data.playerName} played: ${data.cardsPlayed.join(', ')}`, type: 'info' });
+      setTurnTimer(timerDurationRef.current);
+      setTimerWarning(false);
     });
 
     newSocket.on('playerDrewCards', (data) => {
@@ -990,6 +1242,9 @@ const App = () => {
       console.log('🎲 Draw completed:', data);
       setIsDrawing(false);
       setHasDrawnThisTurn(true);
+
+      setTurnTimer(timerDurationRef.current);
+      setTimerWarning(false);
 
       if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
         setToast({
@@ -1178,6 +1433,57 @@ const App = () => {
   }
 }, [playerHand, gameState, selectedCards, canStackCards]);
 
+useEffect(() => {
+  if (!timerActive || !settings.enableTimer || gameState?.currentPlayerId !== playerId || gameState?.gameState !== 'playing') {
+    return;
+  }
+  
+  const interval = setInterval(() => {
+    setTurnTimer(prev => {
+      if (prev <= 1) {
+        // Timer expired: draw a card, then skip turn
+        console.log('⏰ Timer expired - auto drawing card and skipping turn');
+        if (socket && gameState?.gameId) {
+          // Draw a card first
+          socket.emit('drawCard', { gameId: gameState.gameId });
+          // Then skip turn after a short delay to ensure draw completes
+          setTimeout(() => {
+            socket.emit('passTurnAfterDraw', { gameId: gameState.gameId });
+          }, 500); // 0.5s delay
+        }
+        setTimerActive(false);
+        setTimerWarning(false);
+        return settings.timerDuration; // Use settings instead of hardcoded 60
+      }
+      if (prev <= settings.timerWarningTime && !timerWarning) {
+        setTimerWarning(true);
+      }
+      return prev - 1;
+    });
+  }, 1000);
+
+  return () => clearInterval(interval);
+}, [timerActive, settings.enableTimer, gameState?.currentPlayerId, playerId, gameState?.gameState, timerWarning, socket, gameState?.gameId, settings.timerDuration, settings.timerWarningTime]);
+
+// Timer reset logic
+useEffect(() => {
+  if (gameState?.gameState === 'playing') {
+    // Reset timer when turn changes
+    if (gameState.currentPlayerId !== playerId) {
+      setTimerActive(false);
+      setTimerWarning(false);
+    } else {
+      // It's my turn - start timer
+      setTurnTimer(settings.enableTimer ? settings.timerDuration : 60);
+      setTimerActive(settings.enableTimer);
+      setTimerWarning(false);
+    }
+  } else {
+    setTimerActive(false);
+    setTimerWarning(false);
+  }
+}, [gameState?.currentPlayerId, gameState?.gameState, playerId, settings.enableTimer, settings.timerDuration]);
+
   const startGame = () => {
     console.log('🚀 Starting game:', gameState?.gameId);
     socket.emit('startGame', {
@@ -1282,6 +1588,9 @@ const App = () => {
       setSelectedCards([]);
       setHasDrawnThisTurn(false);
       setIsDrawing(false);
+
+      setTurnTimer(settings.timerDuration);
+      setTimerWarning(false);
     }
   };
 
@@ -1296,6 +1605,8 @@ const App = () => {
     setShowSuitSelector(false);
     setHasDrawnThisTurn(false);
     setIsDrawing(false);
+      setTurnTimer(settings.timerDuration);
+      setTimerWarning(false);
   };
 
   const drawCard = () => {
@@ -1321,6 +1632,50 @@ const App = () => {
     setHasDrawnThisTurn(false);
     setIsDrawing(false);
   };
+
+  const sliderStyles = `
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #3498db;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      transition: all 0.2s ease;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.1);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #3498db;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      transition: all 0.2s ease;
+    }
+
+    input[type="range"]::-moz-range-thumb:hover {
+      transform: scale(1.1);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+  `;
 
   if (!isConnected) {
     return (
@@ -1624,38 +1979,45 @@ const App = () => {
         flexWrap: 'wrap'
       }}>
         {gameState.players.map((player, index) => (
-          <div
+        <div
             key={index}
             style={{
-              padding: '12px 18px',
-              backgroundColor: player.isCurrentPlayer ? '#3498db' : '#95a5a6',
-              color: '#fff',
-              borderRadius: '25px',
-              fontWeight: 'bold',
-              textAlign: 'center',
-              minWidth: '140px',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-              transform: player.isCurrentPlayer ? 'scale(1.05)' : 'scale(1)',
-              transition: 'all 0.3s ease',
-              position: 'relative'
+            padding: '12px 18px',
+            backgroundColor: player.isCurrentPlayer ? '#3498db' : '#95a5a6',
+            color: '#fff',
+            borderRadius: '25px',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            minWidth: '140px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            transform: player.isCurrentPlayer ? 'scale(1.05)' : 'scale(1)',
+            transition: 'all 0.3s ease',
+            position: 'relative'
             }}
-          >
+        >
             <div style={{ fontSize: '14px' }}>
-              {player.name}
-              {!player.isConnected && ' 🔴'}
-              {player.id === playerId && ' (YOU)'}
+            {player.name}
+            {!player.isConnected && ' 🔴'}
+            {player.id === playerId && ' (YOU)'}
             </div>
             <div style={{ fontSize: '12px', opacity: 0.9 }}>
-              {player.handSize} cards
-              {player.isSafe && ' ✅'}
-              {player.isEliminated && ' ❌'}
+            {player.handSize} cards
+            {player.isSafe && ' ✅'}
+            {player.isEliminated && ' ❌'}
             </div>
             <div style={{ fontSize: '10px', opacity: 0.7 }}>
-              ID: {player.id?.slice(-4)}
+            ID: {player.id?.slice(-4)}
             </div>
-          </div>
+            
+            {/* TIMER COMPONENT ADDED HERE */}
+            <TurnTimer
+            timeLeft={turnTimer}
+            isWarning={timerWarning}
+            isVisible={player.isCurrentPlayer && gameState.gameState === 'playing' && settings.enableTimer}
+            />
+        </div>
         ))}
-      </div>
+    </div>
 
       {/* Game Board */}
       <GameBoard 
@@ -1904,7 +2266,7 @@ const App = () => {
       )}
 
       {/* Chat */}
-      <div style={{ 
+      <div style={{
         position: 'fixed',
         bottom: '20px',
         right: '20px',
@@ -1934,6 +2296,8 @@ const App = () => {
           transform: translateY(-10px);
           box-shadow: 0 6px 16px rgba(52, 152, 219, 0.4);
         }
+
+        ${sliderStyles}
       `}</style>
     </div>
   );
