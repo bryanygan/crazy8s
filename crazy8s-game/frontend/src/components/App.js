@@ -537,7 +537,8 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000
+      zIndex: 1000,
+      overflowY: 'auto'
     }}>
       <div style={{
         backgroundColor: '#fff',
@@ -545,6 +546,8 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
         borderRadius: '15px',
         maxWidth: '500px',
         width: '90%',
+        maxHeight: '90vh',
+        overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
       }}>
         <div style={{
