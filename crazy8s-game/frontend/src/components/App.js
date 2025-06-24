@@ -1570,6 +1570,7 @@ useEffect(() => {
       socket.id,
       ...Array.from({ length: debugGameSetup.playerCount - 1 }, (_, i) => `debug_${i + 1}`)
     ];
+
     socket.emit('createDebugGame', {
       playerIds: ids,
       playerNames: debugGameSetup.playerNames,
