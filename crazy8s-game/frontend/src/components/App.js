@@ -1565,7 +1565,12 @@ useEffect(() => {
 
   // Create a debug game on the server
   const startDebugGame = () => {
-    const ids = Array.from({ length: debugGameSetup.playerCount }, (_, i) => `debug_${i}`);
+    if (!socket) return;
+    const ids = [
+      socket.id,
+      ...Array.from({ length: debugGameSetup.playerCount - 1 }, (_, i) => `debug_${i + 1}`)
+    ];
+
     socket.emit('createDebugGame', {
       playerIds: ids,
       playerNames: debugGameSetup.playerNames,
