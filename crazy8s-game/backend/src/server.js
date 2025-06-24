@@ -13,7 +13,18 @@ const io = socketIo(server, {
 });
 
 // Store connected players
+// Map of socketId -> { name, gameId, playerId }
 const connectedPlayers = new Map();
+
+// Helper to find which socket currently controls a given player
+const getSocketForPlayer = (gameId, playerId) => {
+    for (const [sockId, info] of connectedPlayers.entries()) {
+        if (info.gameId === gameId && info.playerId === playerId) {
+            return sockId;
+        }
+    }
+    return null;
+};
 
 // Helper function to broadcast game state to all players in a game
 const broadcastGameState = (gameId) => {
@@ -31,7 +42,10 @@ const broadcastGameState = (gameId) => {
         game.players.forEach(player => {
             const hand = game.getPlayerHand(player.id);
             console.log(`  Sending hand to ${player.name}: ${hand.length} cards`);
-            io.to(player.id).emit('handUpdate', hand);
+            const targetSocket = getSocketForPlayer(gameId, player.id);
+            if (targetSocket) {
+                io.to(targetSocket).emit('handUpdate', hand);
+            }
         });
     }
 };
@@ -57,7 +71,8 @@ io.on('connection', (socket) => {
             // Store player info
             connectedPlayers.set(socket.id, {
                 name: playerName,
-                gameId: game.id
+                gameId: game.id,
+                playerId: socket.id
             });
 
             // Join socket room for this game
@@ -70,6 +85,97 @@ io.on('connection', (socket) => {
         } catch (error) {
             console.error('Error creating game:', error);
             socket.emit('error', 'Failed to create game');
+        }
+    });
+
+    // Handle creating a debug game with custom hands
+    socket.on('createDebugGame', (data) => {
+        try {
+            const { playerIds, playerNames, customHands, startingCard, debugMode } = data;
+
+            console.log('🐛 Creating debug game:', {
+                playerCount: playerIds.length,
+                playerNames,
+                startingCard: `${startingCard.rank} of ${startingCard.suit}`
+            });
+
+            const game = new Game(playerIds, playerNames);
+            game.debugMode = debugMode;
+            Game.addGame(game);
+
+            game.gameState = 'playing';
+            game.currentPlayerIndex = 0;
+
+            playerIds.forEach((id, index) => {
+                const player = game.getPlayerById(id);
+                if (player && customHands[index]) {
+                    player.hand = [...customHands[index]];
+                }
+            });
+
+            game.discardPile = [startingCard];
+
+            const { createDeck } = require('./utils/deck');
+            const fullDeck = createDeck();
+            const used = [...customHands.flat(), startingCard];
+            game.drawPile = fullDeck.filter(card =>
+                !used.some(u => u.suit === card.suit && u.rank === card.rank)
+            );
+
+            // Track the creator's socket control over the first debug player
+            connectedPlayers.set(socket.id, {
+                name: playerNames[0],
+                gameId: game.id,
+                playerId: playerIds[0]
+            });
+
+            socket.join(game.id);
+
+            console.log(`🐛 Debug game ${game.id} created successfully`);
+            socket.emit('success', `Debug game created! Game ID: ${game.id}`);
+            broadcastGameState(game.id);
+
+        } catch (error) {
+            console.error('🐛 Error creating debug game:', error);
+            socket.emit('error', 'Failed to create debug game: ' + error.message);
+        }
+    });
+
+    // Allow the debug client to switch which player ID it controls
+    socket.on('switchPlayer', (data) => {
+        try {
+            const { newPlayerId } = data;
+            const info = connectedPlayers.get(socket.id);
+            if (!info) {
+                socket.emit('error', 'Not connected to a game');
+                return;
+            }
+
+            const game = Game.findById(info.gameId);
+            if (!game) {
+                socket.emit('error', 'Game not found');
+                return;
+            }
+
+            const player = game.getPlayerById(newPlayerId);
+            if (!player) {
+                socket.emit('error', 'Player not found');
+                return;
+            }
+
+            info.playerId = newPlayerId;
+            info.name = player.name;
+
+            const hand = game.getPlayerHand(newPlayerId);
+            io.to(socket.id).emit('handUpdate', hand);
+            socket.emit('success', `Switched control to ${player.name}`);
+
+            // Also send updated game state so client knows which hand to show
+            broadcastGameState(info.gameId);
+
+        } catch (error) {
+            console.error('Error switching player:', error);
+            socket.emit('error', 'Failed to switch player');
         }
     });
 
@@ -120,7 +226,8 @@ io.on('connection', (socket) => {
             // Store player info
             connectedPlayers.set(socket.id, {
                 name: playerName,
-                gameId: gameId
+                gameId: gameId,
+                playerId: socket.id
             });
 
             // Join socket room for this game
@@ -191,16 +298,18 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Ensure the player is part of this game
-            const player = game.getPlayerById(socket.id);
+            // Determine which player this socket controls
+            const info = connectedPlayers.get(socket.id);
+            const playerId = info ? info.playerId : socket.id;
+            const player = game.getPlayerById(playerId);
             if (!player) {
                 socket.emit('error', 'You are not part of this game');
                 return;
             }
 
             console.log(`${player.name} (${socket.id}) attempting to play cards:`, cards);
-            
-            const result = game.playCard(socket.id, cards, declaredSuit);
+
+            const result = game.playCard(playerId, cards, declaredSuit);
             
             if (result.success) {
                 console.log(`Card play successful by ${player.name}`);
@@ -240,8 +349,10 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Ensure the player is part of this game
-            const player = game.getPlayerById(socket.id);
+            // Determine which player this socket controls
+            const info = connectedPlayers.get(socket.id);
+            const playerId = info ? info.playerId : socket.id;
+            const player = game.getPlayerById(playerId);
             if (!player) {
                 socket.emit('error', 'You are not part of this game');
                 return;
@@ -249,7 +360,7 @@ io.on('connection', (socket) => {
 
             console.log(`${player.name} attempting to draw ${count} cards`);
 
-            const result = game.drawCards(socket.id, count);
+            const result = game.drawCards(playerId, count);
             
             if (result.success) {
                 console.log(`${player.name} drew ${result.drawnCards.length} cards`);
@@ -296,7 +407,9 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            const player = game.getPlayerById(socket.id);
+            const info = connectedPlayers.get(socket.id);
+            const playerId = info ? info.playerId : socket.id;
+            const player = game.getPlayerById(playerId);
             if (!player) {
                 socket.emit('error', 'You are not part of this game');
                 return;
@@ -304,7 +417,7 @@ io.on('connection', (socket) => {
 
             console.log(`${player.name} attempting to play drawn card:`, card);
 
-            const result = game.playDrawnCard(socket.id, card, declaredSuit);
+            const result = game.playDrawnCard(playerId, card, declaredSuit);
             
             if (result.success) {
                 console.log(`${player.name} played drawn card successfully`);
@@ -344,7 +457,9 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            const player = game.getPlayerById(socket.id);
+            const info = connectedPlayers.get(socket.id);
+            const playerId = info ? info.playerId : socket.id;
+            const player = game.getPlayerById(playerId);
             if (!player) {
                 socket.emit('error', 'You are not part of this game');
                 return;
@@ -352,7 +467,7 @@ io.on('connection', (socket) => {
 
             console.log(`${player.name} passing turn after drawing`);
 
-            const result = game.passTurnAfterDraw(socket.id);
+            const result = game.passTurnAfterDraw(playerId);
             
             if (result.success) {
                 console.log(`${player.name} passed turn successfully`);
@@ -402,7 +517,7 @@ io.on('connection', (socket) => {
                 const game = Game.findById(player.gameId);
                 if (game) {
                     // Mark player as disconnected
-                    const gamePlayer = game.players.find(p => p.id === socket.id);
+                    const gamePlayer = game.players.find(p => p.id === player.playerId);
                     if (gamePlayer) {
                         gamePlayer.isConnected = false;
                         console.log(`${gamePlayer.name} disconnected from game ${player.gameId}`);
@@ -454,7 +569,8 @@ io.on('connection', (socket) => {
             // Update stored player info
             connectedPlayers.set(socket.id, {
                 name: playerName,
-                gameId: gameId
+                gameId: gameId,
+                playerId: gamePlayer.id
             });
 
             // Join socket room
