@@ -21,6 +21,7 @@ class Game {
         this.eliminatedPlayers = []; // Players eliminated from tournament
         this.pendingTurnPass = null; // Track if player needs to pass turn after drawing
         this.playersWhoHaveDrawn = new Set(); // Track who has drawn this turn
+        this.debugMode = false; // Enable verbose debug logging
     }
 
     generateGameId() {
@@ -170,7 +171,19 @@ class Game {
 
     // Updated playCard method to handle both single cards and arrays
     playCard(playerId, cards, declaredSuit = null) {
-        console.log(`playCard called by ${playerId} with cards:`, cards);
+        if (this.debugMode) {
+            console.log('🐛 [DEBUG] playCard called:', {
+                playerId,
+                cards,
+                declaredSuit,
+                topCard: this.getTopDiscardCard()
+                    ? this.cardToString(this.getTopDiscardCard())
+                    : 'none',
+                drawStack: this.drawStack
+            });
+        } else {
+            console.log(`playCard called by ${playerId} with cards:`, cards);
+        }
         
         // Normalize input - ensure cards is always an array
         const cardsToPlay = Array.isArray(cards) ? cards : [cards];
@@ -264,7 +277,15 @@ class Game {
         // Note: We don't call nextPlayer() here anymore because 
         // handleMultipleSpecialCards now manages turn control properly
 
-        console.log(`Card play successful. New current player: ${this.getCurrentPlayer()?.name}`);
+        if (this.debugMode) {
+            console.log('🐛 [DEBUG] playCard result:', {
+                newTopCard: this.cardToString(this.getTopDiscardCard()),
+                drawStack: this.drawStack,
+                nextPlayer: this.getCurrentPlayer()?.name
+            });
+        } else {
+            console.log(`Card play successful. New current player: ${this.getCurrentPlayer()?.name}`);
+        }
 
         return {
             success: true,
@@ -377,7 +398,11 @@ class Game {
             return { isValid: true };
         }
 
-        console.log('Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+        if (this.debugMode) {
+            console.log('🐛 [DEBUG] validating stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+        } else {
+            console.log('Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+        }
 
         // Check each card-to-card transition in the stack
         for (let i = 1; i < cards.length; i++) {
@@ -424,7 +449,11 @@ class Game {
             console.log(`  ✅ Valid transition`);
         }
         
-        console.log('✅ Stack validation passed');
+        if (this.debugMode) {
+            console.log('🐛 [DEBUG] stack validation passed');
+        } else {
+            console.log('✅ Stack validation passed');
+        }
         return { isValid: true };
     }
 
@@ -788,9 +817,18 @@ class Game {
 
         const oldIndex = this.currentPlayerIndex;
         this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
-        
+
         this.playersWhoHaveDrawn.clear();
-        console.log(`Next player: ${oldIndex} -> ${this.currentPlayerIndex} (${this.activePlayers[this.currentPlayerIndex]?.name})`);
+        if (this.debugMode) {
+            console.log('🐛 [DEBUG] nextPlayer:', {
+                from: oldIndex,
+                to: this.currentPlayerIndex,
+                player: this.activePlayers[this.currentPlayerIndex]?.name,
+                direction: this.direction
+            });
+        } else {
+            console.log(`Next player: ${oldIndex} -> ${this.currentPlayerIndex} (${this.activePlayers[this.currentPlayerIndex]?.name})`);
+        }
     }
 
     checkRoundEnd() {

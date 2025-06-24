@@ -73,6 +73,65 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Handle creating a debug game with custom hands
+    socket.on('createDebugGame', (data) => {
+        try {
+            const { playerIds, playerNames, customHands, startingCard, debugMode } = data;
+
+            console.log('🐛 Creating debug game:', {
+                playerCount: playerIds.length,
+                playerNames,
+                startingCard: `${startingCard.rank} of ${startingCard.suit}`
+            });
+
+            const game = new Game(playerIds, playerNames);
+            game.debugMode = debugMode;
+            Game.addGame(game);
+
+            game.gameState = 'playing';
+            game.currentPlayerIndex = 0;
+
+            playerIds.forEach((id, index) => {
+                const player = game.getPlayerById(id);
+                if (player && customHands[index]) {
+                    player.hand = [...customHands[index]];
+                }
+            });
+
+            game.discardPile = [startingCard];
+
+            const { createDeck } = require('./utils/deck');
+            const fullDeck = createDeck();
+            const used = [...customHands.flat(), startingCard];
+            game.drawPile = fullDeck.filter(card =>
+                !used.some(u => u.suit === card.suit && u.rank === card.rank)
+            );
+
+            playerIds.forEach((id, index) => {
+                connectedPlayers.set(id, {
+                    name: playerNames[index],
+                    gameId: game.id
+                });
+                if (id !== socket.id) {
+                    io.to(game.id).emit('debugPlayerJoined', {
+                        playerId: id,
+                        playerName: playerNames[index]
+                    });
+                }
+            });
+
+            socket.join(game.id);
+
+            console.log(`🐛 Debug game ${game.id} created successfully`);
+            socket.emit('success', `Debug game created! Game ID: ${game.id}`);
+            broadcastGameState(game.id);
+
+        } catch (error) {
+            console.error('🐛 Error creating debug game:', error);
+            socket.emit('error', 'Failed to create debug game: ' + error.message);
+        }
+    });
+
     // Handle joining an existing game
     socket.on('joinGame', (data) => {
         try {
