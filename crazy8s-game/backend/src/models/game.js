@@ -460,37 +460,52 @@ class Game {
     // Simulate turn control for a card sequence
     simulateTurnControl(cardStack) {
         if (cardStack.length === 0) return true;
-        
-        const isOneVsOne = this.activePlayers.length === 2;
-        let currentPlayerHasTurn = true; // We start with control
-        
+
+        const playerCount = this.activePlayers.length;
+        let currentIndex = 0; // Start relative to the current player
+        let direction = this.direction;
+        let pendingSkips = 0;
+
         for (const card of cardStack) {
+            if (card.rank === 'Jack') {
+                // Accumulate skip effects; actual move applied when a non-Jack is processed
+                if (playerCount !== 2) {
+                    pendingSkips += 1;
+                }
+                continue;
+            }
+
+            if (pendingSkips > 0) {
+                if (playerCount !== 2) {
+                    currentIndex = (currentIndex + pendingSkips + 1) % playerCount;
+                }
+                pendingSkips = 0;
+            }
+
             switch (card.rank) {
-                case 'Jack':
-                    // Jack always skips the next player and returns turn
-                    currentPlayerHasTurn = true;
-                    break;
-                    
                 case 'Queen':
-                    // Reverse always toggles turn control
-                    currentPlayerHasTurn = !currentPlayerHasTurn;
+                    direction *= -1;
+                    currentIndex = (currentIndex + direction + playerCount) % playerCount;
                     break;
-                    
                 case 'Ace':
                 case '2':
                 case '8':
-                    // These have effects but pass turn to next player
-                    currentPlayerHasTurn = false;
+                    currentIndex = (currentIndex + direction + playerCount) % playerCount;
                     break;
-                    
                 default:
-                    // Non-special cards pass the turn
-                    currentPlayerHasTurn = false;
+                    currentIndex = (currentIndex + direction + playerCount) % playerCount;
                     break;
             }
         }
-        
-        return currentPlayerHasTurn;
+
+        if (pendingSkips > 0) {
+            if (playerCount !== 2) {
+                currentIndex = (currentIndex + pendingSkips + 1) % playerCount;
+            }
+        }
+
+        // Player keeps the turn only if we end back at index 0
+        return currentIndex === 0;
     }
 
     // Fixed handleMultipleSpecialCards method for game.js
@@ -503,35 +518,33 @@ class Game {
         // Track the current player index during the sequence
         let currentIndex = this.currentPlayerIndex;
         
+        let pendingSkips = 0;
+
         // Process each card in sequence
         for (let i = 0; i < cards.length; i++) {
             const card = cards[i];
             console.log(`  Processing card ${i + 1}/${cards.length}: ${card.rank} of ${card.suit}, currentIndex: ${currentIndex}`);
-            
-            switch (card.rank) {
-                case 'Jack': // Skip
-                    console.log('    Jack: Skipping next player');
-                    if (this.activePlayers.length === 2) {
-                        // In 1v1, Jack skips opponent and comes back to current player
-                        // So currentIndex stays the same (we keep the turn)
-                    } else {
-                        // In multiplayer, Jack skips the next player
-                        // So we advance twice: once to next player, once to skip them
-                        currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
-                        currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
-                    }
-                    break;
 
+            if (card.rank === 'Jack') {
+                console.log('    Jack: Skipping next player');
+                if (this.activePlayers.length !== 2) {
+                    pendingSkips += 1;
+                }
+                continue;
+            }
+
+            if (pendingSkips > 0) {
+                if (this.activePlayers.length !== 2) {
+                    currentIndex = (currentIndex + pendingSkips + 1) % this.activePlayers.length;
+                }
+                pendingSkips = 0;
+            }
+
+            switch (card.rank) {
                 case 'Queen': // Reverse
                     console.log('    Queen: Reversing direction');
                     this.direction *= -1;
-                    if (this.activePlayers.length === 2) {
-                        // In 1v1, Queen acts like skip (reverse and move = skip opponent)
-                        currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
-                    } else {
-                        // In multiplayer, Queen reverses direction AND passes turn to next player in new direction
-                        currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
-                    }
+                    currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
                     break;
 
                 case 'Ace': // Draw 4
@@ -561,7 +574,14 @@ class Game {
             
             console.log(`    After ${card.rank}: currentIndex = ${currentIndex} (${this.activePlayers[currentIndex]?.name})`);
         }
-        
+
+        if (pendingSkips > 0) {
+            if (this.activePlayers.length !== 2) {
+                currentIndex = (currentIndex + pendingSkips + 1) % this.activePlayers.length;
+            }
+            pendingSkips = 0;
+        }
+
         // Set the final current player index
         this.currentPlayerIndex = currentIndex;
         console.log(`🎮 Final current player after sequence: ${this.activePlayers[currentIndex]?.name} at index ${currentIndex}`);
