@@ -855,14 +855,51 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
   );
 };
 
-const Toast = ({ message, type = 'info', onClose }) => {
-  useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
-    return () => clearTimeout(timer);
+const ToastContainer = ({ toasts, onRemoveToast }) => {
+  return (
+    <div style={{
+      position: 'fixed',
+      top: '20px',
+      right: '20px',
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px',
+      maxWidth: '300px'
+    }}>
+      {toasts.map((toast, index) => (
+        <Toast
+          key={toast.id}
+          toast={toast}
+          index={index}
+          onClose={() => onRemoveToast(toast.id)}
+        />
+      ))}
+    </div>
+  );
+};
+
+const Toast = ({ toast, index, onClose }) => {
+  const [isExiting, setIsExiting] = useState(false);
+
+  const handleClose = useCallback(() => {
+    setIsExiting(true);
+    setTimeout(() => {
+      onClose();
+    }, 300); // Match the animation duration
   }, [onClose]);
 
+  useEffect(() => {
+    // Auto-close timer
+    const timer = setTimeout(() => {
+      handleClose();
+    }, 4000);
+
+    return () => clearTimeout(timer);
+  }, [handleClose]);
+
   const getBackgroundColor = () => {
-    switch (type) {
+    switch (toast.type) {
       case 'success': return '#27ae60';
       case 'error': return '#e74c3c';
       case 'info': return '#3498db';
@@ -870,22 +907,73 @@ const Toast = ({ message, type = 'info', onClose }) => {
     }
   };
 
+  const getTransform = () => {
+    if (isExiting) {
+      return 'translateX(100%) scale(0.8)';
+    }
+    return `translateY(${index * 5}px) scale(${1 - index * 0.05})`;
+  };
+
+  const getOpacity = () => {
+    if (isExiting) return 0;
+    return Math.max(0.3, 1 - index * 0.15);
+  };
+
+  const getZIndex = () => {
+    return 1000 - index;
+  };
+
   return (
-    <div style={{
-      position: 'fixed',
-      top: '20px',
-      right: '20px',
-      padding: '15px 20px',
-      backgroundColor: getBackgroundColor(),
-      color: '#fff',
-      borderRadius: '8px',
-      zIndex: 1000,
-      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-      maxWidth: '300px',
-      fontSize: '14px',
-      cursor: 'pointer'
-    }} onClick={onClose}>
-      {message}
+    <div 
+      style={{
+        padding: '15px 20px',
+        backgroundColor: getBackgroundColor(),
+        color: '#fff',
+        borderRadius: '8px',
+        boxShadow: `0 ${4 + index * 2}px ${8 + index * 4}px rgba(0,0,0,${0.2 + index * 0.1})`,
+        fontSize: '14px',
+        cursor: 'pointer',
+        transform: getTransform(),
+        opacity: getOpacity(),
+        zIndex: getZIndex(),
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        transformOrigin: 'top right',
+        position: 'relative',
+        overflow: 'hidden',
+        border: index === 0 ? '2px solid rgba(255,255,255,0.3)' : 'none'
+      }}
+      onClick={handleClose}
+    >
+      {/* Progress bar for the newest notification */}
+      {index === 0 && (
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          height: '3px',
+          backgroundColor: 'rgba(255,255,255,0.5)',
+          animation: 'progressBar 4s linear forwards',
+          borderRadius: '0 0 6px 6px'
+        }} />
+      )}
+      
+      {/* Stack indicator for older notifications */}
+      {index > 0 && (
+        <div style={{
+          position: 'absolute',
+          top: '8px',
+          right: '8px',
+          fontSize: '10px',
+          backgroundColor: 'rgba(0,0,0,0.3)',
+          padding: '2px 6px',
+          borderRadius: '10px',
+          fontWeight: 'bold'
+        }}>
+          +{index}
+        </div>
+      )}
+      
+      {toast.message}
     </div>
   );
 };
@@ -1085,7 +1173,7 @@ const App = () => {
   const [selectedCards, setSelectedCards] = useState([]);
   const [showSuitSelector, setShowSuitSelector] = useState(false);
   const [validCards, setValidCards] = useState([]);
-  const [toast, setToast] = useState(null);
+  const [toasts, setToasts] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState({
     sortByRank: false,
@@ -1098,16 +1186,105 @@ const App = () => {
   const [copiedGameId, setCopiedGameId] = useState(false);
   const [hasDrawnThisTurn, setHasDrawnThisTurn] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [turnTimer, setTurnTimer] = useState(60);
-  const [timerActive, setTimerActive] = useState(false);
-  const [timerWarning, setTimerWarning] = useState(false);
+  const [globalTimer, setGlobalTimer] = useState({
+    timeLeft: 60,
+    isWarning: false,
+    isActive: false
+  });
 
   // Debug mode state
   const [debugMode, setDebugMode] = useState(false);
   const [debugGameSetup] = useState({
-    playerCount: 2,
-    playerNames: ['Debug Player 1', 'Debug Player 2'],
-    customHands: [[], []],
+    playerCount: 3,
+    playerNames: ['Debug Player 1', 'Debug Player 2', 'Debug Player 3'],
+    customHands: [
+  // Standard 52-card deck for customHands (copy/paste as needed)
+[
+  // Hearts
+  { rank: '2', suit: 'Hearts' },
+  { rank: '3', suit: 'Hearts' },
+  { rank: '4', suit: 'Hearts' },
+  { rank: '5', suit: 'Hearts' },
+  { rank: '6', suit: 'Hearts' },
+  { rank: '7', suit: 'Hearts' },
+  { rank: '8', suit: 'Hearts' },
+  { rank: '9', suit: 'Hearts' },
+  { rank: '10', suit: 'Hearts' },
+  { rank: 'Jack', suit: 'Hearts' },
+  { rank: 'Queen', suit: 'Hearts' },
+  { rank: 'King', suit: 'Hearts' },
+  { rank: 'Ace', suit: 'Hearts' },
+
+  // Diamonds
+  { rank: '2', suit: 'Diamonds' },
+  { rank: '3', suit: 'Diamonds' },
+  { rank: '4', suit: 'Diamonds' },
+  { rank: '5', suit: 'Diamonds' },
+  { rank: '6', suit: 'Diamonds' },
+  { rank: '7', suit: 'Diamonds' },
+  { rank: '8', suit: 'Diamonds' },
+  { rank: '9', suit: 'Diamonds' },
+  { rank: '10', suit: 'Diamonds' },
+  { rank: 'Jack', suit: 'Diamonds' },
+  { rank: 'Queen', suit: 'Diamonds' },
+  { rank: 'King', suit: 'Diamonds' },
+  { rank: 'Ace', suit: 'Diamonds' },
+
+  // Clubs
+  { rank: '2', suit: 'Clubs' },
+  { rank: '3', suit: 'Clubs' },
+  { rank: '4', suit: 'Clubs' },
+  { rank: '5', suit: 'Clubs' },
+  { rank: '6', suit: 'Clubs' },
+  { rank: '7', suit: 'Clubs' },
+  { rank: '8', suit: 'Clubs' },
+  { rank: '9', suit: 'Clubs' },
+  { rank: '10', suit: 'Clubs' },
+  { rank: 'Jack', suit: 'Clubs' },
+  { rank: 'Queen', suit: 'Clubs' },
+  { rank: 'King', suit: 'Clubs' },
+  { rank: 'Ace', suit: 'Clubs' },
+
+  // Spades
+  { rank: '2', suit: 'Spades' },
+  { rank: '3', suit: 'Spades' },
+  { rank: '4', suit: 'Spades' },
+  { rank: '5', suit: 'Spades' },
+  { rank: '6', suit: 'Spades' },
+  { rank: '7', suit: 'Spades' },
+  { rank: '8', suit: 'Spades' },
+  { rank: '9', suit: 'Spades' },
+  { rank: '10', suit: 'Spades' },
+  { rank: 'Jack', suit: 'Spades' },
+  { rank: 'Queen', suit: 'Spades' },
+  { rank: 'King', suit: 'Spades' },
+  { rank: 'Ace', suit: 'Spades' }
+],
+  [
+    { rank: 'Jack', suit: 'Hearts' },
+    { rank: 'Jack', suit: 'Diamonds' },
+    { rank: 'Jack', suit: 'Clubs' },
+    { rank: 'Queen', suit: 'Clubs' },
+    { rank: 'Queen', suit: 'Diamonds' },
+    { rank: 'Ace', suit: 'Diamonds' },
+    { rank: 'Ace', suit: 'Hearts' },
+    { rank: '2', suit: 'Hearts' },
+    { rank: '2', suit: 'Spades' },
+    { rank: 'Ace', suit: 'Spades' }
+  ],
+  [
+    { rank: 'Jack', suit: 'Hearts' },
+    { rank: 'Jack', suit: 'Diamonds' },
+    { rank: 'Jack', suit: 'Clubs' },
+    { rank: 'Queen', suit: 'Clubs' },
+    { rank: 'Queen', suit: 'Diamonds' },
+    { rank: 'Ace', suit: 'Diamonds' },
+    { rank: 'Ace', suit: 'Hearts' },
+    { rank: '2', suit: 'Hearts' },
+    { rank: '2', suit: 'Spades' },
+    { rank: 'Ace', suit: 'Spades' }
+  ]
+],
     startingCard: { suit: 'Hearts', rank: '7' }
   });
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -1119,6 +1296,31 @@ const App = () => {
   const timerDurationRef = useRef(settings.timerDuration);
   const timerWarningTimeRef = useRef(settings.timerWarningTime);
   const playerIdRef = useRef(playerId);
+
+  const addToast = (message, type = 'info') => {
+    const newToast = {
+      id: Date.now() + Math.random(), // Unique ID
+      message,
+      type,
+      timestamp: Date.now()
+    };
+
+    setToasts(prevToasts => {
+      const newToasts = [newToast, ...prevToasts];
+      
+      // If we have more than 5 toasts, remove the oldest ones
+      if (newToasts.length > 5) {
+        return newToasts.slice(0, 5);
+      }
+      
+      return newToasts;
+    });
+  };
+
+  const removeToast = (toastId) => {
+    setToasts(prevToasts => prevToasts.filter(toast => toast.id !== toastId));
+  };
+
 
   // Keep refs in sync with settings
   useEffect(() => {
@@ -1193,23 +1395,34 @@ const App = () => {
 
   // Save settings to localStorage whenever they change
   const handleSettingsChange = (newSettings) => {
-    const validatedSettings = validateTimerSettings(newSettings);
-    setSettings(validatedSettings);
-    if (playerId) {
-      localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(validatedSettings));
-    }
-  };
+  const validatedSettings = validateTimerSettings(newSettings);
+  setSettings(validatedSettings);
+  if (playerId) {
+    localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(validatedSettings));
+  }
+  
+  // Send timer settings to server if in a game
+  if (socket && gameState?.gameId) {
+    socket.emit('updateTimerSettings', {
+      gameId: gameState.gameId,
+      timerSettings: {
+        enableTimer: validatedSettings.enableTimer,
+        timerDuration: validatedSettings.timerDuration,
+        timerWarningTime: validatedSettings.timerWarningTime
+      }
+    });
+  }
+};
 
   useEffect(() => {
-    console.log('⏰ Timer Settings Updated:', {
-      enableTimer: settings.enableTimer,
-      timerDuration: settings.timerDuration,
-      timerWarningTime: settings.timerWarningTime,
-      isActive: timerActive,
-      currentTime: turnTimer
-    });
-  }, [settings.enableTimer, settings.timerDuration, settings.timerWarningTime, timerActive, turnTimer]);
-
+  console.log('⏰ Timer Settings Updated:', {
+    enableTimer: settings.enableTimer,
+    timerDuration: settings.timerDuration,
+    timerWarningTime: settings.timerWarningTime,
+    isActive: globalTimer.isActive,
+    currentTime: globalTimer.timeLeft
+  });
+}, [settings.enableTimer, settings.timerDuration, settings.timerWarningTime, globalTimer.isActive, globalTimer.timeLeft]);
   // Debug logging helper
   const addDebugLog = (message, type = 'info', data = null) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -1279,10 +1492,7 @@ const App = () => {
 
   newSocket.on('connect_error', (error) => {
     console.error('❌ Connection error:', error);
-    setToast({ 
-      message: 'Connection failed. Please check your internet connection.', 
-      type: 'error' 
-    });
+    addToast('Connection failed. Please check your internet connection.', 'error');
   });
 
     newSocket.on('gameUpdate', (data) => {
@@ -1305,19 +1515,21 @@ const App = () => {
 
     newSocket.on('error', (errorMsg) => {
       console.log('❌ Error:', errorMsg);
-      setToast({ message: errorMsg, type: 'error' });
+      addToast(errorMsg, 'error');
     });
 
     newSocket.on('success', (successMsg) => {
       console.log('✅ Success:', successMsg);
-      setToast({ message: successMsg, type: 'success' });
+      addToast(successMsg, 'success');
     });
 
     newSocket.on('cardPlayed', (data) => {
       console.log('🃏 Card played:', data);
-      setToast({ message: `${data.playerName} played: ${data.cardsPlayed.join(', ')}`, type: 'info' });
-      setTurnTimer(timerDurationRef.current);
-      setTimerWarning(false);
+      
+      // Only show notification to other players, not the one who played
+      if (data.playerId !== playerId) {
+        addToast(`${data.playerName} played: ${data.cardsPlayed.join(', ')}`, 'info');
+      }
     });
 
     newSocket.on('playerDrewCards', (data) => {
@@ -1325,7 +1537,7 @@ const App = () => {
       const message = data.canPlayDrawn 
         ? `${data.playerName} drew ${data.cardCount} card(s) and can play some!`
         : `${data.playerName} drew ${data.cardCount} card(s)`;
-      setToast({ message, type: 'info' });
+      addToast(message, 'info');
     });
 
     newSocket.on('drawComplete', (data) => {
@@ -1333,30 +1545,27 @@ const App = () => {
       setIsDrawing(false);
       setHasDrawnThisTurn(true);
 
-      setTurnTimer(timerDurationRef.current);
-      setTimerWarning(false);
-
       if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
-        setToast({
-          message: `Drew ${data.drawnCards.length} cards. ${data.playableDrawnCards.length} can be played!`,
-          type: 'info'
-        });
+        addToast(
+          `Drew ${data.drawnCards.length} cards. ${data.playableDrawnCards.length} can be played!`,
+          'info'
+        );
       } else {
-        setToast({
-          message: `Drew ${data.drawnCards.length} cards. No playable cards drawn.`,
-          type: 'info'
-        });
+        addToast(
+          `Drew ${data.drawnCards.length} cards. No playable cards drawn.`,
+          'info'
+        );
         // Player keeps the turn and may choose to skip manually
       }
     });
 
     newSocket.on('playerPassedTurn', (data) => {
       console.log('👤 Player passed turn:', data);
-      setToast({ message: `${data.playerName} passed their turn`, type: 'info' });
+      addToast(`${data.playerName} passed their turn`, 'info');
     });
 
     return () => newSocket.close();
-  }, []);
+  }, [playerId]);
 
   const parseTopCard = (cardString) => {
     if (!cardString) return null;
@@ -1523,63 +1732,42 @@ const App = () => {
   }
 }, [playerHand, gameState, selectedCards, canStackCards]);
 
+// Listen for timer updates from server
 useEffect(() => {
-  if (!timerActive || !settings.enableTimer || gameState?.currentPlayerId !== playerId || gameState?.gameState !== 'playing') {
-    return;
-  }
-  
-  const interval = setInterval(() => {
-    setTurnTimer(prev => {
-      if (prev <= 1) {
-        // Timer expired: draw a card, then skip turn
-        console.log('⏰ Timer expired - auto drawing card and skipping turn');
-        if (socket && gameState?.gameId) {
-          // Draw a card first
-          socket.emit('drawCard', { gameId: gameState.gameId });
-          // Then skip turn after a short delay to ensure draw completes
-          setTimeout(() => {
-            socket.emit('passTurnAfterDraw', { gameId: gameState.gameId });
-          }, 500); // 0.5s delay
-        }
-        setTimerActive(false);
-        setTimerWarning(false);
-        return settings.timerDuration; // Use settings instead of hardcoded 60
-      }
-      if (prev <= settings.timerWarningTime && !timerWarning) {
-        setTimerWarning(true);
-      }
-      return prev - 1;
+  if (!socket) return;
+
+  socket.on('timerUpdate', (timerData) => {
+    console.log('⏰ Timer update received:', timerData);
+    setGlobalTimer({
+      timeLeft: timerData.timeLeft,
+      isWarning: timerData.isWarning,
+      isActive: true
     });
-  }, 1000);
+  });
 
-  return () => clearInterval(interval);
-}, [timerActive, settings.enableTimer, gameState?.currentPlayerId, playerId, gameState?.gameState, timerWarning, socket, gameState?.gameId, settings.timerDuration, settings.timerWarningTime]);
+  return () => {
+    socket.off('timerUpdate');
+  };
+}, [socket]);
 
-// Timer reset logic
+// Handle game state changes to manage timer visibility
 useEffect(() => {
-  if (gameState?.gameState === 'playing') {
-    // Reset timer when turn changes
-    if (gameState.currentPlayerId !== playerId) {
-      setTimerActive(false);
-      setTimerWarning(false);
-    } else {
-      // It's my turn - start timer
-      setTurnTimer(settings.enableTimer ? settings.timerDuration : 60);
-      setTimerActive(settings.enableTimer);
-      setTimerWarning(false);
-    }
-  } else {
-    setTimerActive(false);
-    setTimerWarning(false);
+  if (gameState?.gameState !== 'playing') {
+    setGlobalTimer(prev => ({ ...prev, isActive: false }));
   }
-}, [gameState?.currentPlayerId, gameState?.gameState, playerId, settings.enableTimer, settings.timerDuration]);
+}, [gameState?.gameState]);
 
   const startGame = () => {
-    console.log('🚀 Starting game:', gameState?.gameId);
-    socket.emit('startGame', {
-      gameId: gameState?.gameId
-    });
-  };
+  console.log('🚀 Starting game:', gameState?.gameId);
+  socket.emit('startGame', {
+    gameId: gameState?.gameId,
+    timerSettings: {
+      enableTimer: settings.enableTimer,
+      timerDuration: settings.timerDuration,
+      timerWarningTime: settings.timerWarningTime
+    }
+  });
+};
 
   // Create a debug game on the server
   const startDebugGame = () => {
@@ -1602,7 +1790,7 @@ useEffect(() => {
 
   const joinGame = () => {
     if (!playerName.trim() || !gameId.trim()) {
-      setToast({ message: 'Please enter both name and game ID', type: 'error' });
+      addToast('Please enter both name and game ID', 'error');
       return;
     }
 
@@ -1615,7 +1803,7 @@ useEffect(() => {
 
   const createGame = () => {
     if (!playerName.trim()) {
-      setToast({ message: 'Please enter your name', type: 'error' });
+      addToast('Please enter your name', 'error');
       return;
     }
 
@@ -1650,10 +1838,7 @@ useEffect(() => {
         } else {
           // Can't stack - show error message
           const validation = validateCardStack([...selectedCards, card], activePlayers);
-          setToast({ 
-            message: validation.error || `Cannot stack ${card.rank} of ${card.suit} with current selection.`, 
-            type: 'error' 
-          });
+          addToast(validation.error || `Cannot stack ${card.rank} of ${card.suit} with current selection.`, 'error');
         }
       }
     }
@@ -1661,7 +1846,7 @@ useEffect(() => {
 
   const playSelectedCards = () => {
     if (selectedCards.length === 0) {
-      setToast({ message: 'Please select at least one card', type: 'error' });
+      addToast('Please select at least one card', 'error');
       return;
     }
 
@@ -1670,7 +1855,7 @@ useEffect(() => {
     const validation = validateCardStack(selectedCards, activePlayers);
     
     if (!validation.isValid) {
-      setToast({ message: validation.error, type: 'error' });
+      addToast(validation.error, 'error');
       return;
     }
 
@@ -1683,7 +1868,7 @@ useEffect(() => {
         // Check if all cards (including 8s) are same suit
         const allSameSuit = selectedCards.every(card => card.suit === selectedCards[0].suit);
         if (!allSameSuit) {
-          setToast({ message: 'When playing 8s with other cards, all must be the same suit', type: 'error' });
+          addToast('When playing 8s with other cards, all must be the same suit', 'error');
           return;
         }
       }
@@ -1691,45 +1876,50 @@ useEffect(() => {
     } else {
       console.log('🃏 Playing cards:', selectedCards);
       socket.emit('playCard', {
-        gameId: gameState?.gameId,
-        cards: selectedCards
-      });
+      gameId: gameState?.gameId,
+      cards: selectedCards,
+      timerSettings: {
+        enableTimer: settings.enableTimer,
+        timerDuration: settings.timerDuration,
+        timerWarningTime: settings.timerWarningTime
+      }
+    });
       setSelectedCards([]);
       setHasDrawnThisTurn(false);
       setIsDrawing(false);
-
-      setTurnTimer(settings.timerDuration);
-      setTimerWarning(false);
     }
   };
 
   const handleSuitSelect = (suit) => {
     console.log('🃏 Playing wild card with suit:', suit);
     socket.emit('playCard', {
-      gameId: gameState?.gameId,
-      cards: selectedCards,
-      declaredSuit: suit
-    });
+    gameId: gameState?.gameId,
+    cards: selectedCards,
+    declaredSuit: suit,
+    timerSettings: {
+      enableTimer: settings.enableTimer,
+      timerDuration: settings.timerDuration,
+      timerWarningTime: settings.timerWarningTime
+    }
+  });
     setSelectedCards([]);
     setShowSuitSelector(false);
     setHasDrawnThisTurn(false);
     setIsDrawing(false);
-      setTurnTimer(settings.timerDuration);
-      setTimerWarning(false);
   };
 
   const drawCard = () => {
-  if (isDrawing || hasDrawnThisTurn) {
-    setToast({ message: 'You have already drawn cards this turn', type: 'error' });
-    return;
-  }
+    if (isDrawing || hasDrawnThisTurn) {
+      addToast('You have already drawn cards this turn', 'error');
+      return;
+    }
 
-  console.log('📚 Drawing card');
-  setIsDrawing(true);
-  socket.emit('drawCard', {
-    gameId: gameState?.gameId
-  });
-};
+    console.log('📚 Drawing card');
+    setIsDrawing(true);
+    socket.emit('drawCard', {
+      gameId: gameState?.gameId
+    });
+  };
 
 
   // Allow the player to manually skip their turn after drawing
@@ -1782,7 +1972,7 @@ useEffect(() => {
 
     input[type="range"]::-moz-range-thumb:hover {
       transform: scale(1.1);
-      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      box-shadow:  0 4px 8px rgba(0,0,0,0.3);
     }
   `;
 
@@ -2120,10 +2310,10 @@ useEffect(() => {
             
             {/* TIMER COMPONENT ADDED HERE */}
             <TurnTimer
-            timeLeft={turnTimer}
-            isWarning={timerWarning}
-            isVisible={player.isCurrentPlayer && gameState.gameState === 'playing' && settings.enableTimer}
-            />
+            timeLeft={globalTimer.timeLeft}
+            isWarning={globalTimer.isWarning}
+            isVisible={player.isCurrentPlayer && gameState.gameState === 'playing' && globalTimer.isActive}
+          />
         </div>
         ))}
     </div>
@@ -2346,13 +2536,10 @@ useEffect(() => {
       )}
 
       {/* Toast Notifications */}
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+      <ToastContainer 
+        toasts={toasts}
+        onRemoveToast={removeToast}
+      />
 
       {/* Settings Modal */}
       <Settings 
@@ -2408,6 +2595,26 @@ useEffect(() => {
 
       {/* Add some CSS animations */}
       <style>{`
+        @keyframes progressBar {
+          from {
+            width: 100%;
+          }
+          to {
+            width: 0%;
+          }
+        }
+
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+
         @keyframes pulse {
           0% { transform: scale(1); }
           50% { transform: scale(1.05); }

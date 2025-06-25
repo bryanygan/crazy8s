@@ -22,6 +22,8 @@ class Game {
         this.pendingTurnPass = null; // Track if player needs to pass turn after drawing
         this.playersWhoHaveDrawn = new Set(); // Track who has drawn this turn
         this.debugMode = false; // Enable verbose debug logging
+        this.autoPassTimers = new Map(); // timers for auto pass
+        this.onAutoPass = null; // optional callback when auto pass occurs
     }
 
     generateGameId() {
@@ -514,78 +516,65 @@ class Game {
         
         let totalDrawEffect = 0;
         let hasWild = false;
+        let shouldAdvanceTurn = true; // Track if turn should advance at end
         
-        // Track the current player index during the sequence
-        let currentIndex = this.currentPlayerIndex;
-        
-        let pendingSkips = 0;
-
-        // Process each card in sequence
+        // Process each card in sequence for effects only
         for (let i = 0; i < cards.length; i++) {
             const card = cards[i];
-            console.log(`  Processing card ${i + 1}/${cards.length}: ${card.rank} of ${card.suit}, currentIndex: ${currentIndex}`);
-
-            if (card.rank === 'Jack') {
-                console.log('    Jack: Skipping next player');
-                if (this.activePlayers.length !== 2) {
-                    pendingSkips += 1;
-                }
-                continue;
-            }
-
-            if (pendingSkips > 0) {
-                if (this.activePlayers.length !== 2) {
-                    currentIndex = (currentIndex + pendingSkips + 1) % this.activePlayers.length;
-                }
-                pendingSkips = 0;
-            }
+            console.log(`  Processing card ${i + 1}/${cards.length}: ${card.rank} of ${card.suit}`);
 
             switch (card.rank) {
+                case 'Jack': // Skip
+                    console.log('    Jack: Skip effect noted');
+                    // Jack skips the next player - in multi-card plays, this affects final turn calculation
+                    if (this.activePlayers.length > 2) {
+                        // In multiplayer, Jack should result in keeping the turn
+                        shouldAdvanceTurn = false;
+                    }
+                    // In 2-player, Jack acts as skip which gives you another turn
+                    if (this.activePlayers.length === 2) {
+                        shouldAdvanceTurn = false;
+                    }
+                    break;
+
                 case 'Queen': // Reverse
-                    console.log('    Queen: Reversing direction');
+                    console.log('    Queen: Reverse effect noted');
                     this.direction *= -1;
-                    currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+                    if (this.activePlayers.length === 2) {
+                        // In 2-player, Queen acts as skip
+                        shouldAdvanceTurn = false;
+                    } else {
+                        // In multiplayer, after reversing, turn should still advance (to previous player)
+                        shouldAdvanceTurn = true;
+                    }
                     break;
 
                 case 'Ace': // Draw 4
-                    console.log('    Ace: +4 draw effect, passing turn');
+                    console.log('    Ace: +4 draw effect');
                     totalDrawEffect += 4;
-                    currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+                    shouldAdvanceTurn = true;
                     break;
 
                 case '2': // Draw 2
-                    console.log('    2: +2 draw effect, passing turn');
+                    console.log('    2: +2 draw effect');
                     totalDrawEffect += 2;
-                    currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+                    shouldAdvanceTurn = true;
                     break;
 
                 case '8': // Wild card
-                    console.log('    8: Wild card, passing turn');
+                    console.log('    8: Wild card');
                     hasWild = true;
-                    currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+                    shouldAdvanceTurn = true;
                     break;
 
                 default:
                     // Normal cards pass the turn
-                    console.log('    Normal card: Passing turn');
-                    currentIndex = (currentIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+                    console.log('    Normal card');
+                    shouldAdvanceTurn = true;
                     break;
             }
-            
-            console.log(`    After ${card.rank}: currentIndex = ${currentIndex} (${this.activePlayers[currentIndex]?.name})`);
         }
 
-        if (pendingSkips > 0) {
-            if (this.activePlayers.length !== 2) {
-                currentIndex = (currentIndex + pendingSkips + 1) % this.activePlayers.length;
-            }
-            pendingSkips = 0;
-        }
-
-        // Set the final current player index
-        this.currentPlayerIndex = currentIndex;
-        console.log(`🎮 Final current player after sequence: ${this.activePlayers[currentIndex]?.name} at index ${currentIndex}`);
-        
         // Apply draw effects
         if (totalDrawEffect > 0) {
             this.drawStack += totalDrawEffect;
@@ -602,8 +591,13 @@ class Game {
             console.log('🎮 Cleared declared suit (no wilds)');
         }
 
-        // DO NOT call nextPlayer() here - we've already set the correct currentPlayerIndex
-        console.log('🎮 Turn management complete, no additional nextPlayer() call needed');
+        // Only advance turn once at the end if needed
+        if (shouldAdvanceTurn) {
+            this.nextPlayer();
+            console.log(`🎮 Turn advanced to: ${this.getCurrentPlayer()?.name}`);
+        } else {
+            console.log('🎮 Turn kept with current player due to skip/reverse effects');
+        }
 
         return totalDrawEffect;
     }
@@ -669,17 +663,24 @@ class Game {
     const playableDrawnCards = this.getPlayableDrawnCards(drawnCards, playerId);
     const canPlayDrawnCard = playableDrawnCards.length > 0;
 
-    // Set pending turn pass flag only if cards can be played
-    if (canPlayDrawnCard) {
-        this.pendingTurnPass = playerId;
-    } else {
-        // No playable cards drawn - auto-advance turn
-        this.pendingTurnPass = null;
-        if (isFromSpecialCard) {
-            // Special card draw - auto advance
-            this.nextPlayer();
+    // FIXED: Don't auto-advance turn after drawing penalty cards
+    if (isFromSpecialCard) {
+        // After drawing penalty cards, player gets a chance to play if they can
+        if (canPlayDrawnCard) {
+            this.pendingTurnPass = playerId;
+            console.log(`🎲 Player drew ${actualDrawCount} penalty cards and can play some - setting pending turn pass`);
         } else {
-            // Regular draw with no playable cards - set pending for frontend to handle
+            // No playable cards after penalty draw - advance turn
+            this.pendingTurnPass = null;
+            this.nextPlayer();
+            console.log(`🎲 Player drew ${actualDrawCount} penalty cards with no playable cards - turn advanced`);
+        }
+    } else {
+        // Regular draw - set pending turn pass if cards can be played
+        if (canPlayDrawnCard) {
+            this.pendingTurnPass = playerId;
+        } else {
+            // No playable cards drawn - player must pass turn manually or auto-pass
             this.pendingTurnPass = playerId;
         }
     }
@@ -812,6 +813,7 @@ class Game {
         }
 
         // Clear pending turn pass and advance to next player
+        this.cancelAutoPass(playerId);
         this.pendingTurnPass = null;
         this.playersWhoHaveDrawn.delete(playerId); // Clear draw tracking
         this.nextPlayer();
@@ -882,6 +884,12 @@ class Game {
     }
 
     startNewRound() {
+        // Clear any existing auto pass timers
+        for (const timer of this.autoPassTimers.values()) {
+            clearTimeout(timer);
+        }
+        this.autoPassTimers.clear();
+
         // Reset player states
         this.activePlayers.forEach(player => {
             player.isSafe = false;
@@ -922,6 +930,57 @@ class Game {
                     player.hand.push(card);
                 }
             }
+        }
+    }
+
+    playerHasPlayableCard(playerId) {
+        const player = this.getPlayerById(playerId);
+        if (!player) return false;
+
+        const topCard = this.getTopDiscardCard();
+        if (!topCard) return player.hand.length > 0;
+
+        const suitToMatch = this.declaredSuit || topCard.suit;
+
+        for (const card of player.hand) {
+            if (card.rank === '8') {
+                return true;
+            }
+
+            if (this.drawStack > 0) {
+                if (this.canCounterDraw(card)) {
+                    return true;
+                }
+                continue;
+            }
+
+            if (card.suit === suitToMatch || card.rank === topCard.rank) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    scheduleAutoPass(playerId, delay = 5000) {
+        this.cancelAutoPass(playerId);
+        const timer = setTimeout(() => {
+            if (this.pendingTurnPass === playerId && !this.playerHasPlayableCard(playerId)) {
+                const result = this.passTurnAfterDraw(playerId);
+                if (result.success && typeof this.onAutoPass === 'function') {
+                    this.onAutoPass(playerId);
+                }
+            }
+            this.autoPassTimers.delete(playerId);
+        }, delay);
+        this.autoPassTimers.set(playerId, timer);
+    }
+
+    cancelAutoPass(playerId) {
+        const timer = this.autoPassTimers.get(playerId);
+        if (timer) {
+            clearTimeout(timer);
+            this.autoPassTimers.delete(playerId);
         }
     }
 

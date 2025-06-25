@@ -352,12 +352,30 @@ describe('Game Class Tests', () => {
             const player = game.getPlayerById('p1');
             game.drawStack = 4;
             const initialHandSize = player.hand.length;
-            
+
             const result = game.drawCards('p1');
-            
+
             expect(result.success).toBe(true);
             expect(player.hand).toHaveLength(initialHandSize + 4);
             expect(game.drawStack).toBe(0);
+        });
+
+        test('should auto pass turn if no playable cards after draw', () => {
+            jest.useFakeTimers();
+            const player = game.getPlayerById('p1');
+            game.discardPile = [{ suit: 'Clubs', rank: '5' }];
+            player.hand = [{ suit: 'Hearts', rank: '2' }];
+            game.drawPile = [{ suit: 'Diamonds', rank: '7' }];
+
+            const result = game.drawCards('p1', 1);
+            expect(result.success).toBe(true);
+            expect(game.pendingTurnPass).toBe('p1');
+
+            jest.advanceTimersByTime(5000);
+
+            expect(game.pendingTurnPass).toBe(null);
+            expect(game.getCurrentPlayer().id).toBe('p2');
+            jest.useRealTimers();
         });
     });
 

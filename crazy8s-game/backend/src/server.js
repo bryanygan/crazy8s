@@ -3,6 +3,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const app = require('./app');
 const Game = require('./models/game');
+const gameTimers = new Map();
 
 const server = http.createServer(app);
 const io = socketIo(server, {
@@ -67,6 +68,11 @@ io.on('connection', (socket) => {
             // Create new game with this player
             const game = new Game([socket.id], [playerName]);
             Game.addGame(game);
+            game.onAutoPass = (playerId) => {
+                const player = game.getPlayerById(playerId);
+                broadcastGameState(game.id);
+                io.to(game.id).emit('playerAutoPassed', { playerName: player?.name });
+            };
             
             // Store player info
             connectedPlayers.set(socket.id, {
@@ -102,6 +108,11 @@ io.on('connection', (socket) => {
             const game = new Game(playerIds, playerNames);
             game.debugMode = debugMode;
             Game.addGame(game);
+            game.onAutoPass = (playerId) => {
+                const player = game.getPlayerById(playerId);
+                broadcastGameState(game.id);
+                io.to(game.id).emit('playerAutoPassed', { playerName: player?.name });
+            };
 
             game.gameState = 'playing';
             game.currentPlayerIndex = 0;
@@ -248,12 +259,12 @@ io.on('connection', (socket) => {
     // Handle starting the game
     socket.on('startGame', (data) => {
         try {
-            const { gameId } = data;
+            const { gameId, timerSettings } = data;
             const game = Game.findById(gameId);
             
             if (!game) {
-                socket.emit('error', 'Game not found');
-                return;
+            socket.emit('error', 'Game not found');
+            return;
             }
 
             console.log(`Starting game ${gameId} with players:`, game.players.map(p => `${p.name}(${p.id})`));
@@ -261,41 +272,47 @@ io.on('connection', (socket) => {
             const result = game.startGame();
             
             if (result.success) {
-                console.log(`Game ${gameId} started successfully`);
-                // Notify all players
-                broadcastGameState(game.id);
-                io.to(gameId).emit('success', 'Game started!');
+            console.log(`Game ${gameId} started successfully`);
+            
+            // Start the timer if timer settings provided
+            if (timerSettings && timerSettings.enableTimer) {
+                manageGameTimer(gameId, 'start', timerSettings);
+            }
+            
+            // Notify all players
+            broadcastGameState(game.id);
+            io.to(gameId).emit('success', 'Game started!');
             } else {
-                console.log(`Failed to start game ${gameId}:`, result.error);
-                socket.emit('error', result.error);
+            console.log(`Failed to start game ${gameId}:`, result.error);
+            socket.emit('error', result.error);
             }
 
         } catch (error) {
             console.error('Error starting game:', error);
             socket.emit('error', 'Failed to start game');
         }
-    });
+        });
 
     // Handle playing a card
     socket.on('playCard', (data) => {
         try {
-            const { gameId, cards, declaredSuit } = data;
+            const { gameId, cards, declaredSuit, timerSettings } = data;
             
             if (!gameId) {
-                socket.emit('error', 'Game ID is required');
-                return;
+            socket.emit('error', 'Game ID is required');
+            return;
             }
 
             if (!cards || (Array.isArray(cards) && cards.length === 0)) {
-                socket.emit('error', 'No cards specified');
-                return;
+            socket.emit('error', 'No cards specified');
+            return;
             }
 
             const game = Game.findById(gameId);
             
             if (!game) {
-                socket.emit('error', 'Game not found');
-                return;
+            socket.emit('error', 'Game not found');
+            return;
             }
 
             // Determine which player this socket controls
@@ -303,8 +320,8 @@ io.on('connection', (socket) => {
             const playerId = info ? info.playerId : socket.id;
             const player = game.getPlayerById(playerId);
             if (!player) {
-                socket.emit('error', 'You are not part of this game');
-                return;
+            socket.emit('error', 'You are not part of this game');
+            return;
             }
 
             console.log(`${player.name} (${socket.id}) attempting to play cards:`, cards);
@@ -312,31 +329,65 @@ io.on('connection', (socket) => {
             const result = game.playCard(playerId, cards, declaredSuit);
             
             if (result.success) {
-                console.log(`Card play successful by ${player.name}`);
-                
-                // Broadcast updated game state to all players in the game
-                broadcastGameState(gameId);
-                
-                // Send success message to the player who played
-                socket.emit('success', result.message || 'Card(s) played successfully');
-                
-                // Broadcast the play to all players in the game
-                io.to(gameId).emit('cardPlayed', {
-                    playerName: player.name,
-                    cardsPlayed: result.cardsPlayed,
-                    message: result.message
-                });
+            console.log(`Card play successful by ${player.name}`);
+            
+            // Reset timer for next player's turn
+            if (timerSettings && timerSettings.enableTimer) {
+                manageGameTimer(gameId, 'reset', timerSettings);
+            }
+            
+            // Broadcast updated game state to all players in the game
+            broadcastGameState(gameId);
+            
+            // Send success message to the player who played
+            socket.emit('success', result.message || 'Card(s) played successfully');
+            
+            // Broadcast the play to OTHER players in the game (not the one who played)
+            socket.to(gameId).emit('cardPlayed', {
+                playerName: player.name,
+                playerId: player.id,
+                cardsPlayed: result.cardsPlayed,
+                message: result.message
+            });
 
             } else {
-                console.log(`Card play failed by ${player.name}: ${result.error}`);
-                socket.emit('error', result.error);
+            console.log(`Card play failed by ${player.name}: ${result.error}`);
+            socket.emit('error', result.error);
             }
 
         } catch (error) {
             console.error('Error playing card:', error);
             socket.emit('error', 'Failed to play card: ' + error.message);
         }
-    });
+        });
+    
+    socket.on('updateTimerSettings', (data) => {
+        try {
+            const { gameId, timerSettings } = data;
+            const game = Game.findById(gameId);
+            
+            if (!game) {
+            socket.emit('error', 'Game not found');
+            return;
+            }
+            
+            // Store timer settings on the game object
+            game.timerSettings = timerSettings;
+            
+            // If game is in progress, restart timer with new settings
+            if (game.gameState === 'playing' && timerSettings.enableTimer) {
+            manageGameTimer(gameId, 'reset', timerSettings);
+            } else if (!timerSettings.enableTimer) {
+            manageGameTimer(gameId, 'stop');
+            }
+            
+            socket.emit('success', 'Timer settings updated');
+            
+        } catch (error) {
+            console.error('Error updating timer settings:', error);
+            socket.emit('error', 'Failed to update timer settings');
+        }
+        });
 
     // Handle drawing cards
     socket.on('drawCard', (data) => {
@@ -514,30 +565,36 @@ io.on('connection', (socket) => {
         try {
             const player = connectedPlayers.get(socket.id);
             if (player) {
-                const game = Game.findById(player.gameId);
-                if (game) {
-                    // Mark player as disconnected
-                    const gamePlayer = game.players.find(p => p.id === player.playerId);
-                    if (gamePlayer) {
-                        gamePlayer.isConnected = false;
-                        console.log(`${gamePlayer.name} disconnected from game ${player.gameId}`);
-                    }
-                    
-                    // Notify other players
-                    socket.to(player.gameId).emit('playerDisconnected', {
-                        playerName: player.name
-                    });
-                    
-                    // Broadcast updated game state
-                    broadcastGameState(player.gameId);
+            const game = Game.findById(player.gameId);
+            if (game) {
+                // Mark player as disconnected
+                const gamePlayer = game.players.find(p => p.id === player.playerId);
+                if (gamePlayer) {
+                gamePlayer.isConnected = false;
+                console.log(`${gamePlayer.name} disconnected from game ${player.gameId}`);
                 }
                 
-                connectedPlayers.delete(socket.id);
+                // If game becomes empty, clean up timer
+                const connectedPlayers = game.players.filter(p => p.isConnected);
+                if (connectedPlayers.length === 0) {
+                manageGameTimer(player.gameId, 'stop');
+                }
+                
+                // Notify other players
+                socket.to(player.gameId).emit('playerDisconnected', {
+                playerName: player.name
+                });
+                
+                // Broadcast updated game state
+                broadcastGameState(player.gameId);
+            }
+            
+            connectedPlayers.delete(socket.id);
             }
         } catch (error) {
             console.error('Error handling disconnect:', error);
         }
-    });
+        });
 
     // Handle reconnection
     socket.on('reconnect', (data) => {
@@ -590,6 +647,87 @@ io.on('connection', (socket) => {
         }
     });
 });
+
+// Broadcast timer updates to all players in a game
+const broadcastTimerUpdate = (gameId, timeLeft, isWarning) => {
+  io.to(gameId).emit('timerUpdate', {
+    timeLeft,
+    isWarning
+  });
+};
+
+// Start/stop the game timer
+const manageGameTimer = (gameId, action, settings = {}) => {
+  const { timerDuration = 60, timerWarningTime = 15, enableTimer = true } = settings;
+  
+  if (action === 'start' && enableTimer) {
+    // Clear existing timer if any
+    if (gameTimers.has(gameId)) {
+      clearInterval(gameTimers.get(gameId).interval);
+    }
+    
+    let timeLeft = timerDuration;
+    let isWarning = false;
+    
+    const interval = setInterval(() => {
+      timeLeft--;
+      
+      if (timeLeft <= timerWarningTime && !isWarning) {
+        isWarning = true;
+      }
+      
+      // Broadcast timer update to all players in the game
+      broadcastTimerUpdate(gameId, timeLeft, isWarning);
+      
+      if (timeLeft <= 0) {
+        clearInterval(interval);
+        gameTimers.delete(gameId);
+        
+        // Auto-draw for the current player
+        const game = Game.findById(gameId);
+        if (game && game.gameState === 'playing') {
+          const currentPlayer = game.getCurrentPlayer();
+          if (currentPlayer) {
+            console.log(`⏰ Timer expired for ${currentPlayer.name} - auto drawing card`);
+            
+            // Auto-draw and pass turn
+            const drawResult = game.drawCards(currentPlayer.id, 1);
+            if (drawResult.success) {
+              setTimeout(() => {
+                game.passTurnAfterDraw(currentPlayer.id);
+                broadcastGameState(gameId);
+                
+                // Start timer for next player
+                manageGameTimer(gameId, 'start', settings);
+              }, 500);
+            }
+            
+            broadcastGameState(gameId);
+          }
+        }
+      }
+    }, 1000);
+    
+    gameTimers.set(gameId, {
+      interval,
+      timeLeft,
+      isWarning,
+      settings
+    });
+    
+    // Send initial timer state
+    broadcastTimerUpdate(gameId, timeLeft, isWarning);
+    
+  } else if (action === 'stop') {
+    if (gameTimers.has(gameId)) {
+      clearInterval(gameTimers.get(gameId).interval);
+      gameTimers.delete(gameId);
+    }
+  } else if (action === 'reset' && enableTimer) {
+    manageGameTimer(gameId, 'stop');
+    manageGameTimer(gameId, 'start', settings);
+  }
+};
 
 // Start the server
 const PORT = process.env.PORT || 3001; // Changed to 3001 to avoid conflict with React
