@@ -883,6 +883,7 @@ const Toast = ({ toast, index, onClose }) => {
   const [isExiting, setIsExiting] = useState(false);
   const timerRef = useRef(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     // Create a stable reference to onClose to prevent timer resets
     const stableOnClose = () => {
