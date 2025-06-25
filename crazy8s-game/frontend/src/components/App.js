@@ -881,22 +881,43 @@ const ToastContainer = ({ toasts, onRemoveToast }) => {
 
 const Toast = ({ toast, index, onClose }) => {
   const [isExiting, setIsExiting] = useState(false);
+  const timerRef = useRef(null);
 
-  const handleClose = useCallback(() => {
+  useEffect(() => {
+    // Create a stable reference to onClose to prevent timer resets
+    const stableOnClose = () => {
+      console.log(`🍞 Auto-closing toast: ${toast.message}`);
+      setIsExiting(true);
+      setTimeout(() => {
+        onClose();
+      }, 300);
+    };
+
+    // Auto-close timer with stable reference
+    timerRef.current = setTimeout(stableOnClose, 4000);
+    
+    console.log(`🍞 Toast timer started for: ${toast.message}`);
+
+    return () => {
+      if (timerRef.current) {
+        console.log(`🍞 Toast timer cleared for: ${toast.message}`);
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [toast.id]); // ONLY depend on toast.id, NOT onClose
+
+  const handleManualClose = () => {
+    console.log(`🍞 Manual close toast: ${toast.message}`);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
     setIsExiting(true);
     setTimeout(() => {
       onClose();
-    }, 300); // Match the animation duration
-  }, [onClose]);
-
-  useEffect(() => {
-    // Auto-close timer
-    const timer = setTimeout(() => {
-      handleClose();
-    }, 4000);
-
-    return () => clearTimeout(timer);
-  }, [handleClose]);
+    }, 300);
+  };
 
   const getBackgroundColor = () => {
     switch (toast.type) {
@@ -942,10 +963,10 @@ const Toast = ({ toast, index, onClose }) => {
         overflow: 'hidden',
         border: index === 0 ? '2px solid rgba(255,255,255,0.3)' : 'none'
       }}
-      onClick={handleClose}
+      onClick={handleManualClose}
     >
       {/* Progress bar for the newest notification */}
-      {index === 0 && (
+      {index === 0 && !isExiting && (
         <div style={{
           position: 'absolute',
           bottom: 0,
@@ -1317,9 +1338,10 @@ const App = () => {
     });
   };
 
-  const removeToast = (toastId) => {
-    setToasts(prevToasts => prevToasts.filter(toast => toast.id !== toastId));
-  };
+  const removeToast = useCallback((toastId) => {
+  console.log(`🗑️ Removing toast with ID: ${toastId}`);
+  setToasts(prevToasts => prevToasts.filter(toast => toast.id !== toastId));
+}, []);
 
 
   // Keep refs in sync with settings
@@ -1621,64 +1643,66 @@ useEffect(() => {
 
   // Enhanced turn control simulation (matching backend logic)
   const simulateTurnControl = (cardStack, activePlayers) => {
-  if (cardStack.length === 0) return true;
-  
-  const playerCount = activePlayers;
-  let netReverses = 0;
-  let totalSkips = 0;
-  
-  // Count total reverses and skips
-  for (const card of cardStack) {
-    switch (card.rank) {
-      case 'Jack':
-        totalSkips += 1;
-        break;
-      case 'Queen':
-        netReverses += 1;
-        break;
-      default:
-        // Other special cards (Ace, 2, 8) pass the turn
-        break;
-    }
-  }
-  
-  // Determine if player keeps turn based on net effects
-  if (playerCount === 2) {
-    // In 2-player game:
-    // - Each reverse changes who has the turn
-    // - Each skip gives current player another turn
-    const netReversesEffect = netReverses % 2; // 1 = change turn, 0 = keep turn
-    const netSkipsEffect = totalSkips % 2; // 1 = keep turn, 0 = normal
+    if (cardStack.length === 0) return true;
     
-    // If odd number of reverses: change turn
-    // If odd number of skips: keep turn
-    // Combined effect: if both odd, they cancel out
-    if (netReversesEffect === 1 && netSkipsEffect === 1) {
-      // Reverse + Skip = cancel out, keep turn
-      return true;
-    } else if (netReversesEffect === 1) {
-      // Just reverse = change turn
-      return false;
-    } else if (netSkipsEffect === 1) {
-      // Just skip = keep turn
-      return true;
-    } else {
-      // No net effect = normal turn advancement (lose turn)
-      return false;
+    const playerCount = activePlayers;
+    let currentPlayerHasTurn = true; // We start with the turn
+    let tempDirection = 1; // Assume current direction, doesn't affect simulation result
+    
+    console.log(`🎯 Simulating turn control (${playerCount} players):`);
+    
+    // Simulate each card in the stack
+    for (let i = 0; i < cardStack.length; i++) {
+      const card = cardStack[i];
+      console.log(`  Step ${i + 1}: ${card.rank} of ${card.suit} (has turn: ${currentPlayerHasTurn})`);
+      
+      switch (card.rank) {
+        case 'Jack': // Skip
+          if (playerCount === 2) {
+            // In 2-player: skip opponent = keep turn
+            currentPlayerHasTurn = true;
+            console.log('    → 2-player skip: keeping turn');
+          } else {
+            // In multiplayer: skip next player = keep turn  
+            currentPlayerHasTurn = true;
+            console.log('    → Multiplayer skip: keeping turn');
+          }
+          break;
+          
+        case 'Queen': // Reverse
+          tempDirection *= -1;
+          if (playerCount === 2) {
+            // In 2-player: reverse = opponent gets turn
+            currentPlayerHasTurn = false;
+            console.log('    → 2-player reverse: opponent gets turn');
+          } else {
+            // In multiplayer: reverse direction, turn advances
+            currentPlayerHasTurn = false;
+            console.log('    → Multiplayer reverse: turn advances');
+          }
+          break;
+          
+        case 'Ace':   // Draw 4 - pass turn
+        case '2':     // Draw 2 - pass turn
+        case '8':     // Wild - pass turn
+        default:      // Normal card - pass turn
+          currentPlayerHasTurn = false;
+          console.log(`    → ${card.rank}: passing turn`);
+          break;
+      }
+      
+      console.log(`    Result: Player has turn = ${currentPlayerHasTurn}`);
+      
+      // If we lose turn control at any point, we can't continue stacking
+      if (!currentPlayerHasTurn && i < cardStack.length - 1) {
+        console.log(`    ❌ Lost turn control at card ${i + 1}, cannot stack remaining cards`);
+        return false;
+      }
     }
-  } else {
-    // In multiplayer (3+ players):
-    // - Reverses change direction but turn still advances (lose turn)
-    // - Skips cause player to keep turn
-    if (totalSkips > 0) {
-      const netSkipsEffect = totalSkips % 2;
-      return netSkipsEffect === 1; // Odd skips = keep turn
-    } else {
-      // Just reverses or normal cards - lose turn
-      return false;
-    }
-  }
-};
+    
+    console.log(`🎯 Final result: Player keeps turn = ${currentPlayerHasTurn}`);
+    return currentPlayerHasTurn;
+  };
 
   // Enhanced card stack validation with strict turn logic
     const validateCardStack = useCallback((cards, activePlayers) => {
