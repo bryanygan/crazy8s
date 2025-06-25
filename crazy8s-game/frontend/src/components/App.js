@@ -1646,62 +1646,71 @@ useEffect(() => {
     if (cardStack.length === 0) return true;
     
     const playerCount = activePlayers;
-    let currentPlayerHasTurn = true; // We start with the turn
-    let tempDirection = 1; // Assume current direction, doesn't affect simulation result
+    let totalSkips = 0;
+    let totalReverses = 0;
+    let endsWithNormalCard = false;
     
     console.log(`🎯 Simulating turn control (${playerCount} players):`);
     
-    // Simulate each card in the stack
+    // Count effects in the stack
     for (let i = 0; i < cardStack.length; i++) {
       const card = cardStack[i];
-      console.log(`  Step ${i + 1}: ${card.rank} of ${card.suit} (has turn: ${currentPlayerHasTurn})`);
+      console.log(`  Card ${i + 1}: ${card.rank} of ${card.suit}`);
       
       switch (card.rank) {
-        case 'Jack': // Skip
-          if (playerCount === 2) {
-            // In 2-player: skip opponent = keep turn
-            currentPlayerHasTurn = true;
-            console.log('    → 2-player skip: keeping turn');
-          } else {
-            // In multiplayer: skip next player = keep turn  
-            currentPlayerHasTurn = true;
-            console.log('    → Multiplayer skip: keeping turn');
-          }
+        case 'Jack':
+          totalSkips += 1;
+          endsWithNormalCard = false;
+          console.log(`    → Skip count: ${totalSkips}`);
           break;
           
-        case 'Queen': // Reverse
-          tempDirection *= -1;
-          if (playerCount === 2) {
-            // In 2-player: reverse = opponent gets turn
-            currentPlayerHasTurn = false;
-            console.log('    → 2-player reverse: opponent gets turn');
-          } else {
-            // In multiplayer: reverse direction, turn advances
-            currentPlayerHasTurn = false;
-            console.log('    → Multiplayer reverse: turn advances');
-          }
+        case 'Queen':
+          totalReverses += 1;
+          endsWithNormalCard = false;
+          console.log(`    → Reverse count: ${totalReverses}`);
           break;
           
-        case 'Ace':   // Draw 4 - pass turn
-        case '2':     // Draw 2 - pass turn
-        case '8':     // Wild - pass turn
-        default:      // Normal card - pass turn
-          currentPlayerHasTurn = false;
-          console.log(`    → ${card.rank}: passing turn`);
+        case 'Ace':
+        case '2':
+        case '8':
+          endsWithNormalCard = false;
+          console.log(`    → Special card (${card.rank})`);
           break;
-      }
-      
-      console.log(`    Result: Player has turn = ${currentPlayerHasTurn}`);
-      
-      // If we lose turn control at any point, we can't continue stacking
-      if (!currentPlayerHasTurn && i < cardStack.length - 1) {
-        console.log(`    ❌ Lost turn control at card ${i + 1}, cannot stack remaining cards`);
-        return false;
+          
+        default:
+          endsWithNormalCard = true;
+          console.log(`    → Normal card`);
+          break;
       }
     }
     
-    console.log(`🎯 Final result: Player keeps turn = ${currentPlayerHasTurn}`);
-    return currentPlayerHasTurn;
+    // Calculate final turn position
+    let finalPlayerIndex = 0; // Start with current player
+    
+    if (totalSkips > 0) {
+      if (playerCount === 2) {
+        // In 2-player: odd skips = keep turn, even skips = pass turn
+        const keepTurn = (totalSkips % 2 === 1);
+        finalPlayerIndex = keepTurn ? 0 : 1;
+        console.log(`🎯 2-player: ${totalSkips} skips → ${keepTurn ? 'keep' : 'pass'} turn`);
+      } else {
+        // In multiplayer: totalSkips + 1 for normal advancement
+        finalPlayerIndex = (0 + totalSkips + 1) % playerCount;
+        console.log(`🎯 Multiplayer: ${totalSkips} skips → index ${finalPlayerIndex}`);
+      }
+    } else if (endsWithNormalCard || cardStack.some(c => ['Ace', '2', '8'].includes(c.rank))) {
+      // Normal cards, draw cards, or wilds pass the turn
+      finalPlayerIndex = 1; // Simple advance (direction handled by backend)
+      console.log(`🎯 Normal advancement → pass turn`);
+    } else if (totalReverses > 0) {
+      // Only reverses - direction change but turn advances
+      finalPlayerIndex = 1;
+      console.log(`🎯 Reverse only → pass turn`);
+    }
+    
+    const playerKeepsTurn = (finalPlayerIndex === 0);
+    console.log(`🎯 Final result: Player keeps turn = ${playerKeepsTurn}`);
+    return playerKeepsTurn;
   };
 
   // Enhanced card stack validation with strict turn logic
