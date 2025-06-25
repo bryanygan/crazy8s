@@ -517,6 +517,8 @@ class Game {
         let totalDrawEffect = 0;
         let hasWild = false;
         let shouldAdvanceTurn = true; // Track if turn should advance at end
+        let netReverses = 0; // Track net number of reverses
+        let totalSkips = 0; // Track total number of skips (Jacks)
         
         // Process each card in sequence for effects only
         for (let i = 0; i < cards.length; i++) {
@@ -526,27 +528,12 @@ class Game {
             switch (card.rank) {
                 case 'Jack': // Skip
                     console.log('    Jack: Skip effect noted');
-                    // Jack skips the next player - in multi-card plays, this affects final turn calculation
-                    if (this.activePlayers.length > 2) {
-                        // In multiplayer, Jack should result in keeping the turn
-                        shouldAdvanceTurn = false;
-                    }
-                    // In 2-player, Jack acts as skip which gives you another turn
-                    if (this.activePlayers.length === 2) {
-                        shouldAdvanceTurn = false;
-                    }
+                    totalSkips += 1;
                     break;
 
                 case 'Queen': // Reverse
                     console.log('    Queen: Reverse effect noted');
-                    this.direction *= -1;
-                    if (this.activePlayers.length === 2) {
-                        // In 2-player, Queen acts as skip
-                        shouldAdvanceTurn = false;
-                    } else {
-                        // In multiplayer, after reversing, turn should still advance (to previous player)
-                        shouldAdvanceTurn = true;
-                    }
+                    netReverses += 1;
                     break;
 
                 case 'Ace': // Draw 4
@@ -575,6 +562,66 @@ class Game {
             }
         }
 
+        // Apply reverses to the game direction
+        if (netReverses > 0) {
+            // Apply net reverses to direction
+            const actualReverses = netReverses % 2; // Only odd numbers of reverses have effect
+            if (actualReverses === 1) {
+                this.direction *= -1;
+                console.log(`🎮 Applied ${netReverses} reverses (net: ${actualReverses}) - direction is now ${this.direction}`);
+            } else {
+                console.log(`🎮 Applied ${netReverses} reverses (net: ${actualReverses}) - direction unchanged`);
+            }
+        }
+
+        // Determine final turn advancement based on all effects
+        if (netReverses > 0 || totalSkips > 0) {
+            // Calculate turn control based on reverse and skip effects
+            const playerCount = this.activePlayers.length;
+            
+            if (playerCount === 2) {
+                // In 2-player game:
+                // - Each reverse changes who has the turn
+                // - Each skip gives current player another turn
+                const netReversesEffect = netReverses % 2; // 1 = change turn, 0 = keep turn
+                const netSkipsEffect = totalSkips % 2; // 1 = keep turn, 0 = normal
+                
+                // If odd number of reverses: change turn
+                // If odd number of skips: keep turn
+                // Combined effect: if both odd, they cancel out
+                if (netReversesEffect === 1 && netSkipsEffect === 1) {
+                    // Reverse + Skip = cancel out, keep turn
+                    shouldAdvanceTurn = false;
+                    console.log('🎮 2-player: Reverse + Skip effects cancel out - keeping turn');
+                } else if (netReversesEffect === 1) {
+                    // Just reverse = change turn
+                    shouldAdvanceTurn = true;
+                    console.log('🎮 2-player: Reverse effect - advancing turn');
+                } else if (netSkipsEffect === 1) {
+                    // Just skip = keep turn
+                    shouldAdvanceTurn = false;
+                    console.log('🎮 2-player: Skip effect - keeping turn');
+                } else {
+                    // No net effect = normal turn advancement
+                    shouldAdvanceTurn = true;
+                    console.log('🎮 2-player: No net special effects - advancing turn normally');
+                }
+            } else {
+                // In multiplayer (3+ players):
+                // - Reverses change direction but turn still advances
+                // - Skips cause turn to advance extra times
+                if (totalSkips > 0) {
+                    // Skip effects in multiplayer mean keeping the turn
+                    shouldAdvanceTurn = false;
+                    console.log(`🎮 Multiplayer: ${totalSkips} skips - keeping turn`);
+                } else {
+                    // Just reverses or normal cards - advance turn
+                    shouldAdvanceTurn = true;
+                    console.log('🎮 Multiplayer: Advancing turn normally');
+                }
+            }
+        }
+
         // Apply draw effects
         if (totalDrawEffect > 0) {
             this.drawStack += totalDrawEffect;
@@ -596,7 +643,7 @@ class Game {
             this.nextPlayer();
             console.log(`🎮 Turn advanced to: ${this.getCurrentPlayer()?.name}`);
         } else {
-            console.log('🎮 Turn kept with current player due to skip/reverse effects');
+            console.log('🎮 Turn kept with current player due to special card effects');
         }
 
         return totalDrawEffect;

@@ -1621,44 +1621,64 @@ useEffect(() => {
 
   // Enhanced turn control simulation (matching backend logic)
   const simulateTurnControl = (cardStack, activePlayers) => {
-    if (cardStack.length === 0) return true;
-    
-    const isOneVsOne = activePlayers <= 2;
-    let currentPlayerHasTurn = true; // We start with control
-    
-    for (const card of cardStack) {
-      switch (card.rank) {
-        case 'Jack':
-          // Jack skips opponent, back to us
-          currentPlayerHasTurn = true;
-          break;
-          
-        case 'Queen':
-          if (isOneVsOne) {
-            // In 1v1, Queen acts as skip
-            currentPlayerHasTurn = true;
-          } else {
-            // In multiplayer, Queen reverses direction
-            currentPlayerHasTurn = !currentPlayerHasTurn;
-          }
-          break;
-          
-        case 'Ace':
-        case '2':
-        case '8':
-          // These have effects but pass turn to next player
-          currentPlayerHasTurn = false;
-          break;
-          
-        default:
-          // Non-special cards pass the turn
-          currentPlayerHasTurn = false;
-          break;
-      }
+  if (cardStack.length === 0) return true;
+  
+  const playerCount = activePlayers;
+  let netReverses = 0;
+  let totalSkips = 0;
+  
+  // Count total reverses and skips
+  for (const card of cardStack) {
+    switch (card.rank) {
+      case 'Jack':
+        totalSkips += 1;
+        break;
+      case 'Queen':
+        netReverses += 1;
+        break;
+      default:
+        // Other special cards (Ace, 2, 8) pass the turn
+        break;
     }
+  }
+  
+  // Determine if player keeps turn based on net effects
+  if (playerCount === 2) {
+    // In 2-player game:
+    // - Each reverse changes who has the turn
+    // - Each skip gives current player another turn
+    const netReversesEffect = netReverses % 2; // 1 = change turn, 0 = keep turn
+    const netSkipsEffect = totalSkips % 2; // 1 = keep turn, 0 = normal
     
-    return currentPlayerHasTurn;
-  };
+    // If odd number of reverses: change turn
+    // If odd number of skips: keep turn
+    // Combined effect: if both odd, they cancel out
+    if (netReversesEffect === 1 && netSkipsEffect === 1) {
+      // Reverse + Skip = cancel out, keep turn
+      return true;
+    } else if (netReversesEffect === 1) {
+      // Just reverse = change turn
+      return false;
+    } else if (netSkipsEffect === 1) {
+      // Just skip = keep turn
+      return true;
+    } else {
+      // No net effect = normal turn advancement (lose turn)
+      return false;
+    }
+  } else {
+    // In multiplayer (3+ players):
+    // - Reverses change direction but turn still advances (lose turn)
+    // - Skips cause player to keep turn
+    if (totalSkips > 0) {
+      const netSkipsEffect = totalSkips % 2;
+      return netSkipsEffect === 1; // Odd skips = keep turn
+    } else {
+      // Just reverses or normal cards - lose turn
+      return false;
+    }
+  }
+};
 
   // Enhanced card stack validation with strict turn logic
     const validateCardStack = useCallback((cards, activePlayers) => {
