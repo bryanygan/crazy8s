@@ -1461,16 +1461,16 @@ const App = () => {
   };
 
   // Initialize socket connection
-  useEffect(() => {
+useEffect(() => {
   // Determine backend URL based on environment
   const BACKEND_URL = process.env.NODE_ENV === 'production' 
-    ? 'https://crazy8s-production.up.railway.app' // Replace with your Railway URL
+    ? 'https://crazy8s-production.up.railway.app'
     : 'http://localhost:3001';
 
   console.log('🔌 Connecting to:', BACKEND_URL);
 
   const newSocket = io(BACKEND_URL, {
-    transports: ['websocket', 'polling'], // Enable fallback transport
+    transports: ['websocket', 'polling'],
     upgrade: true,
     rememberUpgrade: true,
     timeout: 20000,
@@ -1480,7 +1480,6 @@ const App = () => {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     maxReconnectionAttempts: 5,
-    // Additional production settings
     withCredentials: true,
     extraHeaders: process.env.NODE_ENV === 'production' ? {
       'Access-Control-Allow-Origin': window.location.origin
@@ -1488,14 +1487,12 @@ const App = () => {
   });
 
   setSocket(newSocket);
-  setPlayerId(newSocket.id);
 
   newSocket.on('connect', () => {
     setIsConnected(true);
     console.log('🔌 Connected to server with ID:', newSocket.id);
+    // Set playerId to the socket ID
     setPlayerId(newSocket.id);
-
-    // Clear any previous connection errors
     removeToast();
   });
 
@@ -1522,80 +1519,88 @@ const App = () => {
     addToast('Connection failed. Please check your internet connection.', 'error');
   });
 
-    newSocket.on('gameUpdate', (data) => {
-      console.log('🎮 Game state updated:', data);
-      console.log('  📊 Current Player:', data.currentPlayer, '(ID:', data.currentPlayerId, ')');
-      console.log('  🆔 My Player ID:', playerIdRef.current);
-      console.log('  🎯 Is My Turn:', data.currentPlayerId === playerIdRef.current);
-      if (data.currentPlayerId !== playerIdRef.current) {
-        setHasDrawnThisTurn(false);
-        setIsDrawing(false);
-      }
-
-      setGameState(data);
-    });
-
-    newSocket.on('handUpdate', (hand) => {
-      console.log('🃏 Hand updated:', hand.length, 'cards');
-      setPlayerHand(hand);
-    });
-
-    newSocket.on('error', (errorMsg) => {
-      console.log('❌ Error:', errorMsg);
-      addToast(errorMsg, 'error');
-    });
-
-    newSocket.on('success', (successMsg) => {
-      console.log('✅ Success:', successMsg);
-      addToast(successMsg, 'success');
-    });
-
-    newSocket.on('cardPlayed', (data) => {
-      console.log('🃏 Card played:', data);
-      
-      // Only show notification to other players, not the one who played
-      if (data.playerId !== playerId) {
-        addToast(`${data.playerName} played: ${data.cardsPlayed.join(', ')}`, 'info');
-      }
-    });
-
-    newSocket.on('playerDrewCards', (data) => {
-      console.log('📚 Player drew cards:', data);
-      const message = data.canPlayDrawn 
-        ? `${data.playerName} drew ${data.cardCount} card(s) and can play some!`
-        : `${data.playerName} drew ${data.cardCount} card(s)`;
-      addToast(message, 'info');
-    });
-
-    newSocket.on('drawComplete', (data) => {
-      console.log('🎲 Draw completed:', data);
+  newSocket.on('gameUpdate', (data) => {
+    console.log('🎮 Game state updated:', data);
+    console.log('  📊 Current Player:', data.currentPlayer, '(ID:', data.currentPlayerId, ')');
+    console.log('  🆔 My Player ID:', playerIdRef.current);
+    console.log('  🎯 Is My Turn:', data.currentPlayerId === playerIdRef.current);
+    if (data.currentPlayerId !== playerIdRef.current) {
+      setHasDrawnThisTurn(false);
       setIsDrawing(false);
-      setHasDrawnThisTurn(true);
+    }
+    setGameState(data);
+  });
 
-      if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
-        addToast(
-          `Drew ${data.drawnCards.length} cards. ${data.playableDrawnCards.length} can be played!`,
-          'info'
-        );
-      } else {
-        addToast(
-          `Drew ${data.drawnCards.length} cards. No playable cards drawn.`,
-          'info'
-        );
-        // Player keeps the turn and may choose to skip manually
-      }
+  newSocket.on('handUpdate', (hand) => {
+    console.log('🃏 Hand updated:', hand.length, 'cards');
+    setPlayerHand(hand);
+  });
+
+  newSocket.on('error', (errorMsg) => {
+    console.log('❌ Error:', errorMsg);
+    addToast(errorMsg, 'error');
+  });
+
+  newSocket.on('success', (successMsg) => {
+    console.log('✅ Success:', successMsg);
+    addToast(successMsg, 'success');
+  });
+
+  newSocket.on('cardPlayed', (data) => {
+    console.log('🃏 Card played:', data);
+    // Use the socket ID directly instead of playerId state
+    if (data.playerId !== newSocket.id) {
+      addToast(`${data.playerName} played: ${data.cardsPlayed.join(', ')}`, 'info');
+    }
+  });
+
+  newSocket.on('playerDrewCards', (data) => {
+    console.log('📚 Player drew cards:', data);
+    const message = data.canPlayDrawn 
+      ? `${data.playerName} drew ${data.cardCount} card(s) and can play some!`
+      : `${data.playerName} drew ${data.cardCount} card(s)`;
+    addToast(message, 'info');
+  });
+
+  newSocket.on('drawComplete', (data) => {
+    console.log('🎲 Draw completed:', data);
+    setIsDrawing(false);
+    setHasDrawnThisTurn(true);
+
+    if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
+      addToast(
+        `Drew ${data.drawnCards.length} cards. ${data.playableDrawnCards.length} can be played!`,
+        'info'
+      );
+    } else {
+      addToast(
+        `Drew ${data.drawnCards.length} cards. No playable cards drawn.`,
+        'info'
+      );
+    }
+  });
+
+  newSocket.on('playerPassedTurn', (data) => {
+    console.log('👤 Player passed turn:', data);
+    addToast(`${data.playerName} passed their turn`, 'info');
+  });
+
+  // Listen for timer updates from server
+  newSocket.on('timerUpdate', (timerData) => {
+    console.log('⏰ Timer update received:', timerData);
+    setGlobalTimer({
+      timeLeft: timerData.timeLeft,
+      isWarning: timerData.isWarning,
+      isActive: true
     });
+  });
 
-    newSocket.on('playerPassedTurn', (data) => {
-      console.log('👤 Player passed turn:', data);
-      addToast(`${data.playerName} passed their turn`, 'info');
-    });
-
-    return () => {
-      console.log('🔌 Cleaning up socket connection');
-      newSocket.close();
-    };
-  }, []);
+  return () => {
+    console.log('🔌 Cleaning up socket connection');
+    newSocket.close();
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []); // Intentionally empty dependency array to prevent reconnection loops
 
   const parseTopCard = (cardString) => {
     if (!cardString) return null;
