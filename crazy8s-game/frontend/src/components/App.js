@@ -882,6 +882,13 @@ const ToastContainer = ({ toasts, onRemoveToast }) => {
 const Toast = ({ toast, index, onClose }) => {
   const [isExiting, setIsExiting] = useState(false);
 
+  const handleClose = () => {
+    setIsExiting(true);
+    setTimeout(() => {
+      onClose();
+    }, 300); // Match the animation duration
+  };
+
   useEffect(() => {
     // Auto-close timer
     const timer = setTimeout(() => {
@@ -890,13 +897,6 @@ const Toast = ({ toast, index, onClose }) => {
 
     return () => clearTimeout(timer);
   }, [handleClose]);
-
-  const handleClose = () => {
-    setIsExiting(true);
-    setTimeout(() => {
-      onClose();
-    }, 300); // Match the animation duration
-  };
 
   const getBackgroundColor = () => {
     switch (toast.type) {
