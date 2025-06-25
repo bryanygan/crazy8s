@@ -855,14 +855,51 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
   );
 };
 
-const Toast = ({ message, type = 'info', onClose }) => {
+const ToastContainer = ({ toasts, onRemoveToast }) => {
+  return (
+    <div style={{
+      position: 'fixed',
+      top: '20px',
+      right: '20px',
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px',
+      maxWidth: '300px'
+    }}>
+      {toasts.map((toast, index) => (
+        <Toast
+          key={toast.id}
+          toast={toast}
+          index={index}
+          onClose={() => onRemoveToast(toast.id)}
+        />
+      ))}
+    </div>
+  );
+};
+
+const Toast = ({ toast, index, onClose }) => {
+  const [isExiting, setIsExiting] = useState(false);
+
   useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
+    // Auto-close timer
+    const timer = setTimeout(() => {
+      handleClose();
+    }, 4000);
+
     return () => clearTimeout(timer);
-  }, [onClose]);
+  }, [toast.id]);
+
+  const handleClose = () => {
+    setIsExiting(true);
+    setTimeout(() => {
+      onClose();
+    }, 300); // Match the animation duration
+  };
 
   const getBackgroundColor = () => {
-    switch (type) {
+    switch (toast.type) {
       case 'success': return '#27ae60';
       case 'error': return '#e74c3c';
       case 'info': return '#3498db';
@@ -870,22 +907,73 @@ const Toast = ({ message, type = 'info', onClose }) => {
     }
   };
 
+  const getTransform = () => {
+    if (isExiting) {
+      return 'translateX(100%) scale(0.8)';
+    }
+    return `translateY(${index * 5}px) scale(${1 - index * 0.05})`;
+  };
+
+  const getOpacity = () => {
+    if (isExiting) return 0;
+    return Math.max(0.3, 1 - index * 0.15);
+  };
+
+  const getZIndex = () => {
+    return 1000 - index;
+  };
+
   return (
-    <div style={{
-      position: 'fixed',
-      top: '20px',
-      right: '20px',
-      padding: '15px 20px',
-      backgroundColor: getBackgroundColor(),
-      color: '#fff',
-      borderRadius: '8px',
-      zIndex: 1000,
-      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-      maxWidth: '300px',
-      fontSize: '14px',
-      cursor: 'pointer'
-    }} onClick={onClose}>
-      {message}
+    <div 
+      style={{
+        padding: '15px 20px',
+        backgroundColor: getBackgroundColor(),
+        color: '#fff',
+        borderRadius: '8px',
+        boxShadow: `0 ${4 + index * 2}px ${8 + index * 4}px rgba(0,0,0,${0.2 + index * 0.1})`,
+        fontSize: '14px',
+        cursor: 'pointer',
+        transform: getTransform(),
+        opacity: getOpacity(),
+        zIndex: getZIndex(),
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        transformOrigin: 'top right',
+        position: 'relative',
+        overflow: 'hidden',
+        border: index === 0 ? '2px solid rgba(255,255,255,0.3)' : 'none'
+      }}
+      onClick={handleClose}
+    >
+      {/* Progress bar for the newest notification */}
+      {index === 0 && (
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          height: '3px',
+          backgroundColor: 'rgba(255,255,255,0.5)',
+          animation: 'progressBar 4s linear forwards',
+          borderRadius: '0 0 6px 6px'
+        }} />
+      )}
+      
+      {/* Stack indicator for older notifications */}
+      {index > 0 && (
+        <div style={{
+          position: 'absolute',
+          top: '8px',
+          right: '8px',
+          fontSize: '10px',
+          backgroundColor: 'rgba(0,0,0,0.3)',
+          padding: '2px 6px',
+          borderRadius: '10px',
+          fontWeight: 'bold'
+        }}>
+          +{index}
+        </div>
+      )}
+      
+      {toast.message}
     </div>
   );
 };
@@ -1085,7 +1173,7 @@ const App = () => {
   const [selectedCards, setSelectedCards] = useState([]);
   const [showSuitSelector, setShowSuitSelector] = useState(false);
   const [validCards, setValidCards] = useState([]);
-  const [toast, setToast] = useState(null);
+  const [toasts, setToasts] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState({
     sortByRank: false,
@@ -1208,6 +1296,31 @@ const App = () => {
   const timerDurationRef = useRef(settings.timerDuration);
   const timerWarningTimeRef = useRef(settings.timerWarningTime);
   const playerIdRef = useRef(playerId);
+
+  const addToast = (message, type = 'info') => {
+    const newToast = {
+      id: Date.now() + Math.random(), // Unique ID
+      message,
+      type,
+      timestamp: Date.now()
+    };
+
+    setToasts(prevToasts => {
+      const newToasts = [newToast, ...prevToasts];
+      
+      // If we have more than 5 toasts, remove the oldest ones
+      if (newToasts.length > 5) {
+        return newToasts.slice(0, 5);
+      }
+      
+      return newToasts;
+    });
+  };
+
+  const removeToast = (toastId) => {
+    setToasts(prevToasts => prevToasts.filter(toast => toast.id !== toastId));
+  };
+
 
   // Keep refs in sync with settings
   useEffect(() => {
@@ -1379,10 +1492,7 @@ const App = () => {
 
   newSocket.on('connect_error', (error) => {
     console.error('❌ Connection error:', error);
-    setToast({ 
-      message: 'Connection failed. Please check your internet connection.', 
-      type: 'error' 
-    });
+    addToast('Connection failed. Please check your internet connection.', 'error');
   });
 
     newSocket.on('gameUpdate', (data) => {
@@ -1405,49 +1515,53 @@ const App = () => {
 
     newSocket.on('error', (errorMsg) => {
       console.log('❌ Error:', errorMsg);
-      setToast({ message: errorMsg, type: 'error' });
+      addToast(errorMsg, 'error');
     });
 
     newSocket.on('success', (successMsg) => {
       console.log('✅ Success:', successMsg);
-      setToast({ message: successMsg, type: 'success' });
+      addToast(successMsg, 'success');
     });
 
     newSocket.on('cardPlayed', (data) => {
-    console.log('🃏 Card played:', data);
-    setToast({ message: `${data.playerName} played: ${data.cardsPlayed.join(', ')}`, type: 'info' });
-  });
+      console.log('🃏 Card played:', data);
+      
+      // Only show notification to other players, not the one who played
+      if (data.playerId !== playerId) {
+        addToast(`${data.playerName} played: ${data.cardsPlayed.join(', ')}`, 'info');
+      }
+    });
 
     newSocket.on('playerDrewCards', (data) => {
       console.log('📚 Player drew cards:', data);
       const message = data.canPlayDrawn 
         ? `${data.playerName} drew ${data.cardCount} card(s) and can play some!`
         : `${data.playerName} drew ${data.cardCount} card(s)`;
-      setToast({ message, type: 'info' });
+      addToast(message, 'info');
     });
 
     newSocket.on('drawComplete', (data) => {
-    console.log('🎲 Draw completed:', data);
-    setIsDrawing(false);
-    setHasDrawnThisTurn(true);
+      console.log('🎲 Draw completed:', data);
+      setIsDrawing(false);
+      setHasDrawnThisTurn(true);
 
-    if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
-      setToast({
-        message: `Drew ${data.drawnCards.length} cards. ${data.playableDrawnCards.length} can be played!`,
-        type: 'info'
-      });
-    } else {
-      setToast({
-        message: `Drew ${data.drawnCards.length} cards. No playable cards drawn.`,
-        type: 'info'
-      });
-      // Player keeps the turn and may choose to skip manually
-    }
-  });
+      if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
+        addToast(
+          `Drew ${data.drawnCards.length} cards. ${data.playableDrawnCards.length} can be played!`,
+          'info'
+        );
+      } else {
+        addToast(
+          `Drew ${data.drawnCards.length} cards. No playable cards drawn.`,
+          'info'
+        );
+        // Player keeps the turn and may choose to skip manually
+      }
+    });
 
     newSocket.on('playerPassedTurn', (data) => {
       console.log('👤 Player passed turn:', data);
-      setToast({ message: `${data.playerName} passed their turn`, type: 'info' });
+      addToast(`${data.playerName} passed their turn`, 'info');
     });
 
     return () => newSocket.close();
@@ -1676,7 +1790,7 @@ useEffect(() => {
 
   const joinGame = () => {
     if (!playerName.trim() || !gameId.trim()) {
-      setToast({ message: 'Please enter both name and game ID', type: 'error' });
+      addToast('Please enter both name and game ID', 'error');
       return;
     }
 
@@ -1689,7 +1803,7 @@ useEffect(() => {
 
   const createGame = () => {
     if (!playerName.trim()) {
-      setToast({ message: 'Please enter your name', type: 'error' });
+      addToast('Please enter your name', 'error');
       return;
     }
 
@@ -1724,10 +1838,7 @@ useEffect(() => {
         } else {
           // Can't stack - show error message
           const validation = validateCardStack([...selectedCards, card], activePlayers);
-          setToast({ 
-            message: validation.error || `Cannot stack ${card.rank} of ${card.suit} with current selection.`, 
-            type: 'error' 
-          });
+          addToast(validation.error || `Cannot stack ${card.rank} of ${card.suit} with current selection.`, 'error');
         }
       }
     }
@@ -1735,7 +1846,7 @@ useEffect(() => {
 
   const playSelectedCards = () => {
     if (selectedCards.length === 0) {
-      setToast({ message: 'Please select at least one card', type: 'error' });
+      addToast('Please select at least one card', 'error');
       return;
     }
 
@@ -1744,7 +1855,7 @@ useEffect(() => {
     const validation = validateCardStack(selectedCards, activePlayers);
     
     if (!validation.isValid) {
-      setToast({ message: validation.error, type: 'error' });
+      addToast(validation.error, 'error');
       return;
     }
 
@@ -1757,7 +1868,7 @@ useEffect(() => {
         // Check if all cards (including 8s) are same suit
         const allSameSuit = selectedCards.every(card => card.suit === selectedCards[0].suit);
         if (!allSameSuit) {
-          setToast({ message: 'When playing 8s with other cards, all must be the same suit', type: 'error' });
+          addToast('When playing 8s with other cards, all must be the same suit', 'error');
           return;
         }
       }
@@ -1798,17 +1909,17 @@ useEffect(() => {
   };
 
   const drawCard = () => {
-  if (isDrawing || hasDrawnThisTurn) {
-    setToast({ message: 'You have already drawn cards this turn', type: 'error' });
-    return;
-  }
+    if (isDrawing || hasDrawnThisTurn) {
+      addToast('You have already drawn cards this turn', 'error');
+      return;
+    }
 
-  console.log('📚 Drawing card');
-  setIsDrawing(true);
-  socket.emit('drawCard', {
-    gameId: gameState?.gameId
-  });
-};
+    console.log('📚 Drawing card');
+    setIsDrawing(true);
+    socket.emit('drawCard', {
+      gameId: gameState?.gameId
+    });
+  };
 
 
   // Allow the player to manually skip their turn after drawing
@@ -1861,7 +1972,7 @@ useEffect(() => {
 
     input[type="range"]::-moz-range-thumb:hover {
       transform: scale(1.1);
-      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      box-shadow:  0 4px 8px rgba(0,0,0,0.3);
     }
   `;
 
@@ -2425,13 +2536,10 @@ useEffect(() => {
       )}
 
       {/* Toast Notifications */}
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+      <ToastContainer 
+        toasts={toasts}
+        onRemoveToast={removeToast}
+      />
 
       {/* Settings Modal */}
       <Settings 
@@ -2487,6 +2595,26 @@ useEffect(() => {
 
       {/* Add some CSS animations */}
       <style>{`
+        @keyframes progressBar {
+          from {
+            width: 100%;
+          }
+          to {
+            width: 0%;
+          }
+        }
+
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+
         @keyframes pulse {
           0% { transform: scale(1); }
           50% { transform: scale(1.05); }

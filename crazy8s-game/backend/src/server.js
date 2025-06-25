@@ -342,9 +342,10 @@ io.on('connection', (socket) => {
             // Send success message to the player who played
             socket.emit('success', result.message || 'Card(s) played successfully');
             
-            // Broadcast the play to all players in the game
-            io.to(gameId).emit('cardPlayed', {
+            // Broadcast the play to OTHER players in the game (not the one who played)
+            socket.to(gameId).emit('cardPlayed', {
                 playerName: player.name,
+                playerId: player.id,
                 cardsPlayed: result.cardsPlayed,
                 message: result.message
             });
