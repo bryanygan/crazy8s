@@ -1473,7 +1473,16 @@ const App = () => {
     rememberUpgrade: true,
     timeout: 20000,
     forceNew: false,
-    autoConnect: true
+    autoConnect: true,
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    maxReconnectionAttempts: 5,
+    // Additional production settings
+    withCredentials: true,
+    extraHeaders: process.env.NODE_ENV === 'production' ? {
+      'Access-Control-Allow-Origin': window.location.origin
+    } : {}
   });
 
   setSocket(newSocket);
@@ -1483,11 +1492,27 @@ const App = () => {
     setIsConnected(true);
     console.log('🔌 Connected to server with ID:', newSocket.id);
     setPlayerId(newSocket.id);
+
+    // Clear any previous connection errors
+    removeToast();
+  });
+
+  newSocket.on('connect_success', (data) => {
+    console.log('✅ Connection confirmed by server:', data);
   });
 
   newSocket.on('disconnect', () => {
     setIsConnected(false);
     console.log('❌ Disconnected from server');
+  });
+
+  newSocket.on('reconnect_error', (error) => {
+    console.error('❌ Reconnection failed:', error);
+  });
+
+  newSocket.on('reconnect_failed', () => {
+    console.error('❌ Failed to reconnect after maximum attempts');
+    addToast('Failed to reconnect to server. Please refresh the page.', 'error');
   });
 
   newSocket.on('connect_error', (error) => {
@@ -1564,7 +1589,10 @@ const App = () => {
       addToast(`${data.playerName} passed their turn`, 'info');
     });
 
-    return () => newSocket.close();
+    return () => {
+      console.log('🔌 Cleaning up socket connection');
+      newSocket.close();
+    };
   }, [playerId]);
 
   const parseTopCard = (cardString) => {
