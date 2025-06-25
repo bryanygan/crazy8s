@@ -22,6 +22,8 @@ class Game {
         this.pendingTurnPass = null; // Track if player needs to pass turn after drawing
         this.playersWhoHaveDrawn = new Set(); // Track who has drawn this turn
         this.debugMode = false; // Enable verbose debug logging
+        this.autoPassTimers = new Map(); // timers for auto pass
+        this.onAutoPass = null; // optional callback when auto pass occurs
     }
 
     generateGameId() {
@@ -673,14 +675,17 @@ class Game {
     if (canPlayDrawnCard) {
         this.pendingTurnPass = playerId;
     } else {
-        // No playable cards drawn - auto-advance turn
+        // No playable cards drawn
         this.pendingTurnPass = null;
         if (isFromSpecialCard) {
             // Special card draw - auto advance
             this.nextPlayer();
         } else {
-            // Regular draw with no playable cards - set pending for frontend to handle
+            // Regular draw with no playable cards - set pending and schedule auto pass
             this.pendingTurnPass = playerId;
+            if (!this.playerHasPlayableCard(playerId)) {
+                this.scheduleAutoPass(playerId);
+            }
         }
     }
 
@@ -812,6 +817,7 @@ class Game {
         }
 
         // Clear pending turn pass and advance to next player
+        this.cancelAutoPass(playerId);
         this.pendingTurnPass = null;
         this.playersWhoHaveDrawn.delete(playerId); // Clear draw tracking
         this.nextPlayer();
@@ -882,6 +888,12 @@ class Game {
     }
 
     startNewRound() {
+        // Clear any existing auto pass timers
+        for (const timer of this.autoPassTimers.values()) {
+            clearTimeout(timer);
+        }
+        this.autoPassTimers.clear();
+
         // Reset player states
         this.activePlayers.forEach(player => {
             player.isSafe = false;
@@ -922,6 +934,57 @@ class Game {
                     player.hand.push(card);
                 }
             }
+        }
+    }
+
+    playerHasPlayableCard(playerId) {
+        const player = this.getPlayerById(playerId);
+        if (!player) return false;
+
+        const topCard = this.getTopDiscardCard();
+        if (!topCard) return player.hand.length > 0;
+
+        const suitToMatch = this.declaredSuit || topCard.suit;
+
+        for (const card of player.hand) {
+            if (card.rank === '8') {
+                return true;
+            }
+
+            if (this.drawStack > 0) {
+                if (this.canCounterDraw(card)) {
+                    return true;
+                }
+                continue;
+            }
+
+            if (card.suit === suitToMatch || card.rank === topCard.rank) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    scheduleAutoPass(playerId, delay = 5000) {
+        this.cancelAutoPass(playerId);
+        const timer = setTimeout(() => {
+            if (this.pendingTurnPass === playerId && !this.playerHasPlayableCard(playerId)) {
+                const result = this.passTurnAfterDraw(playerId);
+                if (result.success && typeof this.onAutoPass === 'function') {
+                    this.onAutoPass(playerId);
+                }
+            }
+            this.autoPassTimers.delete(playerId);
+        }, delay);
+        this.autoPassTimers.set(playerId, timer);
+    }
+
+    cancelAutoPass(playerId) {
+        const timer = this.autoPassTimers.get(playerId);
+        if (timer) {
+            clearTimeout(timer);
+            this.autoPassTimers.delete(playerId);
         }
     }
 

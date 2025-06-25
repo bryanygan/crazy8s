@@ -67,6 +67,11 @@ io.on('connection', (socket) => {
             // Create new game with this player
             const game = new Game([socket.id], [playerName]);
             Game.addGame(game);
+            game.onAutoPass = (playerId) => {
+                const player = game.getPlayerById(playerId);
+                broadcastGameState(game.id);
+                io.to(game.id).emit('playerAutoPassed', { playerName: player?.name });
+            };
             
             // Store player info
             connectedPlayers.set(socket.id, {
@@ -102,6 +107,11 @@ io.on('connection', (socket) => {
             const game = new Game(playerIds, playerNames);
             game.debugMode = debugMode;
             Game.addGame(game);
+            game.onAutoPass = (playerId) => {
+                const player = game.getPlayerById(playerId);
+                broadcastGameState(game.id);
+                io.to(game.id).emit('playerAutoPassed', { playerName: player?.name });
+            };
 
             game.gameState = 'playing';
             game.currentPlayerIndex = 0;
