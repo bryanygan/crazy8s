@@ -1593,7 +1593,7 @@ const App = () => {
       console.log('🔌 Cleaning up socket connection');
       newSocket.close();
     };
-  }, [playerId]);
+  }, []);
 
   const parseTopCard = (cardString) => {
     if (!cardString) return null;
