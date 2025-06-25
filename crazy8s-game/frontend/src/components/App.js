@@ -889,7 +889,7 @@ const Toast = ({ toast, index, onClose }) => {
     }, 4000);
 
     return () => clearTimeout(timer);
-  }, [toast.id]);
+  }, [handleClose]);
 
   const handleClose = () => {
     setIsExiting(true);
@@ -1565,7 +1565,7 @@ const App = () => {
     });
 
     return () => newSocket.close();
-  }, []);
+  }, [playerId]);
 
   const parseTopCard = (cardString) => {
     if (!cardString) return null;
