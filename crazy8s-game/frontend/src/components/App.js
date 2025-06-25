@@ -1098,9 +1098,11 @@ const App = () => {
   const [copiedGameId, setCopiedGameId] = useState(false);
   const [hasDrawnThisTurn, setHasDrawnThisTurn] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [turnTimer, setTurnTimer] = useState(60);
-  const [timerActive, setTimerActive] = useState(false);
-  const [timerWarning, setTimerWarning] = useState(false);
+  const [globalTimer, setGlobalTimer] = useState({
+    timeLeft: 60,
+    isWarning: false,
+    isActive: false
+  });
 
   // Debug mode state
   const [debugMode, setDebugMode] = useState(false);
@@ -1280,23 +1282,34 @@ const App = () => {
 
   // Save settings to localStorage whenever they change
   const handleSettingsChange = (newSettings) => {
-    const validatedSettings = validateTimerSettings(newSettings);
-    setSettings(validatedSettings);
-    if (playerId) {
-      localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(validatedSettings));
-    }
-  };
+  const validatedSettings = validateTimerSettings(newSettings);
+  setSettings(validatedSettings);
+  if (playerId) {
+    localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(validatedSettings));
+  }
+  
+  // Send timer settings to server if in a game
+  if (socket && gameState?.gameId) {
+    socket.emit('updateTimerSettings', {
+      gameId: gameState.gameId,
+      timerSettings: {
+        enableTimer: validatedSettings.enableTimer,
+        timerDuration: validatedSettings.timerDuration,
+        timerWarningTime: validatedSettings.timerWarningTime
+      }
+    });
+  }
+};
 
   useEffect(() => {
-    console.log('⏰ Timer Settings Updated:', {
-      enableTimer: settings.enableTimer,
-      timerDuration: settings.timerDuration,
-      timerWarningTime: settings.timerWarningTime,
-      isActive: timerActive,
-      currentTime: turnTimer
-    });
-  }, [settings.enableTimer, settings.timerDuration, settings.timerWarningTime, timerActive, turnTimer]);
-
+  console.log('⏰ Timer Settings Updated:', {
+    enableTimer: settings.enableTimer,
+    timerDuration: settings.timerDuration,
+    timerWarningTime: settings.timerWarningTime,
+    isActive: globalTimer.isActive,
+    currentTime: globalTimer.timeLeft
+  });
+}, [settings.enableTimer, settings.timerDuration, settings.timerWarningTime, globalTimer.isActive, globalTimer.timeLeft]);
   // Debug logging helper
   const addDebugLog = (message, type = 'info', data = null) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -1401,11 +1414,9 @@ const App = () => {
     });
 
     newSocket.on('cardPlayed', (data) => {
-      console.log('🃏 Card played:', data);
-      setToast({ message: `${data.playerName} played: ${data.cardsPlayed.join(', ')}`, type: 'info' });
-      setTurnTimer(timerDurationRef.current);
-      setTimerWarning(false);
-    });
+    console.log('🃏 Card played:', data);
+    setToast({ message: `${data.playerName} played: ${data.cardsPlayed.join(', ')}`, type: 'info' });
+  });
 
     newSocket.on('playerDrewCards', (data) => {
       console.log('📚 Player drew cards:', data);
@@ -1416,26 +1427,23 @@ const App = () => {
     });
 
     newSocket.on('drawComplete', (data) => {
-      console.log('🎲 Draw completed:', data);
-      setIsDrawing(false);
-      setHasDrawnThisTurn(true);
+    console.log('🎲 Draw completed:', data);
+    setIsDrawing(false);
+    setHasDrawnThisTurn(true);
 
-      setTurnTimer(timerDurationRef.current);
-      setTimerWarning(false);
-
-      if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
-        setToast({
-          message: `Drew ${data.drawnCards.length} cards. ${data.playableDrawnCards.length} can be played!`,
-          type: 'info'
-        });
-      } else {
-        setToast({
-          message: `Drew ${data.drawnCards.length} cards. No playable cards drawn.`,
-          type: 'info'
-        });
-        // Player keeps the turn and may choose to skip manually
-      }
-    });
+    if (data.canPlayDrawnCard && data.playableDrawnCards.length > 0) {
+      setToast({
+        message: `Drew ${data.drawnCards.length} cards. ${data.playableDrawnCards.length} can be played!`,
+        type: 'info'
+      });
+    } else {
+      setToast({
+        message: `Drew ${data.drawnCards.length} cards. No playable cards drawn.`,
+        type: 'info'
+      });
+      // Player keeps the turn and may choose to skip manually
+    }
+  });
 
     newSocket.on('playerPassedTurn', (data) => {
       console.log('👤 Player passed turn:', data);
@@ -1610,63 +1618,42 @@ const App = () => {
   }
 }, [playerHand, gameState, selectedCards, canStackCards]);
 
+// Listen for timer updates from server
 useEffect(() => {
-  if (!timerActive || !settings.enableTimer || gameState?.currentPlayerId !== playerId || gameState?.gameState !== 'playing') {
-    return;
-  }
-  
-  const interval = setInterval(() => {
-    setTurnTimer(prev => {
-      if (prev <= 1) {
-        // Timer expired: draw a card, then skip turn
-        console.log('⏰ Timer expired - auto drawing card and skipping turn');
-        if (socket && gameState?.gameId) {
-          // Draw a card first
-          socket.emit('drawCard', { gameId: gameState.gameId });
-          // Then skip turn after a short delay to ensure draw completes
-          setTimeout(() => {
-            socket.emit('passTurnAfterDraw', { gameId: gameState.gameId });
-          }, 500); // 0.5s delay
-        }
-        setTimerActive(false);
-        setTimerWarning(false);
-        return settings.timerDuration; // Use settings instead of hardcoded 60
-      }
-      if (prev <= settings.timerWarningTime && !timerWarning) {
-        setTimerWarning(true);
-      }
-      return prev - 1;
+  if (!socket) return;
+
+  socket.on('timerUpdate', (timerData) => {
+    console.log('⏰ Timer update received:', timerData);
+    setGlobalTimer({
+      timeLeft: timerData.timeLeft,
+      isWarning: timerData.isWarning,
+      isActive: true
     });
-  }, 1000);
+  });
 
-  return () => clearInterval(interval);
-}, [timerActive, settings.enableTimer, gameState?.currentPlayerId, playerId, gameState?.gameState, timerWarning, socket, gameState?.gameId, settings.timerDuration, settings.timerWarningTime]);
+  return () => {
+    socket.off('timerUpdate');
+  };
+}, [socket]);
 
-// Timer reset logic
+// Handle game state changes to manage timer visibility
 useEffect(() => {
-  if (gameState?.gameState === 'playing') {
-    // Reset timer when turn changes
-    if (gameState.currentPlayerId !== playerId) {
-      setTimerActive(false);
-      setTimerWarning(false);
-    } else {
-      // It's my turn - start timer
-      setTurnTimer(settings.enableTimer ? settings.timerDuration : 60);
-      setTimerActive(settings.enableTimer);
-      setTimerWarning(false);
-    }
-  } else {
-    setTimerActive(false);
-    setTimerWarning(false);
+  if (gameState?.gameState !== 'playing') {
+    setGlobalTimer(prev => ({ ...prev, isActive: false }));
   }
-}, [gameState?.currentPlayerId, gameState?.gameState, playerId, settings.enableTimer, settings.timerDuration]);
+}, [gameState?.gameState]);
 
   const startGame = () => {
-    console.log('🚀 Starting game:', gameState?.gameId);
-    socket.emit('startGame', {
-      gameId: gameState?.gameId
-    });
-  };
+  console.log('🚀 Starting game:', gameState?.gameId);
+  socket.emit('startGame', {
+    gameId: gameState?.gameId,
+    timerSettings: {
+      enableTimer: settings.enableTimer,
+      timerDuration: settings.timerDuration,
+      timerWarningTime: settings.timerWarningTime
+    }
+  });
+};
 
   // Create a debug game on the server
   const startDebugGame = () => {
@@ -1778,31 +1765,36 @@ useEffect(() => {
     } else {
       console.log('🃏 Playing cards:', selectedCards);
       socket.emit('playCard', {
-        gameId: gameState?.gameId,
-        cards: selectedCards
-      });
+      gameId: gameState?.gameId,
+      cards: selectedCards,
+      timerSettings: {
+        enableTimer: settings.enableTimer,
+        timerDuration: settings.timerDuration,
+        timerWarningTime: settings.timerWarningTime
+      }
+    });
       setSelectedCards([]);
       setHasDrawnThisTurn(false);
       setIsDrawing(false);
-
-      setTurnTimer(settings.timerDuration);
-      setTimerWarning(false);
     }
   };
 
   const handleSuitSelect = (suit) => {
     console.log('🃏 Playing wild card with suit:', suit);
     socket.emit('playCard', {
-      gameId: gameState?.gameId,
-      cards: selectedCards,
-      declaredSuit: suit
-    });
+    gameId: gameState?.gameId,
+    cards: selectedCards,
+    declaredSuit: suit,
+    timerSettings: {
+      enableTimer: settings.enableTimer,
+      timerDuration: settings.timerDuration,
+      timerWarningTime: settings.timerWarningTime
+    }
+  });
     setSelectedCards([]);
     setShowSuitSelector(false);
     setHasDrawnThisTurn(false);
     setIsDrawing(false);
-      setTurnTimer(settings.timerDuration);
-      setTimerWarning(false);
   };
 
   const drawCard = () => {
@@ -2207,10 +2199,10 @@ useEffect(() => {
             
             {/* TIMER COMPONENT ADDED HERE */}
             <TurnTimer
-            timeLeft={turnTimer}
-            isWarning={timerWarning}
-            isVisible={player.isCurrentPlayer && gameState.gameState === 'playing' && settings.enableTimer}
-            />
+            timeLeft={globalTimer.timeLeft}
+            isWarning={globalTimer.isWarning}
+            isVisible={player.isCurrentPlayer && gameState.gameState === 'playing' && globalTimer.isActive}
+          />
         </div>
         ))}
     </div>
