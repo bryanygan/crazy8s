@@ -1504,10 +1504,6 @@ const App = () => {
   newSocket.on('disconnect', () => {
     setIsConnected(false);
     console.log('❌ Disconnected from server');
-
-    if (reason !== 'io client disconnect') {
-      addToast('Disconnected from server. Attempting to reconnect...', 'error');
-    }
   });
 
   newSocket.on('reconnect_error', (error) => {
