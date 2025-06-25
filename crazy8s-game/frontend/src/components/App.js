@@ -1329,8 +1329,10 @@ const App = () => {
   }, [settings.timerDuration, settings.timerWarningTime]);
 
   useEffect(() => {
+  if (playerId) {
     playerIdRef.current = playerId;
-  }, [playerId]);
+  }
+}, [playerId]);
 
   // Load settings from localStorage on component mount
   useEffect(() => {
