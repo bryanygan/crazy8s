@@ -6,10 +6,49 @@ const Game = require('./models/game');
 const gameTimers = new Map();
 
 const server = http.createServer(app);
+
+// Updated CORS configuration for production
 const io = socketIo(server, {
     cors: {
-        origin: ["http://localhost:3000", "http://localhost:3001"], // Allow React app
-        methods: ["GET", "POST"]
+        origin: process.env.NODE_ENV === 'production' 
+            ? [
+                "https://crazy8s.me/", 
+                "https://crazy8s-production.up.railway.app",
+              ]
+            : ["http://localhost:3000", "http://localhost:3001"],
+        methods: ["GET", "POST"],
+        allowedHeaders: ["Content-Type"],
+        credentials: true
+    },
+    // Additional configuration for production
+    transports: ['websocket', 'polling'],
+    upgrade: true,
+    rememberUpgrade: true,
+    pingTimeout: 60000,
+    pingInterval: 25000
+});
+
+// Add Express CORS middleware as well
+app.use((req, res, next) => {
+    const allowedOrigins = process.env.NODE_ENV === 'production'
+        ? [
+            "https://crazy8s.me/", 
+            "https://crazy8s-production.up.railway.app",
+          ]
+        : ["http://localhost:3000", "http://localhost:3001"];
+    
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    if (req.method === 'OPTIONS') {
+        res.sendStatus(200);
+    } else {
+        next();
     }
 });
 
@@ -54,6 +93,8 @@ const broadcastGameState = (gameId) => {
 // Set up Socket.IO connections
 io.on('connection', (socket) => {
     console.log('A player connected:', socket.id);
+
+    socket.emit('connect_success', { socketId: socket.id });
 
     // Handle creating a new game
     socket.on('createGame', (data) => {
@@ -733,4 +774,5 @@ const manageGameTimer = (gameId, action, settings = {}) => {
 const PORT = process.env.PORT || 3001; // Changed to 3001 to avoid conflict with React
 server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
