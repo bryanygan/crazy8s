@@ -578,26 +578,56 @@ class Game {
 
         // Calculate final turn position
         let finalPlayerIndex = 0; // Start with current player (index 0)
-        
-        if (totalSkips > 0) {
-            if (playerCount === 2) {
-                // In 2-player: any odd number of skips = keep turn, even = pass turn
-                const keepTurn = (totalSkips % 2 === 1);
-                finalPlayerIndex = keepTurn ? 0 : 1;
-                console.log(`🎮 2-player: ${totalSkips} skips → ${keepTurn ? 'keep turn' : 'pass turn'} (index ${finalPlayerIndex})`);
-            } else {
+
+        if (playerCount === 2) {
+            // 2-player game logic
+            let shouldPassTurn = false;
+            
+            // Handle Jacks (skips) - odd number = keep turn, even number = pass turn
+            if (totalSkips > 0) {
+                const keepTurnFromSkips = (totalSkips % 2 === 1);
+                shouldPassTurn = !keepTurnFromSkips;
+                console.log(`🎮 2-player Jacks: ${totalSkips} skips → ${keepTurnFromSkips ? 'keep turn' : 'pass turn'}`);
+            }
+            
+            // Handle Queens (reverses) - odd number = pass turn, even number = keep turn
+            if (totalReverses > 0) {
+                const passTurnFromReverses = (totalReverses % 2 === 1);
+                // If we already determined to pass from skips, this modifies it
+                if (totalSkips > 0) {
+                    // Both effects present - combine them
+                    shouldPassTurn = shouldPassTurn !== passTurnFromReverses; // XOR logic
+                } else {
+                    // Only reverses
+                    shouldPassTurn = passTurnFromReverses;
+                }
+                console.log(`🎮 2-player Queens: ${totalReverses} reverses → ${passTurnFromReverses ? 'pass turn' : 'keep turn'}`);
+            }
+            
+            // Handle normal cards, draw cards, or wilds
+            if (totalSkips === 0 && totalReverses === 0 && (endsWithNormalCard || totalDrawEffect > 0 || hasWild)) {
+                shouldPassTurn = true;
+                console.log(`🎮 2-player: Normal/Draw/Wild cards → pass turn`);
+            }
+            
+            finalPlayerIndex = shouldPassTurn ? 1 : 0;
+            console.log(`🎮 2-player final result: ${shouldPassTurn ? 'pass turn' : 'keep turn'} (index ${finalPlayerIndex})`);
+            
+        } else {
+            // Multiplayer game logic (3+ players)
+            if (totalSkips > 0) {
                 // In multiplayer: each skip advances by 1, then +1 for normal turn
                 finalPlayerIndex = (0 + totalSkips + 1) % playerCount;
                 console.log(`🎮 Multiplayer: ${totalSkips} skips → advance to index ${finalPlayerIndex}`);
+            } else if (endsWithNormalCard || totalDrawEffect > 0 || hasWild) {
+                // Normal cards, draw cards, or wilds pass the turn
+                finalPlayerIndex = (0 + tempDirection + playerCount) % playerCount;
+                console.log(`🎮 Multiplayer: Normal turn advancement → index ${finalPlayerIndex}`);
+            } else {
+                // Only reverses with no other effects - just direction change and advance
+                finalPlayerIndex = (0 + tempDirection + playerCount) % playerCount;
+                console.log(`🎮 Multiplayer: Reverse only → index ${finalPlayerIndex}`);
             }
-        } else if (endsWithNormalCard || totalDrawEffect > 0 || hasWild) {
-            // Normal cards, draw cards, or wilds pass the turn
-            finalPlayerIndex = (0 + tempDirection + playerCount) % playerCount;
-            console.log(`🎮 Normal turn advancement → index ${finalPlayerIndex}`);
-        } else {
-            // Only reverses with no other effects - just direction change
-            finalPlayerIndex = (0 + tempDirection + playerCount) % playerCount;
-            console.log(`🎮 Reverse only → index ${finalPlayerIndex}`);
         }
 
         // Apply actual direction changes to the game
