@@ -1524,22 +1524,23 @@ const App = () => {
 }, [playerHand, gameState, selectedCards, canStackCards]);
 
 useEffect(() => {
-  if (!timerActive || !settings.enableTimer || gameState?.currentPlayerId !== playerId || gameState?.gameState !== 'playing') {
+  if (!timerActive || !settings.enableTimer || gameState?.gameState !== 'playing') {
     return;
   }
   
   const interval = setInterval(() => {
     setTurnTimer(prev => {
       if (prev <= 1) {
-        // Timer expired: draw a card, then skip turn
-        console.log('⏰ Timer expired - auto drawing card and skipping turn');
-        if (socket && gameState?.gameId) {
-          // Draw a card first
-          socket.emit('drawCard', { gameId: gameState.gameId });
-          // Then skip turn after a short delay to ensure draw completes
-          setTimeout(() => {
-            socket.emit('passTurnAfterDraw', { gameId: gameState.gameId });
-          }, 500); // 0.5s delay
+        // Timer expired
+        if (playerIdRef.current === gameState.currentPlayerId) {
+          // Current player auto draws and passes
+          console.log('⏰ Timer expired - auto drawing card and skipping turn');
+          if (socket && gameState?.gameId) {
+            socket.emit('drawCard', { gameId: gameState.gameId });
+            setTimeout(() => {
+              socket.emit('passTurnAfterDraw', { gameId: gameState.gameId });
+            }, 500);
+          }
         }
         setTimerActive(false);
         setTimerWarning(false);
@@ -1558,21 +1559,15 @@ useEffect(() => {
 // Timer reset logic
 useEffect(() => {
   if (gameState?.gameState === 'playing') {
-    // Reset timer when turn changes
-    if (gameState.currentPlayerId !== playerId) {
-      setTimerActive(false);
-      setTimerWarning(false);
-    } else {
-      // It's my turn - start timer
-      setTurnTimer(settings.enableTimer ? settings.timerDuration : 60);
-      setTimerActive(settings.enableTimer);
-      setTimerWarning(false);
-    }
+    // Reset timer for a new turn
+    setTurnTimer(settings.enableTimer ? settings.timerDuration : 60);
+    setTimerActive(settings.enableTimer);
+    setTimerWarning(false);
   } else {
     setTimerActive(false);
     setTimerWarning(false);
   }
-}, [gameState?.currentPlayerId, gameState?.gameState, playerId, settings.enableTimer, settings.timerDuration]);
+}, [gameState?.currentPlayerId, gameState?.gameState, settings.enableTimer, settings.timerDuration]);
 
   const startGame = () => {
     console.log('🚀 Starting game:', gameState?.gameId);
