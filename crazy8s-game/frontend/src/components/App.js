@@ -882,12 +882,12 @@ const ToastContainer = ({ toasts, onRemoveToast }) => {
 const Toast = ({ toast, index, onClose }) => {
   const [isExiting, setIsExiting] = useState(false);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setIsExiting(true);
     setTimeout(() => {
       onClose();
     }, 300); // Match the animation duration
-  };
+  }, [onClose]);
 
   useEffect(() => {
     // Auto-close timer
