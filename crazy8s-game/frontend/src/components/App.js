@@ -906,6 +906,7 @@ const Toast = ({ toast, index, onClose }) => {
         timerRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast.id]); // ONLY depend on toast.id, NOT onClose
 
   const handleManualClose = () => {
