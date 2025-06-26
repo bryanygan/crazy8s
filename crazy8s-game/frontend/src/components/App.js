@@ -881,22 +881,45 @@ const ToastContainer = ({ toasts, onRemoveToast }) => {
 
 const Toast = ({ toast, index, onClose }) => {
   const [isExiting, setIsExiting] = useState(false);
+  const timerRef = useRef(null);
 
-  const handleClose = useCallback(() => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // Create a stable reference to onClose to prevent timer resets
+    const stableOnClose = () => {
+      console.log(`🍞 Auto-closing toast: ${toast.message}`);
+      setIsExiting(true);
+      setTimeout(() => {
+        onClose();
+      }, 300);
+    };
+
+    // Auto-close timer with stable reference
+    timerRef.current = setTimeout(stableOnClose, 4000);
+    
+    console.log(`🍞 Toast timer started for: ${toast.message}`);
+
+    return () => {
+      if (timerRef.current) {
+        console.log(`🍞 Toast timer cleared for: ${toast.message}`);
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast.id]); // ONLY depend on toast.id, NOT onClose
+
+  const handleManualClose = () => {
+    console.log(`🍞 Manual close toast: ${toast.message}`);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
     setIsExiting(true);
     setTimeout(() => {
       onClose();
-    }, 300); // Match the animation duration
-  }, [onClose]);
-
-  useEffect(() => {
-    // Auto-close timer
-    const timer = setTimeout(() => {
-      handleClose();
-    }, 4000);
-
-    return () => clearTimeout(timer);
-  }, [handleClose]);
+    }, 300);
+  };
 
   const getBackgroundColor = () => {
     switch (toast.type) {
@@ -942,10 +965,10 @@ const Toast = ({ toast, index, onClose }) => {
         overflow: 'hidden',
         border: index === 0 ? '2px solid rgba(255,255,255,0.3)' : 'none'
       }}
-      onClick={handleClose}
+      onClick={handleManualClose}
     >
       {/* Progress bar for the newest notification */}
-      {index === 0 && (
+      {index === 0 && !isExiting && (
         <div style={{
           position: 'absolute',
           bottom: 0,
@@ -1317,9 +1340,10 @@ const App = () => {
     });
   };
 
-  const removeToast = (toastId) => {
-    setToasts(prevToasts => prevToasts.filter(toast => toast.id !== toastId));
-  };
+  const removeToast = useCallback((toastId) => {
+  console.log(`🗑️ Removing toast with ID: ${toastId}`);
+  setToasts(prevToasts => prevToasts.filter(toast => toast.id !== toastId));
+}, []);
 
 
   // Keep refs in sync with settings
@@ -1623,41 +1647,72 @@ useEffect(() => {
   const simulateTurnControl = (cardStack, activePlayers) => {
     if (cardStack.length === 0) return true;
     
-    const isOneVsOne = activePlayers <= 2;
-    let currentPlayerHasTurn = true; // We start with control
+    const playerCount = activePlayers;
+    let totalSkips = 0;
+    let totalReverses = 0;
+    let endsWithNormalCard = false;
     
-    for (const card of cardStack) {
+    console.log(`🎯 Simulating turn control (${playerCount} players):`);
+    
+    // Count effects in the stack
+    for (let i = 0; i < cardStack.length; i++) {
+      const card = cardStack[i];
+      console.log(`  Card ${i + 1}: ${card.rank} of ${card.suit}`);
+      
       switch (card.rank) {
         case 'Jack':
-          // Jack skips opponent, back to us
-          currentPlayerHasTurn = true;
+          totalSkips += 1;
+          endsWithNormalCard = false;
+          console.log(`    → Skip count: ${totalSkips}`);
           break;
           
         case 'Queen':
-          if (isOneVsOne) {
-            // In 1v1, Queen acts as skip
-            currentPlayerHasTurn = true;
-          } else {
-            // In multiplayer, Queen reverses direction
-            currentPlayerHasTurn = !currentPlayerHasTurn;
-          }
+          totalReverses += 1;
+          endsWithNormalCard = false;
+          console.log(`    → Reverse count: ${totalReverses}`);
           break;
           
         case 'Ace':
         case '2':
         case '8':
-          // These have effects but pass turn to next player
-          currentPlayerHasTurn = false;
+          endsWithNormalCard = false;
+          console.log(`    → Special card (${card.rank})`);
           break;
           
         default:
-          // Non-special cards pass the turn
-          currentPlayerHasTurn = false;
+          endsWithNormalCard = true;
+          console.log(`    → Normal card`);
           break;
       }
     }
     
-    return currentPlayerHasTurn;
+    // Calculate final turn position
+    let finalPlayerIndex = 0; // Start with current player
+    
+    if (totalSkips > 0) {
+      if (playerCount === 2) {
+        // In 2-player: odd skips = keep turn, even skips = pass turn
+        const keepTurn = (totalSkips % 2 === 1);
+        finalPlayerIndex = keepTurn ? 0 : 1;
+        console.log(`🎯 2-player: ${totalSkips} skips → ${keepTurn ? 'keep' : 'pass'} turn`);
+      } else {
+        // In multiplayer: totalSkips + 1 for normal advancement
+        finalPlayerIndex = (0 + totalSkips + 1) % playerCount;
+        console.log(`🎯 Multiplayer: ${totalSkips} skips → index ${finalPlayerIndex}`);
+      }
+    } else if (endsWithNormalCard || cardStack.some(c => ['Ace', '2', '8'].includes(c.rank))) {
+      // Normal cards, draw cards, or wilds pass the turn
+      finalPlayerIndex = 1; // Simple advance (direction handled by backend)
+      console.log(`🎯 Normal advancement → pass turn`);
+    } else if (totalReverses > 0) {
+      // Only reverses - direction change but turn advances
+      finalPlayerIndex = 1;
+      console.log(`🎯 Reverse only → pass turn`);
+    }
+    
+    const playerKeepsTurn = (finalPlayerIndex === 0);
+    console.log(`🎯 Final result: Player keeps turn = ${playerKeepsTurn}`);
+    return playerKeepsTurn;
   };
 
   // Enhanced card stack validation with strict turn logic
