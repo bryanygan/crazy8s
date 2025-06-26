@@ -1487,11 +1487,11 @@ const App = () => {
   // Initialize socket connection
 useEffect(() => {
   // Determine backend URL based on environment
-  const BACKEND_URL = process.env.NODE_ENV === 'production' 
-    ? 'https://crazy8s-production.up.railway.app'
-    : 'http://localhost:3001';
+  const BACKEND_URL = window.location.hostname === 'dev.crazy8s.pages.dev'
+  ? 'https://crazy8s-dev.up.railway.appp'  // Dev backend
+  : 'https://crazy8s-production.up.railway.app'; // Production backend
 
-  console.log('🔌 Connecting to:', BACKEND_URL);
+  console.log('🔌 Using backend:', BACKEND_URL, 'for domain:', window.location.hostname);
 
   const newSocket = io(BACKEND_URL, {
     transports: ['websocket', 'polling'],
