@@ -14,9 +14,8 @@ const io = socketIo(server, {
             ? [
                 "https://crazy8s.me/", 
                 "https://crazy8s-production.up.railway.app",
-                "https://dev.crazy8s.pages.dev",
               ]
-            : ["http://localhost:3000", "http://localhost:3001"],
+            : ["http://localhost:3000", "http://localhost:3001", "https://dev.crazy8s.pages.dev"],
         methods: ["GET", "POST"],
         allowedHeaders: ["Content-Type"],
         credentials: true
@@ -37,7 +36,7 @@ app.use((req, res, next) => {
             "https://crazy8s-production.up.railway.app",
             "https://dev.crazy8s.pages.dev",
           ]
-        : ["http://localhost:3000", "http://localhost:3001"];
+        : ["http://localhost:3000", "http://localhost:3001", "https://dev.crazy8s.pages.dev"];
     
     const origin = req.headers.origin;
     if (allowedOrigins.includes(origin)) {
