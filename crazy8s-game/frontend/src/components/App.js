@@ -1487,11 +1487,11 @@ const App = () => {
   // Initialize socket connection
 useEffect(() => {
   // Determine backend URL based on environment
-  const BACKEND_URL = window.location.hostname === 'dev.crazy8s.pages.dev'
-  ? 'https://crazy8s-dev.up.railway.app'  // Dev backend
-  : 'https://crazy8s-production.up.railway.app'; // Production backend
+  const BACKEND_URL = process.env.NODE_ENV === 'production' 
+    ? 'https://crazy8s-production.up.railway.app'
+    : 'http://localhost:3001';
 
-  console.log('🔌 Using backend:', BACKEND_URL, 'for domain:', window.location.hostname);
+  console.log('🔌 Connecting to:', BACKEND_URL);
 
   const newSocket = io(BACKEND_URL, {
     transports: ['websocket', 'polling'],
@@ -2024,16 +2024,25 @@ useEffect(() => {
     console.log('📚 Drawing card');
     setIsDrawing(true);
     socket.emit('drawCard', {
-      gameId: gameState?.gameId
+      gameId: gameState?.gameId,
+      timerSettings: { 
+        enableTimer: settings.enableTimer,
+        timerDuration: settings.timerDuration,
+        timerWarningTime: settings.timerWarningTime
+      }
     });
   };
-
 
   // Allow the player to manually skip their turn after drawing
   const skipTurn = () => {
     console.log('👋 Skipping turn');
     socket.emit('passTurnAfterDraw', {
-      gameId: gameState?.gameId
+      gameId: gameState?.gameId,
+      timerSettings: { 
+        enableTimer: settings.enableTimer,
+        timerDuration: settings.timerDuration,
+        timerWarningTime: settings.timerWarningTime
+      }
     });
     setHasDrawnThisTurn(false);
     setIsDrawing(false);

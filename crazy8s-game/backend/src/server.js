@@ -15,7 +15,7 @@ const io = socketIo(server, {
                 "https://crazy8s.me/", 
                 "https://crazy8s-production.up.railway.app",
               ]
-            : ["http://localhost:3000", "http://localhost:3001", "https://dev.crazy8s.pages.dev"],
+            : ["http://localhost:3000", "http://localhost:3001"],
         methods: ["GET", "POST"],
         allowedHeaders: ["Content-Type"],
         credentials: true
@@ -34,9 +34,8 @@ app.use((req, res, next) => {
         ? [
             "https://crazy8s.me/", 
             "https://crazy8s-production.up.railway.app",
-            "https://dev.crazy8s.pages.dev",
           ]
-        : ["http://localhost:3000", "http://localhost:3001", "https://dev.crazy8s.pages.dev"];
+        : ["http://localhost:3000", "http://localhost:3001"];
     
     const origin = req.headers.origin;
     if (allowedOrigins.includes(origin)) {
@@ -401,7 +400,7 @@ io.on('connection', (socket) => {
             console.error('Error playing card:', error);
             socket.emit('error', 'Failed to play card: ' + error.message);
         }
-        });
+    });
     
     socket.on('updateTimerSettings', (data) => {
         try {
@@ -434,7 +433,7 @@ io.on('connection', (socket) => {
     // Handle drawing cards
     socket.on('drawCard', (data) => {
         try {
-            const { gameId, count = 1 } = data;
+            const { gameId, count = 1, timerSettings } = data; // Add timerSettings destructuring
             const game = Game.findById(gameId);
             
             if (!game) {
@@ -468,27 +467,23 @@ io.on('connection', (socket) => {
                     drawnCards: result.drawnCards,
                     playableDrawnCards: result.playableDrawnCards,
                     canPlayDrawnCard: result.canPlayDrawnCard,
-                    fromSpecialCard: result.fromSpecialCard,
-                    newDeckAdded: result.newDeckAdded
+                    fromSpecialCard: result.fromSpecialCard
                 });
-                
-                // If a new deck was added, notify all players
-                if (result.newDeckAdded && result.newDeckMessage) {
-                    console.log(`🆕 Broadcasting new deck message: ${result.newDeckMessage}`);
-                    io.to(gameId).emit('newDeckAdded', {
-                        message: result.newDeckMessage,
-                        playerName: player.name
-                    });
-                }
                 
                 // Notify other players that this player drew cards
                 socket.to(gameId).emit('playerDrewCards', {
                     playerName: player.name,
                     cardCount: result.drawnCards.length,
-                    canPlayDrawn: result.canPlayDrawnCard,
-                    fromPenalty: result.fromSpecialCard,
-                    newDeckAdded: result.newDeckAdded
+                    canPlayDrawn: result.canPlayDrawnCard
                 });
+
+                // RESET TIMER IF TURN PASSED TO NEXT PLAYER (NEW CODE)
+                // If the current player changed after drawing (meaning turn was passed automatically)
+                const currentPlayerAfterDraw = game.getCurrentPlayer();
+                if (currentPlayerAfterDraw && currentPlayerAfterDraw.id !== playerId && timerSettings && timerSettings.enableTimer) {
+                    console.log(`⏰ Turn passed to ${currentPlayerAfterDraw.name} after draw - resetting timer`);
+                    manageGameTimer(gameId, 'reset', timerSettings);
+                }
 
             } else {
                 console.log(`Draw cards failed for ${player.name}: ${result.error}`);
@@ -502,9 +497,9 @@ io.on('connection', (socket) => {
     });
 
     // New event: Play a card that was just drawn
-    socket.on('playDrawnCard', (data) => {
+    socket.on('passTurnAfterDraw', (data) => {
         try {
-            const { gameId, card, declaredSuit } = data;
+            const { gameId, timerSettings } = data; // Add timerSettings destructuring
             const game = Game.findById(gameId);
             
             if (!game) {
@@ -520,34 +515,37 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            console.log(`${player.name} attempting to play drawn card:`, card);
+            console.log(`${player.name} passing turn after drawing`);
 
-            const result = game.playDrawnCard(playerId, card, declaredSuit);
+            const result = game.passTurnAfterDraw(playerId);
             
             if (result.success) {
-                console.log(`${player.name} played drawn card successfully`);
+                console.log(`${player.name} passed turn successfully`);
+                
+                // RESET TIMER FOR NEXT PLAYER 
+                if (timerSettings && timerSettings.enableTimer) {
+                    console.log(`⏰ ${player.name} passed turn - resetting timer for next player`);
+                    manageGameTimer(gameId, 'reset', timerSettings);
+                }
                 
                 // Broadcast updated game state to all players
                 broadcastGameState(gameId);
                 
-                socket.emit('success', result.message || 'Drawn card played successfully');
+                socket.emit('success', 'Turn passed');
                 
-                // Broadcast the play to all players
-                io.to(gameId).emit('cardPlayed', {
-                    playerName: player.name,
-                    cardsPlayed: result.cardsPlayed,
-                    message: result.message,
-                    wasDrawnCard: true
+                // Notify other players
+                socket.to(gameId).emit('playerPassedTurn', {
+                    playerName: player.name
                 });
 
             } else {
-                console.log(`Play drawn card failed for ${player.name}: ${result.error}`);
+                console.log(`Pass turn failed for ${player.name}: ${result.error}`);
                 socket.emit('error', result.error);
             }
 
         } catch (error) {
-            console.error('Error playing drawn card:', error);
-            socket.emit('error', 'Failed to play drawn card');
+            console.error('Error passing turn:', error);
+            socket.emit('error', 'Failed to pass turn');
         }
     });
 
