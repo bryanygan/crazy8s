@@ -14,6 +14,7 @@ const io = socketIo(server, {
             ? [
                 "https://crazy8s.me/", 
                 "https://crazy8s-production.up.railway.app",
+                "https://dev.crazy8s.pages.dev",
               ]
             : ["http://localhost:3000", "http://localhost:3001"],
         methods: ["GET", "POST"],
@@ -34,6 +35,7 @@ app.use((req, res, next) => {
         ? [
             "https://crazy8s.me/", 
             "https://crazy8s-production.up.railway.app",
+            "https://dev.crazy8s.pages.dev",
           ]
         : ["http://localhost:3000", "http://localhost:3001"];
     
