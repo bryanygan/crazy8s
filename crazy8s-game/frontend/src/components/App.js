@@ -1578,14 +1578,31 @@ useEffect(() => {
     }
   });
 
-  newSocket.on('playerDrewCards', (data) => {
-    console.log('📚 Player drew cards:', data);
-    const message = data.canPlayDrawn 
+  newSocket.on('newDeckAdded', (data) => {
+  console.log('🆕 New deck added:', data);
+  addToast(data.message, 'info');
+});
+
+newSocket.on('playerDrewCards', (data) => {
+  console.log('📚 Player drew cards:', data);
+  
+  let message = '';
+  if (data.fromPenalty) {
+    message = data.canPlayDrawn 
+      ? `${data.playerName} drew ${data.cardCount} penalty cards and can play some!`
+      : `${data.playerName} drew ${data.cardCount} penalty cards`;
+  } else {
+    message = data.canPlayDrawn 
       ? `${data.playerName} drew ${data.cardCount} card(s) and can play some!`
       : `${data.playerName} drew ${data.cardCount} card(s)`;
-    addToast(message, 'info');
-  });
-
+  }
+  
+  if (data.newDeckAdded) {
+    message += ' 🆕';
+  }
+  
+  addToast(message, 'info');
+});
   newSocket.on('drawComplete', (data) => {
     console.log('🎲 Draw completed:', data);
     setIsDrawing(false);

@@ -526,7 +526,7 @@ class Game {
         
         console.log(`🎮 Simulating turn progression (${playerCount} players, starting direction: ${tempDirection}):`);
         
-        // Process each card in sequence for effects
+        // Process each card in sequence for effects - DON'T call nextPlayer() here
         for (let i = 0; i < cards.length; i++) {
             const card = cards[i];
             console.log(`  Processing card ${i + 1}/${cards.length}: ${card.rank} of ${card.suit}`);
@@ -652,13 +652,37 @@ class Game {
             console.log('🎮 Cleared declared suit (no wilds)');
         }
 
-        // Set the final player
-        if (finalPlayerIndex === 0) {
-            console.log('🎮 Turn control maintained - staying with current player');
+        // Check if stack ends with penalty cards
+        const lastCard = cards[cards.length - 1];
+        const endsWithPenaltyCard = (lastCard.rank === 'Ace' || lastCard.rank === '2');
+        
+        // Set the final player - KEY FIX FOR PENALTY CARD LOGIC
+        if (finalPlayerIndex === 0 && !endsWithPenaltyCard) {
+            console.log('🎮 Turn control maintained - staying with current player (no penalty cards at end)');
+            // Don't change currentPlayerIndex - player keeps the turn
         } else {
-            this.currentPlayerIndex = finalPlayerIndex;
-            console.log(`🎮 Turn advanced to index ${finalPlayerIndex}: ${this.activePlayers[finalPlayerIndex]?.name}`);
+            // Either normal advancement OR stack ends with penalty cards
+            let targetIndex;
+            
+            if (finalPlayerIndex === 0 && endsWithPenaltyCard) {
+                // Player maintained turn control through special cards, but stack ends with penalty cards
+                // Pass turn to next player in current direction
+                const currentIndex = this.currentPlayerIndex;
+                targetIndex = (currentIndex + this.direction + playerCount) % playerCount;
+                console.log(`🎮 Turn control maintained through specials, but stack ends with penalty cards → pass to next player`);
+            } else {
+                // Normal advancement based on turn control calculation
+                const currentIndex = this.currentPlayerIndex;
+                targetIndex = (currentIndex + finalPlayerIndex) % playerCount;
+                console.log(`🎮 Normal turn advancement based on special card effects`);
+            }
+            
+            this.currentPlayerIndex = targetIndex;
+            console.log(`🎮 Turn advanced to index ${targetIndex}: ${this.activePlayers[targetIndex]?.name}`);
         }
+
+        console.log(`🎮 Final game state: Player ${this.currentPlayerIndex} (${this.getCurrentPlayer()?.name}) has the turn`);
+        console.log(`🎮 Draw stack: ${this.drawStack} cards waiting for ${this.getCurrentPlayer()?.name}`);
 
         return totalDrawEffect;
     }
@@ -700,20 +724,80 @@ class Game {
         isFromSpecialCard = true;
     }
 
-    const drawnCards = [];
-    for (let i = 0; i < actualDrawCount; i++) {
-        if (this.drawPile.length === 0) {
-            this.reshuffleDiscardPile();
-        }
+    console.log(`🎲 ${player.name} needs to draw ${actualDrawCount} cards`);
+    console.log(`  Current draw pile: ${this.drawPile.length} cards`);
+    console.log(`  Current discard pile: ${this.discardPile.length} cards`);
 
-        if (this.drawPile.length > 0) {
+    // Calculate total available cards before drawing
+    const availableCards = this.drawPile.length + Math.max(0, this.discardPile.length - 1);
+    console.log(`  Available cards for drawing: ${availableCards}`);
+
+    // Determine if we need to add a new deck
+    let needsNewDeck = false;
+    let newDeckMessage = '';
+
+    if (actualDrawCount > availableCards) {
+        console.log(`  ⚠️  Need ${actualDrawCount} cards but only ${availableCards} available`);
+        needsNewDeck = true;
+    }
+
+    // Attempt to get enough cards
+    const drawnCards = [];
+    let cardsStillNeeded = actualDrawCount;
+
+    // Draw from existing draw pile first
+    while (cardsStillNeeded > 0 && this.drawPile.length > 0) {
+        const card = this.drawPile.pop();
+        player.hand.push(card);
+        drawnCards.push(card);
+        cardsStillNeeded--;
+    }
+
+    console.log(`  Drew ${drawnCards.length} cards from draw pile, still need ${cardsStillNeeded}`);
+
+    // If we still need cards, try to reshuffle discard pile
+    if (cardsStillNeeded > 0) {
+        const reshuffleSuccess = this.reshuffleDiscardPile();
+        
+        if (reshuffleSuccess) {
+            // Draw from newly reshuffled cards
+            while (cardsStillNeeded > 0 && this.drawPile.length > 0) {
+                const card = this.drawPile.pop();
+                player.hand.push(card);
+                drawnCards.push(card);
+                cardsStillNeeded--;
+            }
+            console.log(`  Drew ${actualDrawCount - cardsStillNeeded} more cards after reshuffle, still need ${cardsStillNeeded}`);
+        }
+    }
+
+    // If we STILL need cards, add a new deck
+    if (cardsStillNeeded > 0) {
+        console.log(`  🆕 Adding new deck - still need ${cardsStillNeeded} cards`);
+        const newCardsAdded = this.addNewDeck();
+        newDeckMessage = `A new deck has been shuffled in due to high card demand! (+${newCardsAdded} cards)`;
+        
+        // Draw the remaining needed cards from the new deck
+        while (cardsStillNeeded > 0 && this.drawPile.length > 0) {
             const card = this.drawPile.pop();
             player.hand.push(card);
             drawnCards.push(card);
-        } else {
-            break; // No more cards available
+            cardsStillNeeded--;
         }
+        
+        console.log(`  Drew final ${actualDrawCount - cardsStillNeeded} cards from new deck`);
     }
+
+    // Final verification
+    if (cardsStillNeeded > 0) {
+        console.error(`  ❌ CRITICAL ERROR: Still need ${cardsStillNeeded} cards but no more available!`);
+        return {
+            success: false,
+            error: `Could not draw enough cards - missing ${cardsStillNeeded} cards`
+        };
+    }
+
+    console.log(`  ✅ Successfully drew ${drawnCards.length} cards total`);
 
     // Mark player as having drawn this turn (unless it's from special card effect)
     if (!isFromSpecialCard) {
@@ -724,7 +808,7 @@ class Game {
     const playableDrawnCards = this.getPlayableDrawnCards(drawnCards, playerId);
     const canPlayDrawnCard = playableDrawnCards.length > 0;
 
-    // FIXED: Don't auto-advance turn after drawing penalty cards
+    // Handle turn progression based on card type
     if (isFromSpecialCard) {
         // After drawing penalty cards, player gets a chance to play if they can
         if (canPlayDrawnCard) {
@@ -746,14 +830,25 @@ class Game {
         }
     }
 
-    return {
+    const result = {
         success: true,
         drawnCards: drawnCards.map(card => this.cardToString(card)),
         playableDrawnCards: playableDrawnCards,
         canPlayDrawnCard: canPlayDrawnCard,
         fromSpecialCard: isFromSpecialCard,
-        gameState: this.getGameState()
+        gameState: this.getGameState(),
+        newDeckAdded: needsNewDeck,
+        newDeckMessage: newDeckMessage
     };
+
+    console.log(`🎲 Draw complete:`, {
+        cardsDrawn: drawnCards.length,
+        playerHandSize: player.hand.length,
+        playableCards: playableDrawnCards.length,
+        newDeckAdded: needsNewDeck
+    });
+
+    return result;
 }
 
     // New method to get playable cards from drawn cards
@@ -887,13 +982,51 @@ class Game {
     }
 
     reshuffleDiscardPile() {
-        if (this.discardPile.length <= 1) return;
+        console.log('🔄 Attempting to reshuffle discard pile...');
+        console.log(`  Draw pile: ${this.drawPile.length} cards`);
+        console.log(`  Discard pile: ${this.discardPile.length} cards`);
+        
+        if (this.discardPile.length <= 1) {
+            console.log('  ❌ Cannot reshuffle - discard pile only has top card');
+            return false; // Cannot reshuffle if only top card remains
+        }
 
         // Keep top card, shuffle the rest back into draw pile
         const topCard = this.discardPile.pop();
-        this.drawPile = shuffleDeck([...this.discardPile]);
+        const cardsToShuffle = [...this.discardPile];
+        
+        // Shuffle the cards
+        const { shuffleDeck } = require('../utils/deck');
+        const shuffledCards = shuffleDeck(cardsToShuffle);
+        
+        // Add shuffled cards to draw pile
+        this.drawPile.push(...shuffledCards);
+        
+        // Reset discard pile with just the top card
         this.discardPile = [topCard];
+        
+        console.log(`  ✅ Reshuffled ${shuffledCards.length} cards back into draw pile`);
+        console.log(`  New draw pile size: ${this.drawPile.length}`);
+        
+        return true;
     }
+
+    addNewDeck() {
+        console.log('🆕 Adding new deck due to high card demand...');
+        
+        const { createDeck, shuffleDeck } = require('../utils/deck');
+        const newDeck = createDeck();
+        const shuffledNewDeck = shuffleDeck(newDeck);
+        
+        // Add the new deck to the draw pile
+        this.drawPile.push(...shuffledNewDeck);
+        
+        console.log(`  ✅ Added fresh 52-card deck to draw pile`);
+        console.log(`  New draw pile size: ${this.drawPile.length}`);
+        
+        return shuffledNewDeck.length;
+    }
+
 
     nextPlayer() {
         if (this.activePlayers.length === 0) return;

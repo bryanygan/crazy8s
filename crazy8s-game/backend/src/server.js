@@ -467,14 +467,26 @@ io.on('connection', (socket) => {
                     drawnCards: result.drawnCards,
                     playableDrawnCards: result.playableDrawnCards,
                     canPlayDrawnCard: result.canPlayDrawnCard,
-                    fromSpecialCard: result.fromSpecialCard
+                    fromSpecialCard: result.fromSpecialCard,
+                    newDeckAdded: result.newDeckAdded
                 });
+                
+                // If a new deck was added, notify all players
+                if (result.newDeckAdded && result.newDeckMessage) {
+                    console.log(`🆕 Broadcasting new deck message: ${result.newDeckMessage}`);
+                    io.to(gameId).emit('newDeckAdded', {
+                        message: result.newDeckMessage,
+                        playerName: player.name
+                    });
+                }
                 
                 // Notify other players that this player drew cards
                 socket.to(gameId).emit('playerDrewCards', {
                     playerName: player.name,
                     cardCount: result.drawnCards.length,
-                    canPlayDrawn: result.canPlayDrawnCard
+                    canPlayDrawn: result.canPlayDrawnCard,
+                    fromPenalty: result.fromSpecialCard,
+                    newDeckAdded: result.newDeckAdded
                 });
 
             } else {
