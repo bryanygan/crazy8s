@@ -1488,7 +1488,7 @@ const App = () => {
 useEffect(() => {
   // Determine backend URL based on environment
   const BACKEND_URL = window.location.hostname === 'dev.crazy8s.pages.dev'
-  ? 'https://crazy8s-dev.up.railway.appp'  // Dev backend
+  ? 'https://crazy8s-dev.up.railway.app'  // Dev backend
   : 'https://crazy8s-production.up.railway.app'; // Production backend
 
   console.log('🔌 Using backend:', BACKEND_URL, 'for domain:', window.location.hostname);
