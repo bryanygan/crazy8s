@@ -549,53 +549,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // New event: Pass turn after drawing
-    socket.on('passTurnAfterDraw', (data) => {
-        try {
-            const { gameId } = data;
-            const game = Game.findById(gameId);
-            
-            if (!game) {
-                socket.emit('error', 'Game not found');
-                return;
-            }
-
-            const info = connectedPlayers.get(socket.id);
-            const playerId = info ? info.playerId : socket.id;
-            const player = game.getPlayerById(playerId);
-            if (!player) {
-                socket.emit('error', 'You are not part of this game');
-                return;
-            }
-
-            console.log(`${player.name} passing turn after drawing`);
-
-            const result = game.passTurnAfterDraw(playerId);
-            
-            if (result.success) {
-                console.log(`${player.name} passed turn successfully`);
-                
-                // Broadcast updated game state to all players
-                broadcastGameState(gameId);
-                
-                socket.emit('success', 'Turn passed');
-                
-                // Notify other players
-                socket.to(gameId).emit('playerPassedTurn', {
-                    playerName: player.name
-                });
-
-            } else {
-                console.log(`Pass turn failed for ${player.name}: ${result.error}`);
-                socket.emit('error', result.error);
-            }
-
-        } catch (error) {
-            console.error('Error passing turn:', error);
-            socket.emit('error', 'Failed to pass turn');
-        }
-    });
-
     // Handle chat messages
     socket.on('chat message', (message) => {
         try {

@@ -1209,6 +1209,7 @@ const App = () => {
   const [copiedGameId, setCopiedGameId] = useState(false);
   const [hasDrawnThisTurn, setHasDrawnThisTurn] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [lastActionTime, setLastActionTime] = useState(0);
   const [globalTimer, setGlobalTimer] = useState({
     timeLeft: 60,
     isWarning: false,
@@ -1319,10 +1320,13 @@ const App = () => {
   const timerDurationRef = useRef(settings.timerDuration);
   const timerWarningTimeRef = useRef(settings.timerWarningTime);
   const playerIdRef = useRef(playerId);
+  const hasDrawnThisTurnRef = useRef(hasDrawnThisTurn);
+  const lastSkipTimeRef = useRef(0);
+  const [isSkipping, setIsSkipping] = useState(false);
 
   const addToast = (message, type = 'info') => {
     const newToast = {
-      id: Date.now() + Math.random(), // Unique ID
+      id: Date.now() + Math.random(),
       message,
       type,
       timestamp: Date.now()
@@ -1331,9 +1335,9 @@ const App = () => {
     setToasts(prevToasts => {
       const newToasts = [newToast, ...prevToasts];
       
-      // If we have more than 5 toasts, remove the oldest ones
-      if (newToasts.length > 5) {
-        return newToasts.slice(0, 5);
+      // If we have more than 3 toasts, remove the oldest ones
+      if (newToasts.length > 3) {
+        return newToasts.slice(0, 3);
       }
       
       return newToasts;
@@ -1357,6 +1361,11 @@ const App = () => {
     playerIdRef.current = playerId;
   }
 }, [playerId]);
+
+// Keep hasDrawnThisTurn ref in sync
+  useEffect(() => {
+    hasDrawnThisTurnRef.current = hasDrawnThisTurn;
+  }, [hasDrawnThisTurn]);
 
   // Load settings from localStorage on component mount
   useEffect(() => {
@@ -1449,6 +1458,24 @@ const App = () => {
     currentTime: globalTimer.timeLeft
   });
 }, [settings.enableTimer, settings.timerDuration, settings.timerWarningTime, globalTimer.isActive, globalTimer.timeLeft]);
+
+  // Reset drawing state when game state changes players
+  useEffect(() => {
+    if (gameState?.currentPlayerId !== playerId) {
+      setHasDrawnThisTurn(false);
+      setIsDrawing(false);
+      setIsSkipping(false); 
+    }
+  }, [gameState?.currentPlayerId, playerId]);
+
+  // Clear selected cards when turn changes
+  useEffect(() => {
+    const isMyTurn = gameState?.currentPlayerId === playerId;
+    if (!isMyTurn) {
+      setSelectedCards([]);
+    }
+  }, [gameState?.currentPlayerId, playerId]);
+
   // Debug logging helper
   const addDebugLog = (message, type = 'info', data = null) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -1562,6 +1589,11 @@ useEffect(() => {
 
   newSocket.on('error', (errorMsg) => {
     console.log('❌ Error:', errorMsg);
+    // Don't show 'not your turn' errors if we just tried to skip after drawing
+    if (errorMsg.includes('Not your turn') && hasDrawnThisTurnRef.current) {
+      console.log('🔇 Suppressing "not your turn" error after drawing');
+      return;
+    }
     addToast(errorMsg, 'error');
   });
 
@@ -1876,6 +1908,17 @@ useEffect(() => {
   });
 };
 
+useEffect(() => {
+  // Reset states when turn changes away from us
+  if (gameState?.currentPlayerId !== playerId) {
+    setIsSkipping(false);
+    // Cancel any pending skip actions
+    if (lastSkipTimeRef.current && Date.now() - lastSkipTimeRef.current < 1000) {
+      lastSkipTimeRef.current = 0; // Reset to prevent stale skips
+    }
+  }
+}, [gameState?.currentPlayerId, playerId]);
+
   // Create a debug game on the server
   const startDebugGame = () => {
     if (!socket) return;
@@ -2016,12 +2059,27 @@ useEffect(() => {
   };
 
   const drawCard = () => {
+    const now = Date.now();
+    
+    // Prevent rapid-fire draw requests
+    if (now - lastActionTime < 1000) {
+      console.log('⚠️ Draw request ignored - too soon after last action');
+      return;
+    }
+
+    // Check if it's our turn first
+    if (!isMyTurn) {
+      console.log('⚠️ Cannot draw card - not our turn');
+      return;
+    }
+
     if (isDrawing || hasDrawnThisTurn) {
       addToast('You have already drawn cards this turn', 'error');
       return;
     }
 
     console.log('📚 Drawing card');
+    setLastActionTime(now);
     setIsDrawing(true);
     socket.emit('drawCard', {
       gameId: gameState?.gameId,
@@ -2035,7 +2093,38 @@ useEffect(() => {
 
   // Allow the player to manually skip their turn after drawing
   const skipTurn = () => {
+    const now = Date.now();
+    
+    // Prevent duplicate skip requests within 2 seconds
+    if (now - lastSkipTimeRef.current < 2000) {
+      console.log('⚠️ Skip request ignored - too soon after last skip');
+      return;
+    }
+
+    // Prevent duplicate skip requests
+    if (isSkipping) {
+      console.log('⚠️ Already skipping turn');
+      return;
+    }
+
+    // Check if it's actually our turn before skipping
+    if (!isMyTurn) {
+      console.log('⚠️ Cannot skip turn - not our turn');
+      return;
+    }
+    
+    // Check if we have pending turn pass or have drawn this turn
+    if (!hasDrawnThisTurn && gameState.pendingTurnPass !== playerId) {
+      console.log('⚠️ Cannot skip turn - no pending turn pass or haven\'t drawn');
+      addToast('You must draw a card before skipping your turn', 'error');
+      return;
+    }
+
     console.log('👋 Skipping turn');
+    lastSkipTimeRef.current = now; // Record the skip time
+    setIsSkipping(true);
+    
+    // IMPORTANT: Only send ONE event
     socket.emit('passTurnAfterDraw', {
       gameId: gameState?.gameId,
       timerSettings: { 
@@ -2044,8 +2133,12 @@ useEffect(() => {
         timerWarningTime: settings.timerWarningTime
       }
     });
+    
     setHasDrawnThisTurn(false);
     setIsDrawing(false);
+    
+    // Reset skipping state after a delay
+    setTimeout(() => setIsSkipping(false), 1000);
   };
 
   const sliderStyles = `
@@ -2497,21 +2590,22 @@ useEffect(() => {
             </button>
             <button
               onClick={skipTurn}
-              disabled={gameState.pendingTurnPass !== playerId}
+              disabled={!isMyTurn || (!hasDrawnThisTurn && gameState.pendingTurnPass !== playerId) || isSkipping || !gameState || gameState.gameState !== 'playing'}
               style={{
                 padding: '12px 25px',
-                backgroundColor: '#95a5a6',
+                backgroundColor: (isMyTurn && (hasDrawnThisTurn || gameState.pendingTurnPass === playerId) && !isSkipping && gameState?.gameState === 'playing') ? '#95a5a6' : '#bdc3c7',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '8px',
-                cursor: gameState.pendingTurnPass === playerId ? 'pointer' : 'not-allowed',
+                cursor: (isMyTurn && (hasDrawnThisTurn || gameState.pendingTurnPass === playerId) && !isSkipping && gameState?.gameState === 'playing') ? 'pointer' : 'not-allowed',
                 fontSize: '16px',
                 fontWeight: 'bold',
                 boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.2s ease',
+                opacity: (isMyTurn && (hasDrawnThisTurn || gameState.pendingTurnPass === playerId) && !isSkipping && gameState?.gameState === 'playing') ? 1 : 0.6
               }}
             >
-              ⏭️ Skip Turn
+              {isSkipping ? '⏳ Skipping...' : '⏭️ Skip Turn'}
             </button>
           </div>
           
