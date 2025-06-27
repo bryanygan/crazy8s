@@ -715,6 +715,156 @@ io.on('connection', (socket) => {
             socket.emit('error', 'Failed to start new game: ' + error.message);
         }
     });
+
+    // Handle play again vote
+    socket.on('votePlayAgain', (data) => {
+        console.log('🗳️ [SERVER] Received votePlayAgain:', data);
+        try {
+            const { gameId } = data;
+            
+            if (!gameId) {
+                socket.emit('error', 'Game ID is required for play again vote');
+                return;
+            }
+
+            const game = Game.findById(gameId);
+            
+            if (!game) {
+                socket.emit('error', 'Game not found');
+                return;
+            }
+
+            // Verify the requesting player is part of this game
+            const player = connectedPlayers.get(socket.id);
+            if (!player || player.gameId !== gameId) {
+                socket.emit('error', 'You are not part of this game');
+                return;
+            }
+
+            console.log(`🗳️ Play again vote by ${player.name} for game ${gameId}`);
+
+            // Add the vote
+            const voteResult = game.addPlayAgainVote(player.playerId);
+            
+            if (voteResult.success) {
+                // Broadcast vote status to all players
+                io.to(gameId).emit('playAgainVoteUpdate', {
+                    votedPlayers: voteResult.votedPlayers,
+                    totalPlayers: voteResult.totalPlayers,
+                    allVoted: voteResult.allVoted,
+                    creatorVoted: voteResult.creatorVoted,
+                    canStartGame: voteResult.canStartGame,
+                    gameCreator: voteResult.gameCreator
+                });
+
+                console.log(`🗳️ Vote update sent: ${voteResult.votedPlayers.length}/${voteResult.totalPlayers} voted`);
+            } else {
+                socket.emit('error', voteResult.error);
+            }
+
+        } catch (error) {
+            console.error('🗳️ Error handling play again vote:', error);
+            socket.emit('error', 'Failed to process vote: ' + error.message);
+        }
+    });
+
+    // Handle removing play again vote
+    socket.on('removePlayAgainVote', (data) => {
+        console.log('🗳️ [SERVER] Received removePlayAgainVote:', data);
+        try {
+            const { gameId } = data;
+            const game = Game.findById(gameId);
+            const player = connectedPlayers.get(socket.id);
+            
+            if (!game || !player || player.gameId !== gameId) {
+                socket.emit('error', 'Invalid game or player');
+                return;
+            }
+
+            console.log(`🗳️ Removing play again vote by ${player.name} for game ${gameId}`);
+
+            const voteResult = game.removePlayAgainVote(player.playerId);
+            
+            if (voteResult.success) {
+                io.to(gameId).emit('playAgainVoteUpdate', {
+                    votedPlayers: voteResult.votedPlayers,
+                    totalPlayers: voteResult.totalPlayers,
+                    allVoted: voteResult.allVoted,
+                    creatorVoted: voteResult.creatorVoted,
+                    canStartGame: voteResult.canStartGame,
+                    gameCreator: voteResult.gameCreator
+                });
+            }
+
+        } catch (error) {
+            console.error('🗳️ Error removing play again vote:', error);
+            socket.emit('error', 'Failed to remove vote: ' + error.message);
+        }
+    });
+
+    // Handle actual game start (only by creator when all voted)
+    socket.on('startNewGame', (data) => {
+        try {
+            const { gameId } = data;
+            const game = Game.findById(gameId);
+            const player = connectedPlayers.get(socket.id);
+            
+            if (!game || !player || player.gameId !== gameId) {
+                socket.emit('error', 'Invalid game or player');
+                return;
+            }
+
+            // Only game creator can start the new game
+            if (player.playerId !== game.gameCreator) {
+                socket.emit('error', 'Only the game creator can start the new game');
+                return;
+            }
+
+            const votingStatus = game.getPlayAgainVotingStatus();
+            if (!votingStatus.canStartGame) {
+                socket.emit('error', 'Cannot start game - not all players have voted or creator has not voted');
+                return;
+            }
+
+            console.log(`🚀 Starting new game by creator ${player.name} for game ${gameId}`);
+
+            // Call the resetForNewGame method
+            const result = game.resetForNewGame();
+            
+            if (result.success) {
+                console.log(`🔄 Game ${gameId} successfully reset for new game`);
+                
+                // Restart timer if timer settings are available and enabled
+                if (game.timerSettings && game.timerSettings.enableTimer) {
+                    console.log('🔄 Restarting timer for new game');
+                    manageGameTimer(gameId, 'start', game.timerSettings);
+                }
+                
+                // Broadcast updated game state to all players in the game
+                broadcastGameState(gameId);
+                
+                // Send success message to all players
+                io.to(gameId).emit('success', `🎮 New game started! ${result.message}`);
+                
+                // Send special notification about the new game
+                io.to(gameId).emit('newGameStarted', {
+                    message: 'A new game has started!',
+                    playerCount: game.players.length,
+                    startedBy: player.name
+                });
+
+                console.log(`🔄 New game notifications sent to all players in ${gameId}`);
+                
+            } else {
+                console.log(`🔄 Failed to reset game ${gameId}: ${result.error}`);
+                socket.emit('error', result.error);
+            }
+
+        } catch (error) {
+            console.error('🚀 Error starting new game:', error);
+            socket.emit('error', 'Failed to start new game: ' + error.message);
+        }
+    });
 });
 
 // Broadcast timer updates to all players in a game

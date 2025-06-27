@@ -1349,6 +1349,16 @@ const App = () => {
   setToasts(prevToasts => prevToasts.filter(toast => toast.id !== toastId));
 }, []);
 
+    // Play again voting
+  const [playAgainVotes, setPlayAgainVotes] = useState({
+    votedPlayers: [],
+    totalPlayers: 0,
+    allVoted: false,
+    creatorVoted: false,
+    canStartGame: false,
+    gameCreator: null
+  });
+
 
   // Keep refs in sync with settings
   useEffect(() => {
@@ -1575,12 +1585,28 @@ useEffect(() => {
     console.log('  📊 Current Player:', data.currentPlayer, '(ID:', data.currentPlayerId, ')');
     console.log('  🆔 My Player ID:', playerIdRef.current);
     console.log('  🎯 Is My Turn:', data.currentPlayerId === playerIdRef.current);
+    
     if (data.currentPlayerId !== playerIdRef.current) {
       setHasDrawnThisTurn(false);
       setIsDrawing(false);
     }
+    
+    // Initialize play again voting when game finishes
+    if (data.gameState === 'finished' && gameState?.gameState !== 'finished') {
+      console.log('🎮 Game finished - initializing play again voting');
+      setPlayAgainVotes({
+        votedPlayers: [],
+        totalPlayers: data.players.filter(p => p.isConnected).length,
+        allVoted: false,
+        creatorVoted: false,
+        canStartGame: false,
+        gameCreator: data.players[0]?.id || null // First player is typically the creator
+      });
+    }
+    
     setGameState(data);
   });
+
 
   newSocket.on('handUpdate', (hand) => {
     console.log('🃏 Hand updated:', hand.length, 'cards');
@@ -1588,6 +1614,7 @@ useEffect(() => {
   });
 
   newSocket.on('error', (errorMsg) => {
+    console.log('❌ [FRONTEND] Socket Error:', errorMsg);
     console.log('❌ Error:', errorMsg);
     // Don't show 'not your turn' errors if we just tried to skip after drawing
     if (errorMsg.includes('Not your turn') && hasDrawnThisTurnRef.current) {
@@ -1668,6 +1695,32 @@ newSocket.on('playerDrewCards', (data) => {
     });
   });
 
+  // Handler for play again errors
+  newSocket.on('playAgainError', (errorMsg) => {
+    console.log('❌ Play Again Error:', errorMsg);
+    addToast(`Failed to start new game: ${errorMsg}`, 'error');
+  });
+
+    newSocket.on('playAgainVoteUpdate', (voteData) => {
+    console.log('🗳️ [FRONTEND] Received playAgainVoteUpdate:', voteData);
+    console.log('🗳️ Play again vote update:', voteData);
+    
+    setPlayAgainVotes({
+      votedPlayers: voteData.votedPlayers || [],
+      totalPlayers: voteData.totalPlayers || 0,
+      allVoted: voteData.allVoted || false,
+      creatorVoted: voteData.creatorVoted || false,
+      canStartGame: voteData.canStartGame || false,
+      gameCreator: voteData.gameCreator || null
+    });
+    
+    // Show notification when someone votes
+    const lastVoter = voteData.votedPlayers[voteData.votedPlayers.length - 1];
+    if (lastVoter && lastVoter.id !== playerIdRef.current) {
+      addToast(`${lastVoter.name} voted to play again (${voteData.votedPlayers.length}/${voteData.totalPlayers})`, 'info');
+    }
+  });
+
   newSocket.on('newGameStarted', (data) => {
     console.log('🎮 New game started:', data);
     
@@ -1677,17 +1730,21 @@ newSocket.on('playerDrewCards', (data) => {
     setIsDrawing(false);
     setIsSkipping(false);
     
+    // Reset play again votes
+    setPlayAgainVotes({
+      votedPlayers: [],
+      totalPlayers: 0,
+      allVoted: false,
+      creatorVoted: false,
+      canStartGame: false,
+      gameCreator: null
+    });
+    
     // Show success notification
     addToast(`🎮 ${data.message} Started by ${data.startedBy}`, 'success');
     
     // Log the new game start
     console.log(`🎮 New game started with ${data.playerCount} players`);
-  });
-
-  // Handler for play again errors
-  newSocket.on('playAgainError', (errorMsg) => {
-    console.log('❌ Play Again Error:', errorMsg);
-    addToast(`Failed to start new game: ${errorMsg}`, 'error');
   });
 
   return () => {
@@ -2164,21 +2221,61 @@ useEffect(() => {
   };
 
 
-  const handlePlayAgain = () => {
-    if (!socket || !gameState?.gameId) {
-      addToast('Cannot start new game - no active game found', 'error');
-      return;
-    }
+ const handlePlayAgainVote = () => {
+    console.log('🗳️ [FRONTEND] handlePlayAgainVote called');
+    console.log('🗳️ [FRONTEND] Socket exists:', !!socket);
+    console.log('🗳️ [FRONTEND] Game ID:', gameState?.gameId);
+    console.log('🗳️ [FRONTEND] Current playAgainVotes:', playAgainVotes);
+  if (!socket || !gameState?.gameId) {
+    addToast('Cannot vote for new game - no active game found', 'error');
+    return;
+  }
 
-    console.log('🔄 Requesting new game for:', gameState.gameId);
-    
-    socket.emit('playAgain', {
+  // Check if already voted
+  const hasVoted = playAgainVotes.votedPlayers.some(p => p.id === playerId);
+  console.log('🗳️ [FRONTEND] Has already voted:', hasVoted);
+  
+  if (hasVoted) {
+    // Remove vote
+    console.log('🗳️ [FRONTEND] Removing play again vote for:', gameState.gameId);
+    console.log('🗳️ Removing play again vote for:', gameState.gameId);
+    socket.emit('removePlayAgainVote', {
       gameId: gameState.gameId
     });
-    
-    // Optionally show a loading state
-    addToast('Starting new game...', 'info');
-  };
+  } else {
+    console.log('🗳️ [FRONTEND] Voting for play again in:', gameState.gameId);
+    // Add vote
+    console.log('🗳️ Voting for play again in:', gameState.gameId);
+    socket.emit('votePlayAgain', {
+      gameId: gameState.gameId
+    });
+  }
+};
+
+const handleStartNewGame = () => {
+  if (!socket || !gameState?.gameId) {
+    addToast('Cannot start new game - no active game found', 'error');
+    return;
+  }
+
+  if (playerId !== playAgainVotes.gameCreator) {
+    addToast('Only the game creator can start the new game', 'error');
+    return;
+  }
+
+  if (!playAgainVotes.canStartGame) {
+    addToast('Cannot start game - not all players have voted', 'error');
+    return;
+  }
+
+  console.log('🚀 Starting new game as creator:', gameState.gameId);
+  
+  socket.emit('startNewGame', {
+    gameId: gameState.gameId
+  });
+  
+  addToast('Starting new game...', 'info');
+};
 
   const sliderStyles = `
     input[type="range"] {
@@ -2810,28 +2907,178 @@ useEffect(() => {
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {/* Play Again Voting Section */}
+          <div style={{
+            backgroundColor: '#e3f2fd',
+            padding: '20px',
+            borderRadius: '8px',
+            marginBottom: '20px'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '15px', color: '#1565c0', fontSize: '16px' }}>
+              🗳️ Vote to Play Again
+            </div>
+            
+            {/* Voting Status */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              gap: '15px',
+              marginBottom: '15px',
+              flexWrap: 'wrap'
+            }}>
+              {gameState.players
+                .filter(p => p.isConnected)
+                .map(player => {
+                  const hasVoted = playAgainVotes.votedPlayers.some(v => v.id === player.id);
+                  const isCreator = player.id === playAgainVotes.gameCreator;
+                  
+                  return (
+                    <div key={player.id} style={{
+                      padding: '8px 15px',
+                      borderRadius: '20px',
+                      backgroundColor: hasVoted ? '#4caf50' : '#e0e0e0',
+                      color: hasVoted ? '#fff' : '#666',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      border: isCreator ? '2px solid #ff9800' : 'none',
+                      position: 'relative'
+                    }}>
+                      {player.name}
+                      {player.id === playerId && ' (YOU)'}
+                      {isCreator && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '-8px',
+                          right: '-8px',
+                          background: '#ff9800',
+                          color: '#fff',
+                          borderRadius: '50%',
+                          width: '18px',
+                          height: '18px',
+                          fontSize: '10px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          👑
+                        </div>
+                      )}
+                      <div style={{ fontSize: '10px', marginTop: '2px' }}>
+                        {hasVoted ? '✅ Ready' : '⏳ Waiting'}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Vote Progress */}
+            <div style={{
+              marginBottom: '15px',
+              fontSize: '14px',
+              color: '#1565c0'
+            }}>
+              <div style={{ marginBottom: '5px' }}>
+                Votes: {playAgainVotes.votedPlayers.length} / {playAgainVotes.totalPlayers}
+              </div>
+              <div style={{
+                width: '100%',
+                height: '8px',
+                backgroundColor: '#e0e0e0',
+                borderRadius: '4px',
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  width: `${(playAgainVotes.votedPlayers.length / Math.max(playAgainVotes.totalPlayers, 1)) * 100}%`,
+                  height: '100%',
+                  backgroundColor: playAgainVotes.allVoted ? '#4caf50' : '#2196f3',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+            </div>
+
+            {/* Vote Button */}
             <button
-              onClick={handlePlayAgain}
+              onClick={handlePlayAgainVote}
               style={{
                 padding: '12px 25px',
-                backgroundColor: '#27ae60',
+                backgroundColor: playAgainVotes.votedPlayers.some(p => p.id === playerId) ? '#f44336' : '#4caf50',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '8px',
                 cursor: 'pointer',
-                fontSize: '16px',
+                fontSize: '14px',
                 fontWeight: 'bold',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                marginRight: '10px',
                 transition: 'all 0.2s ease'
               }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#229954'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = '#27ae60'}
             >
-              🎮 Play Again
+              {playAgainVotes.votedPlayers.some(p => p.id === playerId) ? '❌ Remove Vote' : '✅ Vote to Play Again'}
             </button>
+
+            {/* Start Game Button (Creator Only) */}
+            {playerId === playAgainVotes.gameCreator && (
+              <button
+                onClick={handleStartNewGame}
+                disabled={!playAgainVotes.canStartGame}
+                style={{
+                  padding: '12px 25px',
+                  backgroundColor: playAgainVotes.canStartGame ? '#ff9800' : '#bdbdbd',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: playAgainVotes.canStartGame ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                👑 Start New Game
+              </button>
+            )}
+
+            {/* Status Messages */}
+            {playAgainVotes.allVoted && playAgainVotes.canStartGame && playerId === playAgainVotes.gameCreator && (
+              <div style={{
+                marginTop: '10px',
+                padding: '8px',
+                backgroundColor: '#4caf50',
+                color: '#fff',
+                borderRadius: '4px',
+                fontSize: '12px'
+              }}>
+                🎮 All players ready! You can start the new game.
+              </div>
+            )}
             
+            {playAgainVotes.allVoted && playerId !== playAgainVotes.gameCreator && (
+              <div style={{
+                marginTop: '10px',
+                padding: '8px',
+                backgroundColor: '#2196f3',
+                color: '#fff',
+                borderRadius: '4px',
+                fontSize: '12px'
+              }}>
+                ⏳ Waiting for game creator to start the new game...
+              </div>
+            )}
+            
+            {!playAgainVotes.allVoted && (
+              <div style={{
+                marginTop: '10px',
+                padding: '8px',
+                backgroundColor: '#ff9800',
+                color: '#fff',
+                borderRadius: '4px',
+                fontSize: '12px'
+              }}>
+                ⏳ Waiting for all players to vote...
+              </div>
+            )}
+          </div>
+
+          {/* Alternative Actions */}
+          <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button
               onClick={() => window.location.reload()}
               style={{
@@ -2853,17 +3100,16 @@ useEffect(() => {
             </button>
           </div>
 
-          {/* Connected Players Info */}
+          {/* Help Text */}
           <div style={{
             marginTop: '20px',
             padding: '10px',
-            backgroundColor: '#e3f2fd',
+            backgroundColor: '#fff3e0',
             borderRadius: '6px',
             fontSize: '12px',
-            color: '#1565c0'
+            color: '#f57c00'
           }}>
-            💡 Tip: Click "Play Again" to start a new game with the same players, 
-            or "Return to Lobby" to create/join a different game.
+            💡 All players must vote to play again. The game creator (👑) will start the new game when everyone is ready.
           </div>
         </div>
       )}

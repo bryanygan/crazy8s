@@ -24,6 +24,8 @@ class Game {
         this.debugMode = false; // Enable verbose debug logging
         this.autoPassTimers = new Map(); // timers for auto pass
         this.onAutoPass = null; // optional callback when auto pass occurs
+        this.playAgainVotes = new Set(); // Track who voted for play again
+        this.gameCreator = playerIds[0]; // First player is the game creator
     }
 
     generateGameId() {
@@ -1206,6 +1208,10 @@ class Game {
             };
         }
 
+        // Clear play again votes when actually starting new game
+        this.playAgainVotes = new Set();
+        this.gameCreator = this.gameCreator || this.players[0]?.id;
+
         // 2. Filter out any disconnected players from this.players
         const connectedPlayers = this.players.filter(player => player.isConnected);
         
@@ -1316,6 +1322,106 @@ class Game {
             success: true,
             message: `New game started with ${this.players.length} players`,
             gameState: this.getGameState()
+        };
+    }
+
+    // Initialize play again voting system
+    initializePlayAgainVoting() {
+        if (!this.playAgainVotes) {
+            this.playAgainVotes = new Set();
+        }
+        if (!this.gameCreator) {
+            // Set the first player as the game creator if not already set
+            this.gameCreator = this.players[0]?.id;
+        }
+    }
+
+    // Add a player's vote for play again
+    addPlayAgainVote(playerId) {
+        console.log(`🗳️ Player ${playerId} voted for play again in game ${this.id}`);
+        
+        // Initialize voting if needed
+        this.initializePlayAgainVoting();
+        
+        // Verify player is in the game and connected
+        const player = this.getPlayerById(playerId);
+        if (!player) {
+            return { 
+                success: false, 
+                error: 'Player not found in game' 
+            };
+        }
+        
+        if (!player.isConnected) {
+            return { 
+                success: false, 
+                error: 'Disconnected players cannot vote' 
+            };
+        }
+        
+        // Add the vote
+        this.playAgainVotes.add(playerId);
+        
+        const connectedPlayers = this.players.filter(p => p.isConnected);
+        const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
+        const allVoted = votedPlayers.length === connectedPlayers.length;
+        const creatorVoted = this.playAgainVotes.has(this.gameCreator);
+        
+        console.log(`🗳️ Vote status: ${votedPlayers.length}/${connectedPlayers.length} players voted`);
+        console.log(`🗳️ Creator voted: ${creatorVoted}`);
+        console.log(`🗳️ All voted: ${allVoted}`);
+        
+        return {
+            success: true,
+            votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
+            totalPlayers: connectedPlayers.length,
+            allVoted: allVoted,
+            creatorVoted: creatorVoted,
+            canStartGame: allVoted && creatorVoted,
+            gameCreator: this.gameCreator
+        };
+    }
+
+    // Remove a player's vote for play again
+    removePlayAgainVote(playerId) {
+        console.log(`🗳️ Player ${playerId} removed vote for play again in game ${this.id}`);
+        
+        this.initializePlayAgainVoting();
+        this.playAgainVotes.delete(playerId);
+        
+        const connectedPlayers = this.players.filter(p => p.isConnected);
+        const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
+        const allVoted = votedPlayers.length === connectedPlayers.length;
+        const creatorVoted = this.playAgainVotes.has(this.gameCreator);
+        
+        return {
+            success: true,
+            votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
+            totalPlayers: connectedPlayers.length,
+            allVoted: allVoted,
+            creatorVoted: creatorVoted,
+            canStartGame: allVoted && creatorVoted,
+            gameCreator: this.gameCreator
+        };
+    }
+
+    // Get current play again voting status
+    getPlayAgainVotingStatus() {
+        this.initializePlayAgainVoting();
+        
+        const connectedPlayers = this.players.filter(p => p.isConnected);
+        const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
+        const allVoted = votedPlayers.length === connectedPlayers.length;
+        const creatorVoted = this.playAgainVotes.has(this.gameCreator);
+        
+        return {
+            votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
+            totalPlayers: connectedPlayers.length,
+            allVoted: allVoted,
+            creatorVoted: creatorVoted,
+            canStartGame: allVoted && creatorVoted,
+            gameCreator: this.gameCreator,
+            connectedPlayers: connectedPlayers.map(p => ({ id: p.id, name: p.name }))
         };
     }
 
