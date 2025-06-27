@@ -1195,6 +1195,130 @@ class Game {
         return null;
     }
 
+    resetForNewGame() {
+        console.log(`🔄 Resetting game ${this.id} for new game`);
+        
+        // 1. Ensure the game state is 'finished' before proceeding
+        if (this.gameState !== 'finished') {
+            return { 
+                success: false, 
+                error: 'Cannot reset game - game is not finished' 
+            };
+        }
+
+        // 2. Filter out any disconnected players from this.players
+        const connectedPlayers = this.players.filter(player => player.isConnected);
+        
+        if (connectedPlayers.length < 2) {
+            return { 
+                success: false, 
+                error: 'Cannot start new game - need at least 2 connected players' 
+            };
+        }
+
+        console.log(`🔄 Resetting with ${connectedPlayers.length} connected players:`, 
+            connectedPlayers.map(p => p.name));
+
+        // Update players list to only include connected players
+        this.players = connectedPlayers;
+        this.activePlayers = [...connectedPlayers];
+
+        // 3. Reset game properties
+        this.gameState = 'playing';
+        this.drawPile = [];
+        this.discardPile = [];
+        this.currentPlayerIndex = 0;
+        this.declaredSuit = null;
+        this.drawStack = 0;
+        this.direction = 1;
+        this.roundNumber = 1;
+        this.safeePlayers = [];
+        this.eliminatedPlayers = [];
+        this.pendingTurnPass = null;
+        this.playersWhoHaveDrawn = new Set();
+
+        // Clear any existing auto pass timers
+        for (const timer of this.autoPassTimers.values()) {
+            clearTimeout(timer);
+        }
+        this.autoPassTimers.clear();
+
+        console.log(`🔄 Game properties reset`);
+
+        // 4. Reset the remaining players' status
+        this.players.forEach(player => {
+            player.isSafe = false;
+            player.isEliminated = false;
+            player.hand = [];
+            console.log(`🔄 Reset player ${player.name} status`);
+        });
+
+        // 5. Re-create and shuffle the deck
+        try {
+            this.deck = createDeck();
+            this.deck = shuffleDeck(this.deck);
+            this.drawPile = [...this.deck];
+            console.log(`🔄 New deck created and shuffled: ${this.drawPile.length} cards`);
+        } catch (error) {
+            return { 
+                success: false, 
+                error: 'Failed to create new deck: ' + error.message 
+            };
+        }
+
+        // 6. Deal 8 new cards to each of the remaining, connected players
+        try {
+            this.dealCards();
+            console.log(`🔄 Dealt 8 cards to each player`);
+            
+            // Verify dealing was successful
+            const allPlayersHave8Cards = this.players.every(player => player.hand.length === 8);
+            if (!allPlayersHave8Cards) {
+                return { 
+                    success: false, 
+                    error: 'Failed to deal cards properly to all players' 
+                };
+            }
+        } catch (error) {
+            return { 
+                success: false, 
+                error: 'Failed to deal cards: ' + error.message 
+            };
+        }
+
+        // 7. Set up the initial discard pile
+        try {
+            if (this.drawPile.length > 0) {
+                const firstCard = this.drawPile.pop();
+                this.discardPile.push(firstCard);
+                console.log(`🔄 Initial discard card: ${this.cardToString(firstCard)}`);
+            } else {
+                return { 
+                    success: false, 
+                    error: 'Not enough cards to start discard pile' 
+                };
+            }
+        } catch (error) {
+            return { 
+                success: false, 
+                error: 'Failed to set up discard pile: ' + error.message 
+            };
+        }
+
+        console.log(`🔄 Game ${this.id} successfully reset for new game`);
+        console.log(`   Players: ${this.players.map(p => p.name).join(', ')}`);
+        console.log(`   Current player: ${this.getCurrentPlayer()?.name}`);
+        console.log(`   Draw pile: ${this.drawPile.length} cards`);
+        console.log(`   Discard pile: ${this.discardPile.length} cards`);
+
+        // 8. Return success status
+        return {
+            success: true,
+            message: `New game started with ${this.players.length} players`,
+            gameState: this.getGameState()
+        };
+    }
+
     // Static method for finding games (for controller use)
     static games = new Map();
 

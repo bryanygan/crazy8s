@@ -651,6 +651,70 @@ io.on('connection', (socket) => {
             socket.emit('error', 'Failed to reconnect');
         }
     });
+
+    // Handle play again request
+    socket.on('playAgain', (data) => {
+        try {
+            const { gameId } = data;
+            
+            if (!gameId) {
+                socket.emit('error', 'Game ID is required for play again');
+                return;
+            }
+
+            const game = Game.findById(gameId);
+            
+            if (!game) {
+                socket.emit('error', 'Game not found');
+                return;
+            }
+
+            // Verify the requesting player is part of this game
+            const player = connectedPlayers.get(socket.id);
+            if (!player || player.gameId !== gameId) {
+                socket.emit('error', 'You are not part of this game');
+                return;
+            }
+
+            console.log(`🔄 Play again requested by ${player.name} for game ${gameId}`);
+
+            // Call the resetForNewGame method
+            const result = game.resetForNewGame();
+            
+            if (result.success) {
+                console.log(`🔄 Game ${gameId} successfully reset for new game`);
+                
+                // Restart timer if timer settings are available and enabled
+                if (game.timerSettings && game.timerSettings.enableTimer) {
+                    console.log('🔄 Restarting timer for new game');
+                    manageGameTimer(gameId, 'start', game.timerSettings);
+                }
+                
+                // Broadcast updated game state to all players in the game
+                broadcastGameState(gameId);
+                
+                // Send success message to all players
+                io.to(gameId).emit('success', `🎮 New game started! ${result.message}`);
+                
+                // Send special notification about the new game
+                io.to(gameId).emit('newGameStarted', {
+                    message: 'A new game has started!',
+                    playerCount: game.players.length,
+                    startedBy: player.name
+                });
+
+                console.log(`🔄 New game notifications sent to all players in ${gameId}`);
+                
+            } else {
+                console.log(`🔄 Failed to reset game ${gameId}: ${result.error}`);
+                socket.emit('error', result.error);
+            }
+
+        } catch (error) {
+            console.error('🔄 Error handling play again:', error);
+            socket.emit('error', 'Failed to start new game: ' + error.message);
+        }
+    });
 });
 
 // Broadcast timer updates to all players in a game

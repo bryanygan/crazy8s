@@ -1668,6 +1668,28 @@ newSocket.on('playerDrewCards', (data) => {
     });
   });
 
+  newSocket.on('newGameStarted', (data) => {
+    console.log('🎮 New game started:', data);
+    
+    // Reset local state for new game
+    setSelectedCards([]);
+    setHasDrawnThisTurn(false);
+    setIsDrawing(false);
+    setIsSkipping(false);
+    
+    // Show success notification
+    addToast(`🎮 ${data.message} Started by ${data.startedBy}`, 'success');
+    
+    // Log the new game start
+    console.log(`🎮 New game started with ${data.playerCount} players`);
+  });
+
+  // Handler for play again errors
+  newSocket.on('playAgainError', (errorMsg) => {
+    console.log('❌ Play Again Error:', errorMsg);
+    addToast(`Failed to start new game: ${errorMsg}`, 'error');
+  });
+
   return () => {
     console.log('🔌 Cleaning up socket connection');
     newSocket.close();
@@ -2139,6 +2161,23 @@ useEffect(() => {
     
     // Reset skipping state after a delay
     setTimeout(() => setIsSkipping(false), 1000);
+  };
+
+
+  const handlePlayAgain = () => {
+    if (!socket || !gameState?.gameId) {
+      addToast('Cannot start new game - no active game found', 'error');
+      return;
+    }
+
+    console.log('🔄 Requesting new game for:', gameState.gameId);
+    
+    socket.emit('playAgain', {
+      gameId: gameState.gameId
+    });
+    
+    // Optionally show a loading state
+    addToast('Starting new game...', 'info');
   };
 
   const sliderStyles = `
@@ -2723,25 +2762,109 @@ useEffect(() => {
           boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
         }}>
           <h2 style={{ color: '#2c3e50', marginBottom: '15px' }}>🎉 Game Over!</h2>
-          <div style={{ fontSize: '18px', color: '#27ae60', fontWeight: 'bold' }}>
+          <div style={{ fontSize: '18px', color: '#27ae60', fontWeight: 'bold', marginBottom: '20px' }}>
             Winner: {gameState.players.find(p => !p.isEliminated)?.name || 'Unknown'}
           </div>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              marginTop: '20px',
-              padding: '12px 25px',
-              backgroundColor: '#3498db',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '16px',
-              fontWeight: 'bold'
-            }}
-          >
-            🔄 Play Again
-          </button>
+          
+          {/* Game Statistics */}
+          <div style={{
+            backgroundColor: '#f8f9fa',
+            padding: '15px',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            fontSize: '14px'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#2c3e50' }}>
+              📊 Final Results
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              {gameState.players
+                .sort((a, b) => {
+                  // Winner first, then by elimination order
+                  if (!a.isEliminated && b.isEliminated) return -1;
+                  if (a.isEliminated && !b.isEliminated) return 1;
+                  return 0;
+                })
+                .map((player, index) => (
+                  <div key={player.id} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '5px 10px',
+                    backgroundColor: index === 0 ? '#d4edda' : '#fff',
+                    borderRadius: '4px',
+                    border: index === 0 ? '2px solid #27ae60' : '1px solid #ddd'
+                  }}>
+                    <span style={{ fontWeight: index === 0 ? 'bold' : 'normal' }}>
+                      {index === 0 ? '🏆' : `${index + 1}.`} {player.name}
+                      {player.id === playerId && ' (YOU)'}
+                    </span>
+                    <span style={{
+                      color: index === 0 ? '#27ae60' : '#6c757d',
+                      fontSize: '12px'
+                    }}>
+                      {index === 0 ? 'WINNER' : 'Eliminated'}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={handlePlayAgain}
+              style={{
+                padding: '12px 25px',
+                backgroundColor: '#27ae60',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#229954'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#27ae60'}
+            >
+              🎮 Play Again
+            </button>
+            
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '12px 25px',
+                backgroundColor: '#6c757d',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#5a6268'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#6c757d'}
+            >
+              🏠 Return to Lobby
+            </button>
+          </div>
+
+          {/* Connected Players Info */}
+          <div style={{
+            marginTop: '20px',
+            padding: '10px',
+            backgroundColor: '#e3f2fd',
+            borderRadius: '6px',
+            fontSize: '12px',
+            color: '#1565c0'
+          }}>
+            💡 Tip: Click "Play Again" to start a new game with the same players, 
+            or "Return to Lobby" to create/join a different game.
+          </div>
         </div>
       )}
 
