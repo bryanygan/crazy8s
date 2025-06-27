@@ -310,9 +310,45 @@ class Game {
             
             return message;
         } else {
-            const rank = cards[0].rank;
-            const suits = cards.map(card => card.suit).join(', ');
-            return `Played ${cards.length} ${rank}s: ${suits}`;
+            // Multiple cards - check if they're all the same rank
+            const allSameRank = cards.every(card => card.rank === cards[0].rank);
+            
+            if (allSameRank) {
+                // All same rank - use the old format
+                const rank = cards[0].rank;
+                const suits = cards.map(card => card.suit).join(', ');
+                return `Played ${cards.length} ${rank}s: ${suits}`;
+            } else {
+                // Mixed ranks - show individual cards with symbols
+                const cardStrings = cards.map(card => {
+                    const suitSymbol = {
+                        'Hearts': '♥',
+                        'Diamonds': '♦', 
+                        'Clubs': '♣',
+                        'Spades': '♠'
+                    }[card.suit] || card.suit;
+                    
+                    // Use short rank notation
+                    const shortRank = {
+                        'Jack': 'J',
+                        'Queen': 'Q', 
+                        'King': 'K',
+                        'Ace': 'A'
+                    }[card.rank] || card.rank;
+                    
+                    return `${shortRank}${suitSymbol}`;
+                });
+                
+                let message = `Played ${cardStrings.join(', ')}`;
+                
+                // Check if any card is an 8 (wild) and add suit declaration
+                const hasWild = cards.some(card => card.rank === '8');
+                if (hasWild && declaredSuit) {
+                    message += ` and declared ${declaredSuit}`;
+                }
+                
+                return message;
+            }
         }
     }
 
@@ -466,6 +502,17 @@ class Game {
         if (cardStack.length === 0) return true;
 
         const playerCount = this.activePlayers.length;
+        
+        // Check if this is a pure Jack stack in a 2-player game
+        const isPureJackStack = cardStack.every(card => card.rank === 'Jack');
+        const is2PlayerGame = playerCount === 2;
+        
+        if (isPureJackStack && is2PlayerGame) {
+            console.log('🎯 Pure Jack stack in 2-player game - original player keeps turn');
+            return true; // Original player always keeps turn
+        }
+        
+        // Original turn simulation logic for other cases
         let currentIndex = 0; // Start relative to the current player
         let direction = this.direction;
         let pendingSkips = 0;
@@ -519,6 +566,53 @@ class Game {
         let totalDrawEffect = 0;
         let hasWild = false;
         
+        // Check if this is a pure Jack stack in a 2-player game
+        const isPureJackStack = cards.every(card => card.rank === 'Jack');
+        const is2PlayerGame = this.activePlayers.length === 2;
+        
+        if (isPureJackStack && is2PlayerGame) {
+            console.log('🎮 Pure Jack stack detected in 2-player game - original player keeps turn');
+            
+            // Process any draw effects and wild cards (though Jacks don't have these)
+            for (let i = 0; i < cards.length; i++) {
+                const card = cards[i];
+                
+                switch (card.rank) {
+                    case 'Ace':
+                        totalDrawEffect += 4;
+                        break;
+                    case '2':
+                        totalDrawEffect += 2;
+                        break;
+                    case '8':
+                        hasWild = true;
+                        break;
+                }
+            }
+            
+            // Apply draw effects if any
+            if (totalDrawEffect > 0) {
+                this.drawStack += totalDrawEffect;
+                console.log(`🎮 Added ${totalDrawEffect} to draw stack, total: ${this.drawStack}`);
+            }
+            
+            // Handle wild card suit declaration
+            if (hasWild && declaredSuit) {
+                this.declaredSuit = declaredSuit;
+                console.log(`🎮 Set declared suit to: ${declaredSuit}`);
+            } else if (!hasWild) {
+                this.declaredSuit = null;
+                console.log('🎮 Cleared declared suit (no wilds)');
+            }
+            
+            // For pure Jack stacks in 2-player games, original player always keeps turn
+            console.log('🎮 Pure Jack stack: Original player keeps turn');
+            // Don't change currentPlayerIndex - player keeps the turn
+            
+            return totalDrawEffect;
+        }
+        
+        // Original logic for non-pure-Jack stacks or multiplayer games
         // Simulate turn progression to determine final turn control
         const playerCount = this.activePlayers.length;
         let tempDirection = this.direction; // Track direction changes
@@ -582,7 +676,7 @@ class Game {
         let finalPlayerIndex = 0; // Start with current player (index 0)
 
         if (playerCount === 2) {
-            // 2-player game logic
+            // 2-player game logic (original behavior for non-pure-Jack stacks)
             let shouldPassTurn = false;
             
             // Handle Jacks (skips) - odd number = keep turn, even number = pass turn
@@ -606,10 +700,16 @@ class Game {
                 console.log(`🎮 2-player Queens: ${totalReverses} reverses → ${passTurnFromReverses ? 'pass turn' : 'keep turn'}`);
             }
             
-            // Handle normal cards, draw cards, or wilds
-            if (totalSkips === 0 && totalReverses === 0 && (endsWithNormalCard || totalDrawEffect > 0 || hasWild)) {
+            // Handle normal cards, draw cards, or wilds - these ALWAYS pass turn
+            if (endsWithNormalCard || totalDrawEffect > 0 || hasWild) {
                 shouldPassTurn = true;
-                console.log(`🎮 2-player: Normal/Draw/Wild cards → pass turn`);
+                console.log(`🎮 2-player: Stack ends with normal/draw/wild card → pass turn`);
+            }
+            // Only keep turn if ONLY special cards (Jacks/Queens) and the logic says to keep turn
+            else if (totalSkips === 0 && totalReverses === 0) {
+                // No special cards at all - this shouldn't happen, but pass turn as fallback
+                shouldPassTurn = true;
+                console.log(`🎮 2-player: No special cards → pass turn`);
             }
             
             finalPlayerIndex = shouldPassTurn ? 1 : 0;
@@ -691,167 +791,165 @@ class Game {
 
     // Enhanced drawCards method that doesn't automatically advance turn
     drawCards(playerId, count = 1) {
-    const player = this.getPlayerById(playerId);
-    if (!player) {
-        return { 
-            success: false, 
-            error: 'Player not found' 
-        };
-    }
-
-    // Validate it's the player's turn
-    const currentPlayer = this.getCurrentPlayer();
-    if (!currentPlayer || currentPlayer.id !== playerId) {
-        return { 
-            success: false, 
-            error: 'Not your turn' 
-        };
-    }
-
-    // Check if player has already drawn this turn
-    if (this.playersWhoHaveDrawn.has(playerId) && this.drawStack === 0) {
-        return {
-            success: false,
-            error: 'You have already drawn a card this turn'
-        };
-    }
-
-    let isFromSpecialCard = false;
-    let actualDrawCount = count;
-    
-    // Handle draw stack
-    if (this.drawStack > 0) {
-        actualDrawCount = this.drawStack;
-        this.drawStack = 0;
-        isFromSpecialCard = true;
-    }
-
-    console.log(`🎲 ${player.name} needs to draw ${actualDrawCount} cards`);
-    console.log(`  Current draw pile: ${this.drawPile.length} cards`);
-    console.log(`  Current discard pile: ${this.discardPile.length} cards`);
-
-    // Calculate total available cards before drawing
-    const availableCards = this.drawPile.length + Math.max(0, this.discardPile.length - 1);
-    console.log(`  Available cards for drawing: ${availableCards}`);
-
-    // Determine if we need to add a new deck
-    let needsNewDeck = false;
-    let newDeckMessage = '';
-
-    if (actualDrawCount > availableCards) {
-        console.log(`  ⚠️  Need ${actualDrawCount} cards but only ${availableCards} available`);
-        needsNewDeck = true;
-    }
-
-    // Attempt to get enough cards
-    const drawnCards = [];
-    let cardsStillNeeded = actualDrawCount;
-
-    // Draw from existing draw pile first
-    while (cardsStillNeeded > 0 && this.drawPile.length > 0) {
-        const card = this.drawPile.pop();
-        player.hand.push(card);
-        drawnCards.push(card);
-        cardsStillNeeded--;
-    }
-
-    console.log(`  Drew ${drawnCards.length} cards from draw pile, still need ${cardsStillNeeded}`);
-
-    // If we still need cards, try to reshuffle discard pile
-    if (cardsStillNeeded > 0) {
-        const reshuffleSuccess = this.reshuffleDiscardPile();
-        
-        if (reshuffleSuccess) {
-            // Draw from newly reshuffled cards
-            while (cardsStillNeeded > 0 && this.drawPile.length > 0) {
-                const card = this.drawPile.pop();
-                player.hand.push(card);
-                drawnCards.push(card);
-                cardsStillNeeded--;
-            }
-            console.log(`  Drew ${actualDrawCount - cardsStillNeeded} more cards after reshuffle, still need ${cardsStillNeeded}`);
+        const player = this.getPlayerById(playerId);
+        if (!player) {
+            return { 
+                success: false, 
+                error: 'Player not found' 
+            };
         }
-    }
 
-    // If we STILL need cards, add a new deck
-    if (cardsStillNeeded > 0) {
-        console.log(`  🆕 Adding new deck - still need ${cardsStillNeeded} cards`);
-        const newCardsAdded = this.addNewDeck();
-        newDeckMessage = `A new deck has been shuffled in due to high card demand! (+${newCardsAdded} cards)`;
+        // Validate it's the player's turn
+        const currentPlayer = this.getCurrentPlayer();
+        if (!currentPlayer || currentPlayer.id !== playerId) {
+            return { 
+                success: false, 
+                error: 'Not your turn' 
+            };
+        }
+
+        // Check if player has already drawn this turn
+        if (this.playersWhoHaveDrawn.has(playerId) && this.drawStack === 0) {
+            return {
+                success: false,
+                error: 'You have already drawn a card this turn'
+            };
+        }
+
+        let isFromSpecialCard = false;
+        let actualDrawCount = count;
         
-        // Draw the remaining needed cards from the new deck
+        // Handle draw stack
+        if (this.drawStack > 0) {
+            actualDrawCount = this.drawStack;
+            this.drawStack = 0;
+            isFromSpecialCard = true;
+        }
+
+        console.log(`🎲 ${player.name} needs to draw ${actualDrawCount} cards`);
+        console.log(`  Current draw pile: ${this.drawPile.length} cards`);
+        console.log(`  Current discard pile: ${this.discardPile.length} cards`);
+
+        // Calculate total available cards before drawing
+        const availableCards = this.drawPile.length + Math.max(0, this.discardPile.length - 1);
+        console.log(`  Available cards for drawing: ${availableCards}`);
+
+        // Determine if we need to add a new deck
+        let needsNewDeck = false;
+        let newDeckMessage = '';
+
+        if (actualDrawCount > availableCards) {
+            console.log(`  ⚠️  Need ${actualDrawCount} cards but only ${availableCards} available`);
+            needsNewDeck = true;
+        }
+
+        // Attempt to get enough cards
+        const drawnCards = [];
+        let cardsStillNeeded = actualDrawCount;
+
+        // Draw from existing draw pile first
         while (cardsStillNeeded > 0 && this.drawPile.length > 0) {
             const card = this.drawPile.pop();
             player.hand.push(card);
             drawnCards.push(card);
             cardsStillNeeded--;
         }
-        
-        console.log(`  Drew final ${actualDrawCount - cardsStillNeeded} cards from new deck`);
-    }
 
-    // Final verification
-    if (cardsStillNeeded > 0) {
-        console.error(`  ❌ CRITICAL ERROR: Still need ${cardsStillNeeded} cards but no more available!`);
-        return {
-            success: false,
-            error: `Could not draw enough cards - missing ${cardsStillNeeded} cards`
+        console.log(`  Drew ${drawnCards.length} cards from draw pile, still need ${cardsStillNeeded}`);
+
+        // If we still need cards, try to reshuffle discard pile
+        if (cardsStillNeeded > 0) {
+            const reshuffleSuccess = this.reshuffleDiscardPile();
+            
+            if (reshuffleSuccess) {
+                // Draw from newly reshuffled cards
+                while (cardsStillNeeded > 0 && this.drawPile.length > 0) {
+                    const card = this.drawPile.pop();
+                    player.hand.push(card);
+                    drawnCards.push(card);
+                    cardsStillNeeded--;
+                }
+                console.log(`  Drew ${actualDrawCount - cardsStillNeeded} more cards after reshuffle, still need ${cardsStillNeeded}`);
+            }
+        }
+
+        // If we STILL need cards, add a new deck
+        if (cardsStillNeeded > 0) {
+            console.log(`  🆕 Adding new deck - still need ${cardsStillNeeded} cards`);
+            const newCardsAdded = this.addNewDeck();
+            newDeckMessage = `A new deck has been shuffled in due to high card demand! (+${newCardsAdded} cards)`;
+            
+            // Draw the remaining needed cards from the new deck
+            while (cardsStillNeeded > 0 && this.drawPile.length > 0) {
+                const card = this.drawPile.pop();
+                player.hand.push(card);
+                drawnCards.push(card);
+                cardsStillNeeded--;
+            }
+            
+            console.log(`  Drew final ${actualDrawCount - cardsStillNeeded} cards from new deck`);
+        }
+
+        // Final verification
+        if (cardsStillNeeded > 0) {
+            console.error(`  ❌ CRITICAL ERROR: Still need ${cardsStillNeeded} cards but no more available!`);
+            return {
+                success: false,
+                error: `Could not draw enough cards - missing ${cardsStillNeeded} cards`
+            };
+        }
+
+        console.log(`  ✅ Successfully drew ${drawnCards.length} cards total`);
+
+        // Mark player as having drawn this turn (unless it's from special card effect)
+        if (!isFromSpecialCard) {
+            this.playersWhoHaveDrawn.add(playerId);
+        }
+
+        // Check which drawn cards can be played immediately
+        const playableDrawnCards = this.getPlayableDrawnCards(drawnCards, playerId);
+        const canPlayDrawnCard = playableDrawnCards.length > 0;
+
+        // FIXED: Handle turn progression based on card type and playability
+        if (isFromSpecialCard) {
+            // After drawing penalty cards, check if player can play any
+            if (canPlayDrawnCard) {
+                // Player drew penalty cards but can play some - they keep their turn with pending pass
+                this.pendingTurnPass = playerId;
+                console.log(`🎲 Player drew ${actualDrawCount} penalty cards`);
+            } else {
+                // No playable cards after penalty draw - advance turn immediately
+                this.pendingTurnPass = null;
+                this.nextPlayer();
+                console.log(`🎲 Player drew ${actualDrawCount} penalty cards with no playable cards - turn advanced`);
+            }
+        } else {
+            // Regular draw - always set pending turn pass regardless of playability
+            this.pendingTurnPass = playerId;
+            console.log(`🎲 Player drew ${actualDrawCount} regular cards - setting pending turn pass`);
+        }
+
+        const result = {
+            success: true,
+            drawnCards: drawnCards.map(card => this.cardToString(card)),
+            playableDrawnCards: playableDrawnCards,
+            canPlayDrawnCard: canPlayDrawnCard,
+            fromSpecialCard: isFromSpecialCard,
+            gameState: this.getGameState(),
+            newDeckAdded: needsNewDeck,
+            newDeckMessage: newDeckMessage
         };
+
+        console.log(`🎲 Draw complete:`, {
+            cardsDrawn: drawnCards.length,
+            playerHandSize: player.hand.length,
+            playableCards: playableDrawnCards.length,
+            newDeckAdded: needsNewDeck,
+            keptTurn: isFromSpecialCard && canPlayDrawnCard
+        });
+
+        return result;
     }
-
-    console.log(`  ✅ Successfully drew ${drawnCards.length} cards total`);
-
-    // Mark player as having drawn this turn (unless it's from special card effect)
-    if (!isFromSpecialCard) {
-        this.playersWhoHaveDrawn.add(playerId);
-    }
-
-    // Check which drawn cards can be played immediately
-    const playableDrawnCards = this.getPlayableDrawnCards(drawnCards, playerId);
-    const canPlayDrawnCard = playableDrawnCards.length > 0;
-
-    // Handle turn progression based on card type
-    if (isFromSpecialCard) {
-        // After drawing penalty cards, player gets a chance to play if they can
-        if (canPlayDrawnCard) {
-            this.pendingTurnPass = playerId;
-            console.log(`🎲 Player drew ${actualDrawCount} penalty cards and can play some - setting pending turn pass`);
-        } else {
-            // No playable cards after penalty draw - advance turn
-            this.pendingTurnPass = null;
-            this.nextPlayer();
-            console.log(`🎲 Player drew ${actualDrawCount} penalty cards with no playable cards - turn advanced`);
-        }
-    } else {
-        // Regular draw - set pending turn pass if cards can be played
-        if (canPlayDrawnCard) {
-            this.pendingTurnPass = playerId;
-        } else {
-            // No playable cards drawn - player must pass turn manually or auto-pass
-            this.pendingTurnPass = playerId;
-        }
-    }
-
-    const result = {
-        success: true,
-        drawnCards: drawnCards.map(card => this.cardToString(card)),
-        playableDrawnCards: playableDrawnCards,
-        canPlayDrawnCard: canPlayDrawnCard,
-        fromSpecialCard: isFromSpecialCard,
-        gameState: this.getGameState(),
-        newDeckAdded: needsNewDeck,
-        newDeckMessage: newDeckMessage
-    };
-
-    console.log(`🎲 Draw complete:`, {
-        cardsDrawn: drawnCards.length,
-        playerHandSize: player.hand.length,
-        playableCards: playableDrawnCards.length,
-        newDeckAdded: needsNewDeck
-    });
-
-    return result;
-}
 
     // New method to get playable cards from drawn cards
     getPlayableDrawnCards(drawnCards, playerId) {

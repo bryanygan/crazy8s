@@ -1015,7 +1015,7 @@ const Chat = ({ socket }) => {
     });
 
     socket.on('cardPlayed', (data) => {
-      setMessages(prev => [...prev.slice(-50), `🃏 ${data.playerName} played: ${data.cardsPlayed.join(', ')}`]);
+      setMessages(prev => [...prev.slice(-50), `🃏 ${data.playerName}: ${data.message}`]);
     });
 
     socket.on('playerDrewCards', (data) => {
@@ -1633,7 +1633,7 @@ useEffect(() => {
     console.log('🃏 Card played:', data);
     // Use the socket ID directly instead of playerId state
     if (data.playerId !== newSocket.id) {
-      addToast(`${data.playerName} played: ${data.cardsPlayed.join(', ')}`, 'info');
+      addToast(`${data.playerName}: ${data.message}`, 'info');
     }
   });
 
@@ -1647,13 +1647,9 @@ newSocket.on('playerDrewCards', (data) => {
   
   let message = '';
   if (data.fromPenalty) {
-    message = data.canPlayDrawn 
-      ? `${data.playerName} drew ${data.cardCount} penalty cards and can play some!`
-      : `${data.playerName} drew ${data.cardCount} penalty cards`;
+    message = `${data.playerName} drew ${data.cardCount} penalty cards`;
   } else {
-    message = data.canPlayDrawn 
-      ? `${data.playerName} drew ${data.cardCount} card(s) and can play some!`
-      : `${data.playerName} drew ${data.cardCount} card(s)`;
+    message = `${data.playerName} drew ${data.cardCount} card(s)`;
   }
   
   if (data.newDeckAdded) {
@@ -1774,73 +1770,63 @@ newSocket.on('playerDrewCards', (data) => {
   // Enhanced turn control simulation (matching backend logic)
   const simulateTurnControl = (cardStack, activePlayers) => {
     if (cardStack.length === 0) return true;
-    
+
     const playerCount = activePlayers;
-    let totalSkips = 0;
-    let totalReverses = 0;
-    let endsWithNormalCard = false;
     
-    console.log(`🎯 Simulating turn control (${playerCount} players):`);
+    // NEW: Check if this is a pure Jack stack in a 2-player game
+    const isPureJackStack = cardStack.every(card => card.rank === 'Jack');
+    const is2PlayerGame = playerCount === 2;
     
-    // Count effects in the stack
-    for (let i = 0; i < cardStack.length; i++) {
-      const card = cardStack[i];
-      console.log(`  Card ${i + 1}: ${card.rank} of ${card.suit}`);
-      
+    if (isPureJackStack && is2PlayerGame) {
+      console.log('🎯 Pure Jack stack in 2-player game - original player keeps turn');
+      return true; // Original player always keeps turn
+    }
+    
+    // Original turn simulation logic for other cases
+    let currentIndex = 0; // Start relative to the current player
+    let direction = 1; // Assume normal direction
+    let pendingSkips = 0;
+
+    for (const card of cardStack) {
+      if (card.rank === 'Jack') {
+        // Accumulate skip effects; actual move applied when a non-Jack is processed
+        if (playerCount !== 2) {
+          pendingSkips += 1;
+        }
+        continue;
+      }
+
+      if (pendingSkips > 0) {
+        if (playerCount !== 2) {
+          currentIndex = (currentIndex + pendingSkips + 1) % playerCount;
+        }
+        pendingSkips = 0;
+      }
+
       switch (card.rank) {
-        case 'Jack':
-          totalSkips += 1;
-          endsWithNormalCard = false;
-          console.log(`    → Skip count: ${totalSkips}`);
-          break;
-          
         case 'Queen':
-          totalReverses += 1;
-          endsWithNormalCard = false;
-          console.log(`    → Reverse count: ${totalReverses}`);
+          direction *= -1;
+          currentIndex = (currentIndex + direction + playerCount) % playerCount;
           break;
-          
         case 'Ace':
         case '2':
         case '8':
-          endsWithNormalCard = false;
-          console.log(`    → Special card (${card.rank})`);
+          currentIndex = (currentIndex + direction + playerCount) % playerCount;
           break;
-          
         default:
-          endsWithNormalCard = true;
-          console.log(`    → Normal card`);
+          currentIndex = (currentIndex + direction + playerCount) % playerCount;
           break;
       }
     }
-    
-    // Calculate final turn position
-    let finalPlayerIndex = 0; // Start with current player
-    
-    if (totalSkips > 0) {
-      if (playerCount === 2) {
-        // In 2-player: odd skips = keep turn, even skips = pass turn
-        const keepTurn = (totalSkips % 2 === 1);
-        finalPlayerIndex = keepTurn ? 0 : 1;
-        console.log(`🎯 2-player: ${totalSkips} skips → ${keepTurn ? 'keep' : 'pass'} turn`);
-      } else {
-        // In multiplayer: totalSkips + 1 for normal advancement
-        finalPlayerIndex = (0 + totalSkips + 1) % playerCount;
-        console.log(`🎯 Multiplayer: ${totalSkips} skips → index ${finalPlayerIndex}`);
+
+    if (pendingSkips > 0) {
+      if (playerCount !== 2) {
+        currentIndex = (currentIndex + pendingSkips + 1) % playerCount;
       }
-    } else if (endsWithNormalCard || cardStack.some(c => ['Ace', '2', '8'].includes(c.rank))) {
-      // Normal cards, draw cards, or wilds pass the turn
-      finalPlayerIndex = 1; // Simple advance (direction handled by backend)
-      console.log(`🎯 Normal advancement → pass turn`);
-    } else if (totalReverses > 0) {
-      // Only reverses - direction change but turn advances
-      finalPlayerIndex = 1;
-      console.log(`🎯 Reverse only → pass turn`);
     }
-    
-    const playerKeepsTurn = (finalPlayerIndex === 0);
-    console.log(`🎯 Final result: Player keeps turn = ${playerKeepsTurn}`);
-    return playerKeepsTurn;
+
+    // Player keeps the turn only if we end back at index 0
+    return currentIndex === 0;
   };
 
   // Enhanced card stack validation with strict turn logic

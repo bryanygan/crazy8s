@@ -387,8 +387,7 @@ io.on('connection', (socket) => {
             socket.to(gameId).emit('cardPlayed', {
                 playerName: player.name,
                 playerId: player.id,
-                cardsPlayed: result.cardsPlayed,
-                message: result.message
+                message: result.message          // Use the formatted message from backend
             });
 
             } else {
