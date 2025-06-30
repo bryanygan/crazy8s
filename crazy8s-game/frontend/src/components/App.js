@@ -1,70 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-// Card component with experienced mode support
-const Card = ({ card, onClick, isPlayable = false, isSelected = false, experiencedMode = false }) => {
-  const getCardColor = (suit) => {
-    return suit === 'Hearts' || suit === 'Diamonds' ? '#e74c3c' : '#2c3e50';
-  };
-
-  const getCardSymbol = (suit) => {
-    const symbols = {
-      'Hearts': '♥',
-      'Diamonds': '♦',
-      'Clubs': '♣',
-      'Spades': '♠'
-    };
-    return symbols[suit] || '';
-  };
-
-  // In experienced mode, don't gray out cards or change opacity
-  const opacity = experiencedMode ? 1 : (isPlayable ? 1 : 0.6);
-  const borderColor = experiencedMode ? '#333' : (isPlayable ? '#27ae60' : '#bdc3c7');
-
-  return (
-    <div 
-      className={`card ${isPlayable ? 'playable' : ''} ${isSelected ? 'selected' : ''}`}
-      onClick={onClick}
-      style={{
-        width: '60px',
-        height: '90px',
-        border: `2px solid ${borderColor}`,
-        borderRadius: '8px',
-        margin: '0 1px',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: '#fff',
-        cursor: isPlayable ? 'pointer' : 'default',
-        transform: isSelected ? 'translateY(-10px)' : 'none',
-        transition: 'all 0.2s ease',
-        fontSize: '10px',
-        padding: '4px',
-        color: getCardColor(card.suit),
-        boxShadow: isSelected ? '0 4px 8px rgba(0,0,0,0.3)' : 
-                   (isPlayable && !experiencedMode ? '0 2px 6px rgba(39, 174, 96, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)'),
-        opacity: opacity,
-        flexShrink: 0,
-        minWidth: '50px',
-        maxWidth: '60px'
-      }}
-    >
-      <div style={{ fontWeight: 'bold', fontSize: '8px' }}>
-        {card.rank}
-      </div>
-      <div style={{ fontSize: '16px' }}>
-        {getCardSymbol(card.suit)}
-      </div>
-      <div style={{ fontWeight: 'bold', fontSize: '8px', transform: 'rotate(180deg)' }}>
-        {card.rank}
-      </div>
-    </div>
-  );
-};
-
-// PlayerHand component with sorting and grouping
 const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, settings = {} }) => {
+  const [hoveredCard, setHoveredCard] = useState(null);
+  
   // Helper function to get rank value for sorting
   const getRankValue = (rank) => {
     const rankOrder = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace'];
@@ -136,14 +75,15 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
       flexDirection: 'column',
       alignItems: 'center',
       margin: '20px 0',
-      padding: '15px 15px 25px 15px', // Added extra bottom padding
+      padding: '15px 15px 25px 15px',
       backgroundColor: '#2ecc71',
       borderRadius: '15px',
-      minHeight: '120px',
+      minHeight: '180px',
       boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
       width: '100%',
       maxWidth: '100vw',
-      boxSizing: 'border-box'
+      boxSizing: 'border-box',
+      overflow: 'visible'
     }}>
       <div style={{ 
         color: '#fff', 
@@ -164,41 +104,50 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
           display: 'flex', 
           flexWrap: 'wrap',
           justifyContent: 'center',
-          alignItems: 'flex-end', // Changed from 'center' to 'flex-end'
+          alignItems: 'center',
           width: '100%',
           maxWidth: '100%',
-          overflow: 'visible', // Changed from 'hidden' to 'visible'
-          paddingTop: '30px', // Added padding for indicators
-          paddingBottom: '15px' // Added padding for selected cards
+          overflow: 'visible',
+          paddingTop: '20px',
+          paddingBottom: '10px',
+          position: 'relative',
+          minHeight: '110px'
         }}>
           {cardGroups.map((group, groupIndex) => (
             <div key={groupIndex} style={{
               display: 'flex',
-              alignItems: 'flex-end', // Changed to flex-end
+              alignItems: 'center',
               flexWrap: 'wrap',
               justifyContent: 'center'
             }}>
-              {/* Cards in this group */}
               {group.cards.map((card, cardIndex) => {
                 const isPlayable = validCards.some(vc => vc.suit === card.suit && vc.rank === card.rank);
                 const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
                 const selectedIndex = selectedCards.findIndex(sc => sc.suit === card.suit && sc.rank === card.rank);
                 const isBottomCard = selectedIndex === 0;
+                // FIXED: Use a more stable key that includes position to prevent repositioning issues
+                const cardKey = `${card.suit}-${card.rank}`;
+                const isHovered = hoveredCard === cardKey;
                 
                 return (
-                  <div key={`${card.suit}-${card.rank}-${cardIndex}`} style={{ 
-                    position: 'relative', 
-                    margin: '2px',
-                    flexShrink: 0,
-                    minWidth: '60px',
-                    // Add extra space for selected cards
-                    marginTop: isSelected ? '10px' : '0px'
-                  }}>
+                  <div 
+                    key={cardKey} 
+                    style={{ 
+                      position: 'relative', 
+                      margin: '3px',
+                      flexShrink: 0,
+                      minWidth: '60px',
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      zIndex: isSelected ? 15 : (isHovered ? 10 : 1)
+                    }}
+                    onMouseEnter={() => setHoveredCard(cardKey)}
+                    onMouseLeave={() => setHoveredCard(null)}
+                  >
                     {/* Bottom Card Indicator - only show when stacking (2+ cards selected) */}
                     {isBottomCard && selectedCards.length > 1 && (
                       <div style={{
                         position: 'absolute',
-                        top: '-35px', // Moved up more
+                        top: '-25px',
                         left: '50%',
                         transform: 'translateX(-50%)',
                         backgroundColor: '#e74c3c',
@@ -208,7 +157,8 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
                         fontSize: '8px',
                         fontWeight: 'bold',
                         whiteSpace: 'nowrap',
-                        zIndex: 10
+                        zIndex: 20,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                       }}>
                         Bottom Card
                       </div>
@@ -218,7 +168,7 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
                     {isSelected && selectedIndex > 0 && (
                       <div style={{
                         position: 'absolute',
-                        top: '-30px', // Moved up more
+                        top: '-20px',
                         left: '50%',
                         transform: 'translateX(-50%)',
                         backgroundColor: '#3498db',
@@ -227,23 +177,82 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
                         borderRadius: '8px',
                         fontSize: '10px',
                         fontWeight: 'bold',
-                        zIndex: 10
+                        zIndex: 20,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                       }}>
                         #{selectedIndex + 1}
                       </div>
                     )}
                     
-                    <Card
-                      card={card}
-                      isPlayable={isPlayable}
-                      isSelected={isSelected}
-                      experiencedMode={settings.experiencedMode}
+                    {/* Enhanced Card Component */}
+                    <div 
+                      className={`card ${isPlayable ? 'playable' : ''} ${isSelected ? 'selected' : ''}`}
                       onClick={() => {
                         if (isPlayable || settings.experiencedMode) {
                           onCardSelect(card);
                         }
                       }}
-                    />
+                      style={{
+                        width: '60px',
+                        height: '90px',
+                        border: `2px solid ${settings.experiencedMode ? '#333' : (isPlayable ? '#27ae60' : '#bdc3c7')}`,
+                        borderRadius: '8px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        backgroundColor: '#fff',
+                        cursor: isPlayable || settings.experiencedMode ? 'pointer' : 'default',
+                        fontSize: '10px',
+                        padding: '4px',
+                        color: card.suit === 'Hearts' || card.suit === 'Diamonds' ? '#e74c3c' : '#2c3e50',
+                        flexShrink: 0,
+                        minWidth: '50px',
+                        maxWidth: '60px',
+                        
+                        // FIXED: Smooth opacity transitions without flashing
+                        opacity: settings.experiencedMode ? 1 : (isPlayable ? 1 : 0.6),
+                        
+                        transform: isSelected ? 'translateY(-15px) scale(1.05)' : 
+                                  (isHovered && !isSelected ? 'translateY(-8px) scale(1.03)' : 'translateY(0px) scale(1)'),
+                        
+                        boxShadow: isSelected ? '0 8px 20px rgba(52, 152, 219, 0.4)' :
+                                  (isHovered && isPlayable ? '0 6px 16px rgba(39, 174, 96, 0.4)' :
+                                  (isHovered ? '0 4px 12px rgba(0,0,0,0.2)' :
+                                  (isPlayable && !settings.experiencedMode ? '0 2px 6px rgba(39, 174, 96, 0.3)' : 
+                                  '0 2px 4px rgba(0,0,0,0.1)'))),
+                        
+                        // FIXED: Separate transitions for different properties to prevent flashing
+                        transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), ' +
+                                   'box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), ' +
+                                   'opacity 0.3s ease, ' +
+                                   'border-color 0.3s ease',
+                        
+                        transformOrigin: 'center center',
+                        
+                        // FIXED: More stable background transition
+                        background: isPlayable && !settings.experiencedMode ? 
+                                   'linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%)' : '#ffffff',
+                        
+                        // FIXED: Smoother border transitions
+                        ...(isHovered && isPlayable && !settings.experiencedMode && {
+                          borderColor: '#2ecc71',
+                          borderWidth: '3px'
+                        })
+                      }}
+                    >
+                      <div style={{ fontWeight: 'bold', fontSize: '8px' }}>
+                        {card.rank}
+                      </div>
+                      <div style={{ fontSize: '16px' }}>
+                        {card.suit === 'Hearts' ? '♥' : 
+                         card.suit === 'Diamonds' ? '♦' : 
+                         card.suit === 'Clubs' ? '♣' : '♠'}
+                      </div>
+                      <div style={{ fontWeight: 'bold', fontSize: '8px', transform: 'rotate(180deg)' }}>
+                        {card.rank}
+                      </div>
+                    </div>
                   </div>
                 );
               })}
@@ -254,9 +263,6 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
     </div>
   );
 };
-
-// GameBoard component
-// In App.js, find the GameBoard component (around line 180-250) and update the top card rendering:
 
 // GameBoard component
 const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
@@ -3131,7 +3137,8 @@ const handleStartNewGame = () => {
         position: 'fixed',
         bottom: '20px',
         right: '20px',
-        width: '320px'
+        width: '320px',
+        zIndex: 100 // Ensure chat is above player hand cards
       }}>
         <Chat socket={socket} />
       </div>
@@ -3160,45 +3167,65 @@ const handleStartNewGame = () => {
 
       {/* Add some CSS animations */}
       <style>{`
-        @keyframes progressBar {
-          from {
-            width: 100%;
-          }
-          to {
-            width: 0%;
-          }
-        }
+        /* REPLACE your card CSS with this version that removes the flickering animation */
 
-        @keyframes slideInRight {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
+@keyframes progressBar {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
 
-        @keyframes pulse {
-          0% { transform: scale(1); }
-          50% { transform: scale(1.05); }
-          100% { transform: scale(1); }
-        }
-        
-        .card:hover {
-          transform: translateY(-2px);
-        }
-        
-        .card.playable:hover {
-          transform: translateY(-5px);
-          box-shadow: 0 4px 12px rgba(39, 174, 96, 0.4);
-        }
-        
-        .card.selected {
-          transform: translateY(-10px);
-          box-shadow: 0 6px 16px rgba(52, 152, 219, 0.4);
-        }
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* FIXED: Minimal card styles without entrance animation */
+.card {
+  transform-origin: center center;
+  will-change: transform, box-shadow;
+  
+  /* REMOVED: cardEntrance animation that was causing flickering */
+  /* animation: cardEntrance 0.2s ease-out; */
+}
+
+/* Enhanced focus states for accessibility */
+.card:focus {
+  outline: 2px solid #3498db;
+  outline-offset: 2px;
+  transform: translateY(-5px) scale(1.02);
+}
+
+/* REMOVED: cardEntrance animation definition */
+/* @keyframes cardEntrance { ... } */
+
+/* Keep other essential animations */
+.card:hover:not(.selected) {
+  z-index: 10;
+}
+
+.card.playable:hover:not(.selected) {
+  /* Handled in React component */
+}
+
+.card.selected {
+  z-index: 15;
+}
 
         ${sliderStyles}
       `}</style>
