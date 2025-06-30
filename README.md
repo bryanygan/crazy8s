@@ -290,3 +290,5 @@ This project is licensed under the **MIT License**.
 **Ready to play Crazy 8's?** 🎴✨
 
 Start your engines, gather your friends, and enjoy this comprehensive implementation of the classic card game with modern multiplayer features!
+
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/bryanygan/crazy8s?utm_source=oss&utm_medium=github&utm_campaign=bryanygan%2Fcrazy8s&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
