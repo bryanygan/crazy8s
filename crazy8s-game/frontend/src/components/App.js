@@ -1,68 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-// Card component with experienced mode support
-const Card = ({ card, onClick, isPlayable = false, isSelected = false, experiencedMode = false }) => {
-  const getCardColor = (suit) => {
-    return suit === 'Hearts' || suit === 'Diamonds' ? '#e74c3c' : '#2c3e50';
-  };
-
-  const getCardSymbol = (suit) => {
-    const symbols = {
-      'Hearts': '♥',
-      'Diamonds': '♦',
-      'Clubs': '♣',
-      'Spades': '♠'
-    };
-    return symbols[suit] || '';
-  };
-
-  // In experienced mode, don't gray out cards or change opacity
-  const opacity = experiencedMode ? 1 : (isPlayable ? 1 : 0.6);
-  const borderColor = experiencedMode ? '#333' : (isPlayable ? '#27ae60' : '#bdc3c7');
-
-  return (
-    <div 
-      className={`card ${isPlayable ? 'playable' : ''} ${isSelected ? 'selected' : ''}`}
-      onClick={onClick}
-      style={{
-        width: '60px',
-        height: '90px',
-        border: `2px solid ${borderColor}`,
-        borderRadius: '8px',
-        margin: '0 1px',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: '#fff',
-        cursor: isPlayable ? 'pointer' : 'default',
-        transform: isSelected ? 'translateY(-10px)' : 'none',
-        transition: 'all 0.2s ease',
-        fontSize: '10px',
-        padding: '4px',
-        color: getCardColor(card.suit),
-        boxShadow: isSelected ? '0 4px 8px rgba(0,0,0,0.3)' : 
-                   (isPlayable && !experiencedMode ? '0 2px 6px rgba(39, 174, 96, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)'),
-        opacity: opacity,
-        flexShrink: 0,
-        minWidth: '50px',
-        maxWidth: '60px'
-      }}
-    >
-      <div style={{ fontWeight: 'bold', fontSize: '8px' }}>
-        {card.rank}
-      </div>
-      <div style={{ fontSize: '16px' }}>
-        {getCardSymbol(card.suit)}
-      </div>
-      <div style={{ fontWeight: 'bold', fontSize: '8px', transform: 'rotate(180deg)' }}>
-        {card.rank}
-      </div>
-    </div>
-  );
-};
-
 const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, settings = {} }) => {
   const [hoveredCard, setHoveredCard] = useState(null);
   
