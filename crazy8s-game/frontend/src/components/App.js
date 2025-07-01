@@ -1,9 +1,410 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, settings = {} }) => {
-  const [hoveredCard, setHoveredCard] = useState(null);
+const Card = ({ 
+  card, 
+  isPlayable, 
+  isSelected, 
+  selectedIndex, 
+  isBottomCard, 
+  settings, 
+  onCardSelect 
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
+
+  // Style calculation functions
+  const getCardStyles = () => {
+    const baseStyles = {
+      width: '60px',
+      height: '90px',
+      border: `2px solid ${getBorderColor()}`,
+      borderRadius: '8px',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: getBackgroundColor(),
+      cursor: getCursor(),
+      fontSize: '10px',
+      padding: '4px',
+      color: getTextColor(),
+      flexShrink: 0,
+      minWidth: '50px',
+      maxWidth: '60px',
+      opacity: getOpacity(),
+      transform: getTransform(),
+      boxShadow: getBoxShadow(),
+      transition: getTransition(),
+      transformOrigin: 'center center'
+    };
+
+    return baseStyles;
+  };
+
+  const getBorderColor = () => {
+    if (settings.experiencedMode) return '#333';
+    if (isHovered && isPlayable && !settings.experiencedMode) return '#2ecc71';
+    return isPlayable ? '#27ae60' : '#bdc3c7';
+  };
+
+  const getBackgroundColor = () => {
+    if (isPlayable && !settings.experiencedMode) {
+      return 'linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%)';
+    }
+    return '#ffffff';
+  };
+
+  const getCursor = () => {
+    return (isPlayable || settings.experiencedMode) ? 'pointer' : 'default';
+  };
+
+  const getTextColor = () => {
+    return (card.suit === 'Hearts' || card.suit === 'Diamonds') ? '#e74c3c' : '#2c3e50';
+  };
+
+  const getOpacity = () => {
+    if (settings.experiencedMode) return 1;
+    return isPlayable ? 1 : 0.6;
+  };
+
+  const getTransform = () => {
+    if (isSelected) {
+      return 'translateY(-15px) scale(1.05)';
+    }
+    if (isHovered && !isSelected) {
+      return 'translateY(-8px) scale(1.03)';
+    }
+    return 'translateY(0px) scale(1)';
+  };
+
+  const getBoxShadow = () => {
+    if (isSelected) {
+      return '0 8px 20px rgba(52, 152, 219, 0.4)';
+    }
+    if (isHovered && isPlayable) {
+      return '0 6px 16px rgba(39, 174, 96, 0.4)';
+    }
+    if (isHovered) {
+      return '0 4px 12px rgba(0,0,0,0.2)';
+    }
+    if (isPlayable && !settings.experiencedMode) {
+      return '0 2px 6px rgba(39, 174, 96, 0.3)';
+    }
+    return '0 2px 4px rgba(0,0,0,0.1)';
+  };
+
+  const getTransition = () => {
+    return [
+      'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+      'box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+      'opacity 0.3s ease',
+      'border-color 0.3s ease'
+    ].join(', ');
+  };
+
+  const getSuitSymbol = () => {
+    const symbols = {
+      'Hearts': '♥',
+      'Diamonds': '♦',
+      'Clubs': '♣',
+      'Spades': '♠'
+    };
+    return symbols[card.suit] || '?';
+  };
+
+  const handleClick = () => {
+    if (isPlayable || settings.experiencedMode) {
+      onCardSelect(card);
+    }
+  };
+
+  const handleMouseEnter = () => setIsHovered(true);
+  const handleMouseLeave = () => setIsHovered(false);
+
+  return (
+    <div 
+      style={{ 
+        position: 'relative', 
+        margin: '3px',
+        flexShrink: 0,
+        minWidth: '60px',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        zIndex: isSelected ? 15 : (isHovered ? 10 : 1)
+      }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {/* Bottom Card Indicator */}
+      {isBottomCard && selectedIndex !== undefined && selectedIndex >= 0 && (
+        <div style={{
+          position: 'absolute',
+          top: '-25px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: '#e74c3c',
+          color: '#fff',
+          padding: '2px 6px',
+          borderRadius: '10px',
+          fontSize: '8px',
+          fontWeight: 'bold',
+          whiteSpace: 'nowrap',
+          zIndex: 20,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}>
+          Bottom Card
+        </div>
+      )}
+      
+      {/* Play Order Indicator */}
+      {isSelected && selectedIndex > 0 && (
+        <div style={{
+          position: 'absolute',
+          top: '-20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: '#3498db',
+          color: '#fff',
+          padding: '1px 5px',
+          borderRadius: '8px',
+          fontSize: '10px',
+          fontWeight: 'bold',
+          zIndex: 20,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}>
+          #{selectedIndex + 1}
+        </div>
+      )}
+      
+      {/* Card Element */}
+      <div 
+        className={`card ${isPlayable ? 'playable' : ''} ${isSelected ? 'selected' : ''}`}
+        onClick={handleClick}
+        style={getCardStyles()}
+      >
+        <div style={{ fontWeight: 'bold', fontSize: '8px' }}>
+          {card.rank}
+        </div>
+        <div style={{ fontSize: '16px' }}>
+          {getSuitSymbol()}
+        </div>
+        <div style={{ 
+          fontWeight: 'bold', 
+          fontSize: '8px', 
+          transform: 'rotate(180deg)' 
+        }}>
+          {card.rank}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Fixed simulateTurnControlFrontend function for App.js
+
+const simulateTurnControlFrontend = (cardStack, activePlayers = 2) => {
+  if (cardStack.length === 0) return true;
+
+  const playerCount = activePlayers;
   
+  console.log(`🔍 Frontend simulateTurnControl: [${cardStack.map(c => c.rank + c.suit[0]).join(', ')}] with ${playerCount} players`);
+  
+  // Check if this is a pure Jack stack in a 2-player game
+  const isPureJackStack = cardStack.every(card => card.rank === 'Jack');
+  const is2PlayerGame = playerCount === 2;
+  
+  if (isPureJackStack && is2PlayerGame) {
+    console.log('🎯 Frontend: Pure Jack stack in 2-player game - original player keeps turn');
+    return true; // Original player always keeps turn
+  }
+  
+  // CORRECTED LOGIC: Check what the stack ends with
+  // The final turn control is determined by the nature of the ending cards
+  
+  // Find the last card and check if it's a turn-passing type
+  const lastCard = cardStack[cardStack.length - 1];
+  const normalCardRanks = ['3', '4', '5', '6', '7', '9', '10', 'King'];
+  const drawCardRanks = ['2', 'Ace']; // These pass turn but have draw effects
+  const wildCardRanks = ['8']; // These pass turn but change suit
+  
+  // If stack ends with normal/draw/wild cards, turn passes regardless of earlier cards
+  if (normalCardRanks.includes(lastCard.rank) || 
+      drawCardRanks.includes(lastCard.rank) || 
+      wildCardRanks.includes(lastCard.rank)) {
+    console.log(`🔍 Frontend: Stack ends with turn-passing card (${lastCard.rank}) - turn passes`);
+    return false;
+  }
+  
+  // If we reach here, stack ends with Jack or Queen - need to analyze the special card effects
+  
+  // Count Queens in the entire stack for even/odd logic
+  let queenCount = 0;
+  let jackCount = 0;
+  
+  for (const card of cardStack) {
+    if (card.rank === 'Queen') queenCount++;
+    if (card.rank === 'Jack') jackCount++;
+  }
+  
+  console.log(`🔍 Frontend: Special cards in stack: Jacks=${jackCount}, Queens=${queenCount}`);
+  
+  if (is2PlayerGame) {
+    // 2-player logic for stacks ending with special cards
+    
+    if (queenCount > 0) {
+      // Queen logic: even count = keep turn, odd count = pass turn
+      const queenKeepsTurn = (queenCount % 2 === 0);
+      console.log(`🔍 Frontend: 2-player Queens: ${queenCount} → ${queenKeepsTurn ? 'keep turn' : 'pass turn'}`);
+      return queenKeepsTurn;
+    }
+    
+    if (jackCount > 0) {
+      // Pure Jack effect (since no Queens and no normal cards at end)
+      console.log(`🔍 Frontend: 2-player: Stack ends with Jack(s) → keep turn`);
+      return true;
+    }
+  } else {
+    // 3+ player logic (simplified)
+    console.log(`🔍 Frontend: 3+ player: Most combinations pass turn`);
+    return false;
+  }
+  
+  // Fallback
+  console.log(`🔍 Frontend: Fallback: pass turn`);
+  return false;
+};
+
+// Frontend card stack validation (matching backend logic)
+const validateCardStackFrontend = (cards, activePlayers = 2) => {
+  if (cards.length <= 1) {
+    return { isValid: true };
+  }
+
+  console.log('🔍 Frontend: Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+
+  // Check each card-to-card transition in the stack
+  for (let i = 1; i < cards.length; i++) {
+    const prevCard = cards[i - 1];
+    const currentCard = cards[i];
+    
+    console.log(`  Frontend: Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
+    
+    // Cards must match by suit or rank
+    const matchesSuit = prevCard.suit === currentCard.suit;
+    const matchesRank = prevCard.rank === currentCard.rank;
+    
+    // Special case: Aces and 2s can stack with each other if same suit
+    const isAce2Cross = (
+      (prevCard.rank === 'Ace' && currentCard.rank === '2') ||
+      (prevCard.rank === '2' && currentCard.rank === 'Ace')
+    ) && prevCard.suit === currentCard.suit;
+    
+    console.log(`    Frontend: Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+    
+    // Basic matching requirement
+    if (!matchesSuit && !matchesRank && !isAce2Cross) {
+      console.log(`    ❌ Frontend: Invalid transition - no suit/rank match!`);
+      return {
+        isValid: false,
+        error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank.`
+      };
+    }
+    
+    // If cards match by rank, always allow (this is standard stacking)
+    if (matchesRank || isAce2Cross) {
+      console.log(`    ✅ Frontend: Valid transition - same rank or Ace/2 cross-stack`);
+      continue;
+    }
+    
+    // If cards only match by suit (different ranks), 
+    // we need to validate the entire turn control chain up to this point
+    if (matchesSuit && !matchesRank) {
+      console.log(`    Frontend: Same suit, different rank - checking turn control logic`);
+      
+      // For same-suit different-rank transitions, we need to validate that 
+      // the player would maintain turn control after playing all cards UP TO AND INCLUDING the previous card
+      // This is the key fix - we simulate what happens after playing cards[0] through cards[i-1]
+      const stackUpToPrevious = cards.slice(0, i);
+      const wouldHaveTurnControl = simulateTurnControlFrontend(stackUpToPrevious, activePlayers);
+      
+      console.log(`    Frontend: Turn control after previous cards: ${wouldHaveTurnControl}`);
+      
+      if (!wouldHaveTurnControl) {
+        console.log(`    ❌ Frontend: Invalid transition - no turn control after previous cards!`);
+        return {
+          isValid: false,
+          error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. You don't maintain turn control after playing the previous cards in the sequence.`
+        };
+      }
+      
+      console.log(`    ✅ Frontend: Valid transition - turn control maintained`);
+    }
+  }
+  
+  console.log('✅ Frontend: Stack validation passed');
+  return { isValid: true };
+};
+
+// Enhanced card stacking check for frontend
+const canStackCardsFrontend = (existingCards, newCard, activePlayers = 2) => {
+  const testStack = [...existingCards, newCard];
+  const validation = validateCardStackFrontend(testStack, activePlayers);
+  return validation.isValid;
+};
+
+// Enhanced frontend validation for card selection
+const getValidCardsForSelection = (playerHand, gameState, selectedCards, topCard) => {
+  if (!gameState || playerHand.length === 0) return [];
+  
+  let valid = [];
+  const activePlayers = gameState.players?.length || 2;
+
+  if (selectedCards.length === 0) {
+    // No cards selected - show cards that can be played as bottom card
+    valid = playerHand.filter(card => {
+      // When there's a draw stack, ONLY counter cards are valid (no 8s allowed)
+      if (gameState.drawStack > 0) {
+        return canCounterDrawFrontend(card, topCard);
+      }
+      
+      // 8s can be played on anything (except when draw stack is present)
+      if (card.rank === '8') return true;
+      
+      const suitToMatch = gameState.declaredSuit || topCard.suit;
+      return card.suit === suitToMatch || card.rank === topCard.rank;
+    });
+  } else {
+    // Cards already selected - show stackable cards
+    valid = playerHand.filter(card => {
+      // Already selected cards are always "valid" for reordering
+      const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
+      if (isSelected) return true;
+      
+      // Check if this card can be stacked with the current selection using proper validation
+      return canStackCardsFrontend(selectedCards, card, activePlayers);
+    });
+  }
+  
+  console.log('🎯 Frontend: Valid cards calculated:', valid.length, 'out of', playerHand.length);
+  console.log('🎯 Frontend: Selected cards:', selectedCards.length);
+  console.log('🎯 Frontend: Draw stack:', gameState.drawStack);
+  
+  return valid;
+};
+
+// Frontend counter draw validation
+const canCounterDrawFrontend = (card, topCard) => {
+  if (!topCard) return false;
+  
+  if (topCard.rank === 'Ace') {
+    return card.rank === 'Ace' || (card.rank === '2' && card.suit === topCard.suit);
+  }
+  if (topCard.rank === '2') {
+    return card.rank === '2' || (card.rank === 'Ace' && card.suit === topCard.suit);
+  }
+  return false;
+};
+
+const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, settings = {} }) => {
   // Helper function to get rank value for sorting
   const getRankValue = (rank) => {
     const rankOrder = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace'];
@@ -120,140 +521,24 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
               flexWrap: 'wrap',
               justifyContent: 'center'
             }}>
-              {group.cards.map((card, cardIndex) => {
+              {group.cards.map((card) => {
                 const isPlayable = validCards.some(vc => vc.suit === card.suit && vc.rank === card.rank);
                 const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
                 const selectedIndex = selectedCards.findIndex(sc => sc.suit === card.suit && sc.rank === card.rank);
                 const isBottomCard = selectedIndex === 0;
-                // FIXED: Use a more stable key that includes position to prevent repositioning issues
                 const cardKey = `${card.suit}-${card.rank}`;
-                const isHovered = hoveredCard === cardKey;
                 
                 return (
-                  <div 
-                    key={cardKey} 
-                    style={{ 
-                      position: 'relative', 
-                      margin: '3px',
-                      flexShrink: 0,
-                      minWidth: '60px',
-                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                      zIndex: isSelected ? 15 : (isHovered ? 10 : 1)
-                    }}
-                    onMouseEnter={() => setHoveredCard(cardKey)}
-                    onMouseLeave={() => setHoveredCard(null)}
-                  >
-                    {/* Bottom Card Indicator - only show when stacking (2+ cards selected) */}
-                    {isBottomCard && selectedCards.length > 1 && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '-25px',
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        backgroundColor: '#e74c3c',
-                        color: '#fff',
-                        padding: '2px 6px',
-                        borderRadius: '10px',
-                        fontSize: '8px',
-                        fontWeight: 'bold',
-                        whiteSpace: 'nowrap',
-                        zIndex: 20,
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                      }}>
-                        Bottom Card
-                      </div>
-                    )}
-                    
-                    {/* Play Order Indicator */}
-                    {isSelected && selectedIndex > 0 && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '-20px',
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        backgroundColor: '#3498db',
-                        color: '#fff',
-                        padding: '1px 5px',
-                        borderRadius: '8px',
-                        fontSize: '10px',
-                        fontWeight: 'bold',
-                        zIndex: 20,
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                      }}>
-                        #{selectedIndex + 1}
-                      </div>
-                    )}
-                    
-                    {/* Enhanced Card Component */}
-                    <div 
-                      className={`card ${isPlayable ? 'playable' : ''} ${isSelected ? 'selected' : ''}`}
-                      onClick={() => {
-                        if (isPlayable || settings.experiencedMode) {
-                          onCardSelect(card);
-                        }
-                      }}
-                      style={{
-                        width: '60px',
-                        height: '90px',
-                        border: `2px solid ${settings.experiencedMode ? '#333' : (isPlayable ? '#27ae60' : '#bdc3c7')}`,
-                        borderRadius: '8px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        backgroundColor: '#fff',
-                        cursor: isPlayable || settings.experiencedMode ? 'pointer' : 'default',
-                        fontSize: '10px',
-                        padding: '4px',
-                        color: card.suit === 'Hearts' || card.suit === 'Diamonds' ? '#e74c3c' : '#2c3e50',
-                        flexShrink: 0,
-                        minWidth: '50px',
-                        maxWidth: '60px',
-                        
-                        // FIXED: Smooth opacity transitions without flashing
-                        opacity: settings.experiencedMode ? 1 : (isPlayable ? 1 : 0.6),
-                        
-                        transform: isSelected ? 'translateY(-15px) scale(1.05)' : 
-                                  (isHovered && !isSelected ? 'translateY(-8px) scale(1.03)' : 'translateY(0px) scale(1)'),
-                        
-                        boxShadow: isSelected ? '0 8px 20px rgba(52, 152, 219, 0.4)' :
-                                  (isHovered && isPlayable ? '0 6px 16px rgba(39, 174, 96, 0.4)' :
-                                  (isHovered ? '0 4px 12px rgba(0,0,0,0.2)' :
-                                  (isPlayable && !settings.experiencedMode ? '0 2px 6px rgba(39, 174, 96, 0.3)' : 
-                                  '0 2px 4px rgba(0,0,0,0.1)'))),
-                        
-                        // FIXED: Separate transitions for different properties to prevent flashing
-                        transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), ' +
-                                   'box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), ' +
-                                   'opacity 0.3s ease, ' +
-                                   'border-color 0.3s ease',
-                        
-                        transformOrigin: 'center center',
-                        
-                        // FIXED: More stable background transition
-                        background: isPlayable && !settings.experiencedMode ? 
-                                   'linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%)' : '#ffffff',
-                        
-                        // FIXED: Smoother border transitions
-                        ...(isHovered && isPlayable && !settings.experiencedMode && {
-                          borderColor: '#2ecc71',
-                          borderWidth: '3px'
-                        })
-                      }}
-                    >
-                      <div style={{ fontWeight: 'bold', fontSize: '8px' }}>
-                        {card.rank}
-                      </div>
-                      <div style={{ fontSize: '16px' }}>
-                        {card.suit === 'Hearts' ? '♥' : 
-                         card.suit === 'Diamonds' ? '♦' : 
-                         card.suit === 'Clubs' ? '♣' : '♠'}
-                      </div>
-                      <div style={{ fontWeight: 'bold', fontSize: '8px', transform: 'rotate(180deg)' }}>
-                        {card.rank}
-                      </div>
-                    </div>
-                  </div>
+                  <Card
+                    key={cardKey}
+                    card={card}
+                    isPlayable={isPlayable}
+                    isSelected={isSelected}
+                    selectedIndex={selectedIndex}
+                    isBottomCard={isBottomCard && selectedCards.length > 1}
+                    settings={settings}
+                    onCardSelect={onCardSelect}
+                  />
                 );
               })}
             </div>
@@ -1763,184 +2048,20 @@ newSocket.on('playerDrewCards', (data) => {
     return { rank: parts[0], suit: parts[1] };
   };
 
-  const canCounterDraw = (card, topCard) => {
-    if (topCard.rank === 'Ace') {
-      return card.rank === 'Ace' || (card.rank === '2' && card.suit === topCard.suit);
-    }
-    if (topCard.rank === '2') {
-      return card.rank === '2' || (card.rank === 'Ace' && card.suit === topCard.suit);
-    }
-    return false;
-  };
-
-  // Enhanced turn control simulation (matching backend logic)
-  const simulateTurnControl = (cardStack, activePlayers) => {
-    if (cardStack.length === 0) return true;
-
-    const playerCount = activePlayers;
-    
-    // NEW: Check if this is a pure Jack stack in a 2-player game
-    const isPureJackStack = cardStack.every(card => card.rank === 'Jack');
-    const is2PlayerGame = playerCount === 2;
-    
-    if (isPureJackStack && is2PlayerGame) {
-      console.log('🎯 Pure Jack stack in 2-player game - original player keeps turn');
-      return true; // Original player always keeps turn
-    }
-    
-    // Original turn simulation logic for other cases
-    let currentIndex = 0; // Start relative to the current player
-    let direction = 1; // Assume normal direction
-    let pendingSkips = 0;
-
-    for (const card of cardStack) {
-      if (card.rank === 'Jack') {
-        // Accumulate skip effects; actual move applied when a non-Jack is processed
-        if (playerCount !== 2) {
-          pendingSkips += 1;
-        }
-        continue;
-      }
-
-      if (pendingSkips > 0) {
-        if (playerCount !== 2) {
-          currentIndex = (currentIndex + pendingSkips + 1) % playerCount;
-        }
-        pendingSkips = 0;
-      }
-
-      switch (card.rank) {
-        case 'Queen':
-          direction *= -1;
-          currentIndex = (currentIndex + direction + playerCount) % playerCount;
-          break;
-        case 'Ace':
-        case '2':
-        case '8':
-          currentIndex = (currentIndex + direction + playerCount) % playerCount;
-          break;
-        default:
-          currentIndex = (currentIndex + direction + playerCount) % playerCount;
-          break;
-      }
-    }
-
-    if (pendingSkips > 0) {
-      if (playerCount !== 2) {
-        currentIndex = (currentIndex + pendingSkips + 1) % playerCount;
-      }
-    }
-
-    // Player keeps the turn only if we end back at index 0
-    return currentIndex === 0;
-  };
-
-  // Enhanced card stack validation with strict turn logic
-    const validateCardStack = useCallback((cards, activePlayers) => {
-    if (cards.length <= 1) {
-        return { isValid: true };
-    }
-
-      console.log('🔍 Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
-
-    // Check each card-to-card transition in the stack
-    for (let i = 1; i < cards.length; i++) {
-      const prevCard = cards[i - 1];
-      const currentCard = cards[i];
-      
-      console.log(`  Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
-      
-      // Cards must match by suit or rank
-      const matchesSuit = prevCard.suit === currentCard.suit;
-      const matchesRank = prevCard.rank === currentCard.rank;
-      
-      // Special case: Aces and 2s can stack with each other if same suit
-      const isAce2Cross = (
-        (prevCard.rank === 'Ace' && currentCard.rank === '2') ||
-        (prevCard.rank === '2' && currentCard.rank === 'Ace')
-      ) && prevCard.suit === currentCard.suit;
-      
-      console.log(`    Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
-      
-      // Basic matching requirement
-      if (!matchesSuit && !matchesRank && !isAce2Cross) {
-        console.log(`    ❌ Invalid transition - no suit/rank match!`);
-        return {
-          isValid: false,
-          error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank.`
-        };
-      }
-      
-      // If different rank but same suit, validate turn chain logic
-      if (matchesSuit && !matchesRank && !isAce2Cross) {
-        const stackUpToHere = cards.slice(0, i);
-        const wouldHaveTurnControl = simulateTurnControl(stackUpToHere, activePlayers);
-        
-        if (!wouldHaveTurnControl) {
-          console.log(`    ❌ Invalid transition - no turn control after previous cards!`);
-          return {
-            isValid: false,
-            error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Previous cards don't maintain turn control.`
-          };
-        }
-      }
-      
-      console.log(`    ✅ Valid transition`);
-    }
-    
-    console.log('✅ Stack validation passed');
-    return { isValid: true };
-  }, []);
-
-  // Enhanced card stacking check
-    const canStackCards = useCallback((existingCards, newCard, activePlayers) => {
-    const testStack = [...existingCards, newCard];
-    const validation = validateCardStack(testStack, activePlayers);
-    return validation.isValid;
-    }, [validateCardStack]);
-
   // Update valid cards when playerHand or gameState changes
   useEffect(() => {
-  if (gameState && playerHand.length > 0) {
-    const topCard = parseTopCard(gameState.topCard);
-    if (!topCard) return;
+    if (gameState && playerHand.length > 0) {
+      const topCard = parseTopCard(gameState.topCard);
+      if (!topCard) return;
 
-    let valid = [];
-
-    if (selectedCards.length === 0) {
-      // No cards selected - show cards that can be played as bottom card
-      valid = playerHand.filter(card => {
-        // When there's a draw stack, ONLY counter cards are valid (no 8s allowed)
-        if (gameState.drawStack > 0) {
-          return canCounterDraw(card, topCard);
-        }
-        
-        // 8s can be played on anything (except when draw stack is present)
-        if (card.rank === '8') return true;
-        
-        const suitToMatch = gameState.declaredSuit || topCard.suit;
-        return card.suit === suitToMatch || card.rank === topCard.rank;
-      });
+      // Use the enhanced frontend validation
+      const valid = getValidCardsForSelection(playerHand, gameState, selectedCards, topCard);
+      
+      setValidCards(valid);
     } else {
-      // Cards already selected - show stackable cards
-      valid = playerHand.filter(card => {
-        // Already selected cards are always "valid" for reordering
-        const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
-        if (isSelected) return true;
-        
-        // Check if this card can be stacked with the current selection
-        return canStackCards(selectedCards, card, gameState.players?.length || 2);
-      });
+      setValidCards([]);
     }
-    
-    console.log('🎯 Valid cards calculated:', valid.length, 'out of', playerHand.length);
-    console.log('🎯 Selected cards:', selectedCards.length);
-    console.log('🎯 Draw stack:', gameState.drawStack);
-    setValidCards(valid);
-  } else {
-    setValidCards([]);
-  }
-}, [playerHand, gameState, selectedCards, canStackCards]);
+  }, [playerHand, gameState, selectedCards]);
 
 // Listen for timer updates from server
 useEffect(() => {
@@ -2051,14 +2172,14 @@ useEffect(() => {
         // No cards selected, select this card as bottom card
         setSelectedCards([card]);
       } else {
-        // Check if this card can be stacked with the current selection
+        // Check if this card can be stacked with the current selection using frontend validation
         const activePlayers = gameState?.players?.length || 2;
         
-        if (canStackCards(selectedCards, card, activePlayers)) {
+        if (canStackCardsFrontend(selectedCards, card, activePlayers)) {
           setSelectedCards(prev => [...prev, card]);
         } else {
-          // Can't stack - show error message
-          const validation = validateCardStack([...selectedCards, card], activePlayers);
+          // Can't stack - show specific error message from frontend validation
+          const validation = validateCardStackFrontend([...selectedCards, card], activePlayers);
           addToast(validation.error || `Cannot stack ${card.rank} of ${card.suit} with current selection.`, 'error');
         }
       }
@@ -2073,7 +2194,7 @@ useEffect(() => {
 
     // Final validation before sending to server
     const activePlayers = gameState?.players?.length || 2;
-    const validation = validateCardStack(selectedCards, activePlayers);
+    const validation = validateCardStackFrontend(selectedCards, activePlayers);
     
     if (!validation.isValid) {
       addToast(validation.error, 'error');
