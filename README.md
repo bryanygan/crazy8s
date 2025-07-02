@@ -332,8 +332,13 @@ For questions, issues, or feature requests:
 - **Red Badge**: Bottom card in stack (foundation)
 - **Error Messages**: Detailed feedback for invalid stacks
 
+
 ### Debug Information
 - **Turn Control Logs**: Shows simulation results
 - **Validation Steps**: Detailed breakdown of stack checking
 - **Card Analysis**: Counts of special cards in stacks
 - **Player State**: Current turn and game state information
+
+Start your engines, gather your friends, and enjoy this comprehensive implementation of the classic card game with modern multiplayer features!
+
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/bryanygan/crazy8s?utm_source=oss&utm_medium=github&utm_campaign=bryanygan%2Fcrazy8s&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
