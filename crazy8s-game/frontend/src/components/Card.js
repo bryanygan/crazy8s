@@ -11,7 +11,6 @@ const Card = ({
   onCardSelect 
 }) => {
   const [isHovered, setIsHovered] = useState(false);
-  const cardKey = `${card.suit}-${card.rank}`;
 
   // Extract style calculation logic
   const getCardStyles = () => {
