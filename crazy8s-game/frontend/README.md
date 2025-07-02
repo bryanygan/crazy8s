@@ -1,24 +1,25 @@
 # Crazy 8's Game Frontend
 
 ## Overview
-This is the frontend for the Crazy 8's game, built using React with modern hooks and state management. It provides a comprehensive, responsive user interface that connects to the backend server via Socket.IO for real-time multiplayer gameplay.
+This is the frontend for the Crazy 8's game, built using React with modern hooks and state management. It provides a comprehensive, responsive user interface with **advanced card stacking visualization** that connects to the backend server via Socket.IO for real-time multiplayer gameplay featuring sophisticated sequential stacking mechanics.
 
 ## Architecture Overview
 
 ### Technology Stack
 - **React 17+**: Modern functional components with hooks
-- **Socket.IO Client**: Real-time server communication
-- **CSS3**: Custom responsive styling with animations
+- **Socket.IO Client**: Real-time server communication with stacking validation
+- **CSS3**: Custom responsive styling with advanced card animations
 - **localStorage**: User settings persistence
-- **Modern ES6+**: Clean, maintainable JavaScript
+- **Modern ES6+**: Clean, maintainable JavaScript with complex state management
 
 ### Key Features
-- **Real-time Multiplayer**: Instant game state synchronization
-- **Advanced Card Management**: Visual selection with stacking support
+- **Real-time Multiplayer**: Instant game state synchronization with stacking feedback
+- **Advanced Card Stacking Interface**: Visual selection system for complex sequential stacks
+- **Turn Control Visualization**: Real-time feedback on turn control logic
 - **Responsive Design**: Mobile-first approach with desktop optimization
 - **User Customization**: Persistent settings and preferences
-- **Rich UI/UX**: Animations, notifications, and visual feedback
-- **Comprehensive Game Controls**: Full game functionality through intuitive interface
+- **Rich UI/UX**: Advanced animations, notifications, and visual stacking feedback
+- **Comprehensive Stacking Controls**: Full sequential stacking functionality through intuitive interface
 
 ## Project Structure
 ```
@@ -28,7 +29,10 @@ frontend/
 ├── src/
 │   ├── index.js            # React entry point
 │   ├── components/         # React components
-│   │   ├── App.js          # Main application component (2000+ lines)
+│   │   ├── App.js          # Main application component (2500+ lines)
+│   │   │                   # - Advanced stacking UI components
+│   │   │                   # - Turn control validation logic  
+│   │   │                   # - Real-time stacking feedback
 │   │   ├── GameBoard.js    # Legacy component (minimal)
 │   │   ├── PlayerHand.js   # Legacy component (minimal)
 │   │   └── Chat.js         # Legacy component (minimal)
@@ -38,41 +42,438 @@ frontend/
 └── README.md
 ```
 
-**Note**: The main application logic is consolidated in `App.js` for better state management and real-time synchronization.
+**Note**: The main application logic is consolidated in `App.js` for better state management and real-time stacking synchronization.
 
 ## Key Components
 
 ### Main App Component (`App.js`)
-The central component containing all game functionality:
+The central component containing all game functionality with advanced stacking features:
 
 #### Sub-Components
-- **Card**: Individual card rendering with special effects
-- **PlayerHand**: Hand management with sorting and grouping
-- **GameBoard**: Game state display with draw/discard piles
+- **Card**: Individual card rendering with stacking selection effects
+- **PlayerHand**: Hand management with sophisticated sorting and stacking visualization
+- **GameBoard**: Game state display with turn control indicators
 - **SuitSelector**: Modal for wild card suit selection
-- **Settings**: Configuration modal for user preferences
-- **Toast**: Notification system for game events
+- **Settings**: Configuration modal with stacking preferences
+- **Toast**: Notification system for stacking validation feedback
 - **Chat**: Real-time messaging system
 
-#### State Management
+#### Enhanced State Management
 ```javascript
-// Core game state
+// Core game state with stacking
 const [gameState, setGameState] = useState(null);
 const [playerHand, setPlayerHand] = useState([]);
-const [selectedCards, setSelectedCards] = useState([]);
+const [selectedCards, setSelectedCards] = useState([]); // Advanced stacking selection
 const [validCards, setValidCards] = useState([]);
 
-// UI state
-const [showSettings, setShowSettings] = useState(false);
-const [showSuitSelector, setShowSuitSelector] = useState(false);
-const [toast, setToast] = useState(null);
+// Advanced stacking UI state
+const [stackingOrder, setStackingOrder] = useState([]);
+const [turnControlFeedback, setTurnControlFeedback] = useState(null);
 
-// User preferences (persistent)
+// Enhanced user preferences
 const [settings, setSettings] = useState({
   sortByRank: false,
   groupBySuit: false,
-  experiencedMode: false
+  experiencedMode: false,
+  showStackingDebug: false // Debug mode for stacking validation
 });
+```
+
+## Advanced Card Stacking Interface
+
+### Visual Card Selection System
+
+#### Enhanced Selection States
+- **Playable Cards**: Green border with hover effects
+- **Selected Cards**: Blue highlighting with elevation and stacking order numbers
+- **Stacking Order**: Numbered indicators (1, 2, 3...) for multi-card sequences
+- **Bottom Card Indicator**: Red badge marking the foundation of the stack
+- **Turn Control Feedback**: Real-time validation with color-coded feedback
+
+#### Stacking Selection Logic
+```javascript
+const handleCardSelect = (card) => {
+  const isSelected = selectedCards.some(sc => 
+    sc.suit === card.suit && sc.rank === card.rank
+  );
+  
+  if (isSelected) {
+    // Handle deselection or reordering for complex stacks
+    handleCardDeselection(card);
+  } else {
+    if (selectedCards.length === 0) {
+      // First card - becomes bottom card of stack
+      setSelectedCards([card]);
+    } else {
+      // Check if this card can be stacked using frontend validation
+      const activePlayers = gameState?.players?.length || 2;
+      
+      if (canStackCardsFrontend(selectedCards, card, activePlayers)) {
+        setSelectedCards(prev => [...prev, card]);
+        // Show success feedback for valid stacking
+        showStackingFeedback('Valid stack!', 'success');
+      } else {
+        // Show detailed error message from validation
+        const validation = validateCardStackFrontend([...selectedCards, card], activePlayers);
+        showStackingFeedback(validation.error, 'error');
+      }
+    }
+  }
+};
+```
+
+### Advanced Card Organization
+
+#### Smart Sorting with Stacking Support
+```javascript
+// Enhanced card organization for stacking
+const organizeCards = () => {
+  let organizedCards = [...cards];
+
+  if (settings.sortByRank) {
+    organizedCards.sort((a, b) => {
+      const rankA = getRankValue(a.rank);
+      const rankB = getRankValue(b.rank);
+      if (rankA !== rankB) return rankA - rankB;
+      return getSuitValue(a.suit) - getSuitValue(b.suit);
+    });
+  }
+
+  if (settings.groupBySuit) {
+    organizedCards.sort((a, b) => {
+      const suitA = getSuitValue(a.suit);
+      const suitB = getSuitValue(b.suit);
+      if (suitA !== suitB) return suitA - suitB;
+      if (settings.sortByRank) {
+        return getRankValue(a.rank) - getRankValue(b.rank);
+      }
+      return 0;
+    });
+  }
+
+  return organizedCards;
+};
+```
+
+#### Visual Grouping for Stacking
+```javascript
+// Group cards by suit with visual separators for stacking
+const getCardGroups = () => {
+  if (!settings.groupBySuit) {
+    return [{ suit: null, cards: organizedCards }];
+  }
+
+  const groups = [];
+  const suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades'];
+  
+  suits.forEach(suit => {
+    const suitCards = organizedCards.filter(card => card.suit === suit);
+    if (suitCards.length > 0) {
+      groups.push({ suit, cards: suitCards });
+    }
+  });
+
+  return groups;
+};
+```
+
+## Frontend Stacking Validation
+
+### Real-time Validation System
+
+#### Turn Control Simulation (Frontend)
+```javascript
+const simulateTurnControlFrontend = (cardStack, activePlayers = 2) => {
+  if (cardStack.length === 0) return true;
+
+  const playerCount = activePlayers;
+  
+  // Pure Jack stack special case
+  const isPureJackStack = cardStack.every(card => card.rank === 'Jack');
+  if (isPureJackStack && playerCount === 2) {
+    return true;
+  }
+  
+  // Check what the stack ends with
+  const lastCard = cardStack[cardStack.length - 1];
+  const normalCardRanks = ['3', '4', '5', '6', '7', '9', '10', 'King'];
+  const drawCardRanks = ['2', 'Ace'];
+  const wildCardRanks = ['8'];
+  
+  // If stack ends with turn-passing cards, turn passes
+  if (normalCardRanks.includes(lastCard.rank) || 
+      drawCardRanks.includes(lastCard.rank) || 
+      wildCardRanks.includes(lastCard.rank)) {
+    return false;
+  }
+  
+  // Complex Queen counting logic
+  let queenCount = 0;
+  for (const card of cardStack) {
+    if (card.rank === 'Queen') queenCount++;
+  }
+  
+  if (playerCount === 2 && queenCount > 0) {
+    return (queenCount % 2 === 0); // Even = keep turn, odd = pass turn
+  }
+  
+  // Default to keeping turn for Jack-ending stacks
+  return true;
+};
+```
+
+#### Enhanced Stack Validation
+```javascript
+const validateCardStackFrontend = (cards, activePlayers = 2) => {
+  if (cards.length <= 1) return { isValid: true };
+
+  console.log('🔍 Frontend: Validating stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+
+  for (let i = 1; i < cards.length; i++) {
+    const prevCard = cards[i - 1];
+    const currentCard = cards[i];
+    
+    const matchesSuit = prevCard.suit === currentCard.suit;
+    const matchesRank = prevCard.rank === currentCard.rank;
+    const isAce2Cross = (
+      (prevCard.rank === 'Ace' && currentCard.rank === '2') ||
+      (prevCard.rank === '2' && currentCard.rank === 'Ace')
+    ) && prevCard.suit === currentCard.suit;
+    
+    if (!matchesSuit && !matchesRank && !isAce2Cross) {
+      return {
+        isValid: false,
+        error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank.`
+      };
+    }
+    
+    // Same rank always allowed
+    if (matchesRank || isAce2Cross) continue;
+    
+    // Same suit requires turn control validation
+    if (matchesSuit && !matchesRank) {
+      const stackUpToPrevious = cards.slice(0, i);
+      const wouldHaveTurnControl = simulateTurnControlFrontend(stackUpToPrevious, activePlayers);
+      
+      if (!wouldHaveTurnControl) {
+        return {
+          isValid: false,
+          error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. You don't maintain turn control after playing the previous cards in the sequence.`
+        };
+      }
+    }
+  }
+  
+  return { isValid: true };
+};
+```
+
+### Enhanced Valid Card Detection
+
+```javascript
+const getValidCardsForSelection = (playerHand, gameState, selectedCards, topCard) => {
+  if (!gameState || playerHand.length === 0) return [];
+  
+  let valid = [];
+  const activePlayers = gameState.players?.length || 2;
+
+  if (selectedCards.length === 0) {
+    // No cards selected - show cards that can be played as bottom card
+    valid = playerHand.filter(card => {
+      if (gameState.drawStack > 0) {
+        return canCounterDrawFrontend(card, topCard);
+      }
+      
+      if (card.rank === '8') return true;
+      
+      const suitToMatch = gameState.declaredSuit || topCard.suit;
+      return card.suit === suitToMatch || card.rank === topCard.rank;
+    });
+  } else {
+    // Cards already selected - show stackable cards with advanced validation
+    valid = playerHand.filter(card => {
+      const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
+      if (isSelected) return true;
+      
+      return canStackCardsFrontend(selectedCards, card, activePlayers);
+    });
+  }
+  
+  console.log('🎯 Frontend: Valid cards calculated:', valid.length, 'out of', playerHand.length);
+  console.log('🎯 Frontend: Selected cards:', selectedCards.length);
+  
+  return valid;
+};
+```
+
+## Advanced User Interface Features
+
+### Card Visual Effects
+
+#### Stacking Animation System
+```css
+/* Enhanced card selection with stacking order */
+.card {
+  transform-origin: center center;
+  will-change: transform, box-shadow;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card.selected {
+  transform: translateY(-15px) scale(1.05);
+  box-shadow: 0 8px 20px rgba(52, 152, 219, 0.4);
+  z-index: 15;
+}
+
+.card.playable:hover {
+  transform: translateY(-8px) scale(1.03);
+  box-shadow: 0 6px 16px rgba(39, 174, 96, 0.4);
+}
+
+/* Stacking order indicators */
+.card-order-badge {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #3498db;
+  color: white;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: bold;
+  z-index: 20;
+}
+
+/* Bottom card indicator for stacks */
+.bottom-card-badge {
+  position: absolute;
+  top: -25px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #e74c3c;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 8px;
+  font-weight: bold;
+}
+```
+
+### Enhanced Settings System
+
+#### Stacking-Specific Settings
+```javascript
+const advancedSettings = {
+  // Card display
+  sortByRank: boolean,
+  groupBySuit: boolean,
+  experiencedMode: boolean,
+  
+  // Stacking preferences  
+  showStackingDebug: boolean,      // Show detailed stacking logs
+  highlightValidStacks: boolean,   // Highlight stackable cards
+  showTurnControlHints: boolean,   // Show turn control feedback
+  
+  // Timer system
+  enableTimer: boolean,
+  timerDuration: number,
+  timerWarningTime: number
+};
+```
+
+#### Settings Modal with Stacking Options
+```javascript
+<div style={{ marginBottom: '25px' }}>
+  <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>🃏 Advanced Stacking</h3>
+  
+  <div style={{ padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+    <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Show Stacking Debug</div>
+    <div style={{ fontSize: '12px', color: '#6c757d' }}>
+      Display detailed turn control validation in console (for advanced players)
+    </div>
+  </div>
+  
+  <div style={{ padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+    <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Highlight Valid Stacks</div>
+    <div style={{ fontSize: '12px', color: '#6c757d' }}>
+      Show green borders on cards that can be stacked with current selection
+    </div>
+  </div>
+</div>
+```
+
+### Real-time Stacking Feedback
+
+#### Toast Notification System for Stacking
+```javascript
+const showStackingFeedback = (message, type) => {
+  const toastId = Date.now() + Math.random();
+  const newToast = {
+    id: toastId,
+    message,
+    type, // 'success', 'error', 'info'
+    timestamp: Date.now()
+  };
+  
+  setToasts(prevToasts => [newToast, ...prevToasts.slice(0, 2)]);
+};
+
+// Example usage for stacking validation
+if (canStackCardsFrontend(selectedCards, card, activePlayers)) {
+  showStackingFeedback(`✅ Valid stack: ${card.rank} of ${card.suit}`, 'success');
+} else {
+  showStackingFeedback(`❌ Invalid stack: Turn control lost`, 'error');
+}
+```
+
+#### Enhanced Game Controls
+
+```javascript
+const playSelectedCards = () => {
+  if (selectedCards.length === 0) {
+    showStackingFeedback('Please select at least one card', 'error');
+    return;
+  }
+
+  // Frontend validation before sending to server
+  const activePlayers = gameState?.players?.length || 2;
+  const validation = validateCardStackFrontend(selectedCards, activePlayers);
+  
+  if (!validation.isValid) {
+    showStackingFeedback(validation.error, 'error');
+    return;
+  }
+
+  const hasWild = selectedCards.some(card => card.rank === '8');
+  
+  if (hasWild) {
+    // Check for valid 8 combinations
+    const non8Cards = selectedCards.filter(card => card.rank !== '8');
+    if (non8Cards.length > 0) {
+      const allSameSuit = selectedCards.every(card => card.suit === selectedCards[0].suit);
+      if (!allSameSuit) {
+        showStackingFeedback('When playing 8s with other cards, all must be the same suit', 'error');
+        return;
+      }
+    }
+    setShowSuitSelector(true);
+  } else {
+    // Send validated stack to server
+    socket.emit('playCard', {
+      gameId: gameState?.gameId,
+      cards: selectedCards,
+      timerSettings: {
+        enableTimer: settings.enableTimer,
+        timerDuration: settings.timerDuration,
+        timerWarningTime: settings.timerWarningTime
+      }
+    });
+    
+    setSelectedCards([]);
+    showStackingFeedback(`Played ${selectedCards.length} card stack`, 'success');
+  }
+};
 ```
 
 ## Setup Instructions
@@ -99,432 +500,132 @@ npm run build
 
 # Run tests
 npm test
-
-# Eject (not recommended)
-npm run eject
 ```
 
-## User Interface Features
+## Advanced Stacking User Experience
 
-### Card Management System
+### Card Selection Flow
 
-#### Visual Card Selection
-- **Playable Cards**: Green border with hover effects
-- **Selected Cards**: Blue highlighting with elevation
-- **Stacking Order**: Numbered indicators for multi-card plays
-- **Bottom Card Indicator**: Red badge for stacking base card
+1. **Initial Selection**: Click any valid card to start a stack
+2. **Stack Building**: Additional cards show as green (valid) or grayed out (invalid)
+3. **Visual Feedback**: Numbers show stacking order, colors indicate validity
+4. **Validation**: Real-time feedback prevents invalid combinations
+5. **Execution**: "Play Cards" button sends validated stack to server
 
-#### Card Organization
+### Stacking Visual Indicators
+
+#### Card States
+- **🟢 Green Border**: Can be played as bottom card or stacked
+- **🔵 Blue Highlight**: Currently selected in stack
+- **🔴 Red Badge**: Bottom card of stack (foundation)
+- **🟦 Blue Badge**: Stacking order number (1, 2, 3...)
+- **⚫ Grayed Out**: Cannot be played (unless experienced mode)
+
+#### Turn Control Feedback
 ```javascript
-// Sort by rank (2, 3, 4... Jack, Queen, King, Ace)
-settings.sortByRank = true;
-
-// Group by suit (Hearts, Diamonds, Clubs, Spades)
-settings.groupBySuit = true;
-
-// Both can be enabled simultaneously
-```
-
-#### Advanced Stacking Support
-- **Visual Stacking**: Cards stack visually when selected
-- **Order Management**: Click to reorder or deselect cards
-- **Validation Feedback**: Real-time feedback on valid stacks
-- **Turn Logic**: Sophisticated validation using turn control simulation
-
-### Game Board Interface
-
-#### Status Indicators
-- **Current Suit**: Declared suit from wild cards (8s)
-- **Draw Stack**: Accumulated penalty cards (+2, +4)
-- **Direction**: Game direction (normal/reversed)
-- **Turn Indicator**: Clear indication of current player
-
-#### Interactive Elements
-- **Draw Pile**: Click to draw cards (with count display)
-- **Discard Pile**: Shows current top card
-- **Action Buttons**: Play cards, draw cards, clear selection
-
-### Settings System
-
-#### Card Display Options
-```javascript
-const cardDisplaySettings = {
-  sortByRank: boolean,      // Order by rank value
-  groupBySuit: boolean,     // Group by suit type
-  experiencedMode: boolean  // Remove visual hints
-};
-```
-
-#### Experienced Mode
-- Removes graying out of unplayable cards
-- Shows all cards with full clarity
-- For players who prefer minimal visual assistance
-
-#### Settings Persistence
-```javascript
-// Settings saved to localStorage per player
-localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(settings));
-```
-
-### Real-time Features
-
-#### Socket.IO Integration
-```javascript
-// Connection management
-const [socket, setSocket] = useState(null);
-const [isConnected, setIsConnected] = useState(false);
-
-// Event handling
-useEffect(() => {
-  socket.on('gameUpdate', handleGameUpdate);
-  socket.on('handUpdate', handleHandUpdate);
-  socket.on('cardPlayed', handleCardPlayed);
-  socket.on('error', handleError);
-  socket.on('success', handleSuccess);
-}, [socket]);
-```
-
-#### Live Updates
-- **Game State**: Instant synchronization across all players
-- **Hand Updates**: Real-time hand changes
-- **Action Notifications**: Toast messages for all game actions
-- **Chat Messages**: Live messaging with game action logs
-
-### Responsive Design
-
-#### Mobile Support
-- **Touch-friendly**: Large touch targets for card selection
-- **Responsive Layout**: Adapts to screen size
-- **Mobile Controls**: Optimized for touch interactions
-- **Viewport Management**: Proper mobile viewport handling
-
-#### Desktop Features
-- **Hover Effects**: Rich hover interactions
-- **Keyboard Support**: Enter for chat, Escape for modals
-- **Mouse Interactions**: Precise card selection and management
-
-## Game Flow
-
-### Connection Phase
-1. **Server Connection**: Establish Socket.IO connection
-2. **Player Registration**: Enter name and join/create game
-3. **Game Lobby**: Wait for players and start game
-
-### Gameplay Phase
-1. **Turn Management**: Clear turn indicators and controls
-2. **Card Selection**: Visual selection with validation
-3. **Action Execution**: Play cards or draw cards
-4. **Real-time Updates**: Instant state synchronization
-
-### Game End
-1. **Win Detection**: Player empties hand
-2. **Tournament Progress**: Round elimination
-3. **Final Results**: Winner announcement
-
-## Advanced Features
-
-### Card Stacking Interface
-
-#### Selection Logic
-```javascript
-const handleCardSelect = (card) => {
-  const isSelected = selectedCards.some(sc => 
-    sc.suit === card.suit && sc.rank === card.rank
-  );
+// Real-time turn control hints
+const getTurnControlHint = (selectedCards) => {
+  if (selectedCards.length === 0) return null;
   
-  if (isSelected) {
-    // Handle deselection or reordering
-    handleCardDeselection(card);
-  } else {
-#### Stacking Validation
-- **Real-time Validation**: Cards validated as they're selected
-- **Visual Feedback**: Immediate indication of valid/invalid combinations
-- **Error Messages**: Detailed feedback for invalid stacking attempts
-- **Smart Suggestions**: Only show stackable cards after initial selection
-
-#### Wild Card Handling
-```javascript
-// 8 (wild card) suit selection
-const handleWildCardPlay = () => {
-  if (selectedCards.some(card => card.rank === '8')) {
-    setShowSuitSelector(true); // Show suit selection modal
-  } else {
-    playSelectedCards(); // Direct play
-  }
+  const wouldKeepTurn = simulateTurnControlFrontend(selectedCards, activePlayers);
+  return {
+    message: wouldKeepTurn ? 'Will keep turn' : 'Will pass turn',
+    color: wouldKeepTurn ? '#27ae60' : '#e74c3c'
+  };
 };
 ```
 
-### Chat System
+### Mobile Stacking Interface
 
-#### Real-time Messaging
-- **Live Chat**: Instant messaging between players
-- **Game Action Logs**: Automatic logging of game events
-- **Minimizable Interface**: Collapsible chat panel
-- **Message History**: Persistent message history during game
+#### Touch-Optimized Controls
+- **Large touch targets** for precise card selection
+- **Haptic feedback** for valid/invalid stacking attempts  
+- **Swipe gestures** for card reordering in stacks
+- **Pinch-to-zoom** for detailed card examination
 
-#### Message Types
-```javascript
-// Player messages
-"Alice: Good luck everyone!"
-
-// Game action logs
-"🃏 Bob played: King of Hearts, King of Clubs"
-"📚 Charlie drew 4 card(s)"
-```
-
-### Notification System
-
-#### Toast Messages
-```javascript
-const showToast = (message, type) => {
-  setToast({
-    message: message,
-    type: type, // 'success', 'error', 'info'
-    duration: 4000
-  });
-};
-```
-
-#### Message Categories
-- **Success**: Card plays, game actions
-- **Error**: Invalid moves, rule violations
-- **Info**: Game state changes, player actions
-
-### User Experience Enhancements
-
-#### Visual Feedback
+#### Responsive Stacking Layout
 ```css
-/* Card hover effects */
-.card:hover {
-  transform: translateY(-2px);
+/* Mobile-optimized card stacking */
+@media (max-width: 768px) {
+  .player-hand {
+    padding: 10px 5px 15px 5px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .card {
+    min-width: 45px;
+    max-width: 50px;
+    height: 70px;
+    margin: 2px;
+  }
+  
+  .card-order-badge {
+    top: -15px;
+    font-size: 8px;
+    padding: 1px 4px;
+  }
 }
+```
 
-/* Playable card highlighting */
-.card.playable:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 4px 12px rgba(39, 174, 96, 0.4);
+## Performance Optimizations
+
+### Stacking-Specific Optimizations
+- **Memoized Validation**: Cache turn control results for repeated calculations
+- **Debounced Selection**: Prevent rapid-fire selection causing lag
+- **Virtual Scrolling**: Handle large hands efficiently
+- **Optimized Re-renders**: Minimize updates during stacking selection
+
+### Memory Management
+```javascript
+// Efficient selectedCards state management
+const handleCardDeselection = useCallback((card) => {
+  setSelectedCards(prev => prev.filter(sc => 
+    !(sc.suit === card.suit && sc.rank === card.rank)
+  ));
+}, []);
+
+// Memoized valid cards calculation
+const validCards = useMemo(() => {
+  return getValidCardsForSelection(playerHand, gameState, selectedCards, topCard);
+}, [playerHand, gameState, selectedCards, topCard]);
+```
+
+## Debug Tools for Stacking
+
+### Console Debugging
+```javascript
+// Enable detailed stacking logs
+if (settings.showStackingDebug) {
+  console.log('🎯 Stacking Debug:', {
+    selectedCards: selectedCards.map(c => `${c.rank}${c.suit[0]}`),
+    validCards: validCards.length,
+    turnControl: simulateTurnControlFrontend(selectedCards, activePlayers),
+    gameState: gameState?.currentPlayer
+  });
 }
-
-/* Selected card emphasis */
-.card.selected {
-  transform: translateY(-10px);
-  box-shadow: 0 6px 16px rgba(52, 152, 219, 0.4);
-}
 ```
 
-#### Animations
-- **Card Selection**: Smooth elevation changes
-- **Turn Transitions**: Pulsing indicators for active player
-- **State Changes**: Smooth transitions between game states
-- **Loading States**: Connection and game loading feedback
+### Visual Debug Mode
+- **Card IDs**: Show internal card identifiers
+- **Validation Steps**: Display step-by-step validation process
+- **Turn Control**: Show detailed turn control simulation
+- **State Inspection**: Real-time game state monitoring
 
-## Error Handling
+## Future Frontend Enhancements
 
-### Connection Management
-```javascript
-// Connection status monitoring
-socket.on('connect', () => {
-  setIsConnected(true);
-  console.log('🔌 Connected to server');
-});
+### Planned Stacking Features
+- **Drag-and-Drop Stacking**: Intuitive card reordering
+- **Animation Improvements**: Smooth stacking transitions
+- **Advanced Tutorials**: Interactive stacking guide
+- **Accessibility**: Screen reader support for stacking
+- **Performance**: Further optimization for complex stacks
 
-socket.on('disconnect', () => {
-  setIsConnected(false);
-  console.log('❌ Disconnected from server');
-});
-```
-
-### Game Error Handling
-- **Invalid Moves**: Clear error messages with corrective guidance
-- **Connection Issues**: Automatic reconnection attempts
-- **State Synchronization**: Recovery from desync issues
-- **Input Validation**: Client-side validation before server requests
-
-### Debug Information
-```javascript
-// Debug panel in development
-<div style={{ fontSize: '12px', color: '#6c757d' }}>
-  🆔 My ID: {playerId} | 
-  Current Player ID: {gameState.currentPlayerId} | 
-  Is My Turn: {isMyTurn ? 'YES' : 'NO'}
-</div>
-```
-
-## Performance Optimization
-
-### State Management
-- **Selective Re-renders**: Optimized useEffect dependencies
-- **Memoization**: Expensive calculations cached
-- **Batch Updates**: Multiple state updates batched
-- **Local Storage**: Minimal reads/writes for settings
-
-### Network Optimization
-- **Efficient Events**: Only necessary data in socket events
-- **State Compression**: Minimal game state transfers
-- **Connection Pooling**: Optimized Socket.IO configuration
-
-## Customization
-
-### Theme Support (Future)
-```javascript
-// Prepared for theme system
-const themes = {
-  classic: { primary: '#27ae60', secondary: '#3498db' },
-  dark: { primary: '#2c3e50', secondary: '#34495e' },
-  colorful: { primary: '#e74c3c', secondary: '#f39c12' }
-};
-```
-
-### Accessibility Features
-- **High Contrast**: Clear color distinctions
-- **Large Touch Targets**: Mobile-friendly interaction
-- **Semantic HTML**: Screen reader compatibility
-- **Keyboard Navigation**: Full keyboard support
-
-## Development Guidelines
-
-### Code Organization
-- **Component Separation**: Clear component boundaries
-- **State Management**: Centralized game state
-- **Event Handling**: Consistent event patterns
-- **Error Boundaries**: Graceful error recovery
-
-### Best Practices
-```javascript
-// Consistent naming conventions
-const [gameState, setGameState] = useState(null);
-const [playerHand, setPlayerHand] = useState([]);
-
-// Proper cleanup in useEffect
-useEffect(() => {
-  socket.on('gameUpdate', handleGameUpdate);
-  return () => socket.off('gameUpdate');
-}, [socket]);
-
-// Defensive programming
-const topCard = parseTopCard(gameState?.topCard);
-if (!topCard) return null;
-```
-
-### Testing Considerations
-- **Component Testing**: Individual component functionality
-- **Integration Testing**: Socket.IO event handling
-- **User Flow Testing**: Complete gameplay scenarios
-- **Responsive Testing**: Multiple screen sizes
-
-## Deployment
-
-### Build Process
-```bash
-# Production build
-npm run build
-
-# Build output in build/ directory
-# Static files ready for deployment
-```
-
-### Environment Configuration
-```javascript
-// Socket connection configuration
-const SOCKET_URL = process.env.NODE_ENV === 'production' 
-  ? 'wss://your-domain.com' 
-  : 'http://localhost:3001';
-```
-
-### Deployment Targets
-- **Static Hosting**: Netlify, Vercel, GitHub Pages
-- **CDN**: CloudFront, CloudFlare
-- **Server Deployment**: Apache, Nginx
-- **Container Deployment**: Docker, Kubernetes
-
-## Browser Support
-
-### Modern Browsers
-- **Chrome**: Full support (recommended)
-- **Firefox**: Full support
-- **Safari**: Full support with minor CSS differences
-- **Edge**: Full support
-
-### Mobile Browsers
-- **iOS Safari**: Optimized touch interactions
-- **Chrome Mobile**: Full feature support
-- **Samsung Internet**: Compatible
-- **Mobile Firefox**: Compatible
-
-### Progressive Web App (Future)
-- **Service Worker**: Offline capability
-- **App Manifest**: Install to home screen
-- **Push Notifications**: Game invitations
-- **Background Sync**: Reconnection handling
-
-## Troubleshooting
-
-### Common Issues
-
-#### Connection Problems
-```javascript
-// Check server status
-console.log('Socket connected:', socket.connected);
-console.log('Socket ID:', socket.id);
-
-// Verify server URL
-console.log('Connecting to:', SOCKET_URL);
-```
-
-#### Game State Issues
-```javascript
-// Debug game state
-console.log('Current game state:', gameState);
-console.log('Player hand:', playerHand);
-console.log('Selected cards:', selectedCards);
-```
-
-#### Performance Issues
-- **Large Hands**: Optimize card rendering
-- **Memory Leaks**: Check useEffect cleanup
-- **Slow Renders**: Profile React components
-- **Network Lag**: Monitor socket events
-
-### Debug Tools
-- **React DevTools**: Component inspection
-- **Redux DevTools**: State management (if added)
-- **Network Tab**: Socket.IO communication
-- **Console Logging**: Comprehensive debug output
-
-## Future Enhancements
-
-### Planned Features
-- **Drag and Drop**: Card dragging for reordering
-- **Animation Library**: Enhanced animations with Framer Motion
-- **Theme System**: Multiple visual themes
-- **Sound Effects**: Audio feedback for actions
-- **Offline Mode**: Single-player vs AI
-- **Tournament Brackets**: Visual tournament progression
-- **Statistics Dashboard**: Player performance tracking
-- **Replay System**: Game replay functionality
-
-### Technical Improvements
-- **TypeScript**: Type safety and better development experience
-- **State Management**: Redux or Zustand for complex state
-- **Component Library**: Reusable component system
-- **Testing**: Comprehensive test suite with React Testing Library
-- **PWA**: Progressive Web App capabilities
-- **Performance**: Virtual scrolling for large card lists
-
-## Contributing
-
-### Development Setup
-1. Fork the repository
-2. Create feature branch
-3. Follow coding standards
-4. Test thoroughly on multiple devices
-5. Submit pull request with detailed description
-
-### Code Style
-- **ESLint**: Consistent code formatting
-- **Prettier**: Automatic code formatting
-- **Component Patterns**: Functional components with hooks
-- **CSS Organization**: Inline styles with CSS modules for shared styles
+### UI/UX Improvements
+- **Stack Preview**: Show final stack before playing
+- **Undo/Redo**: Stack building history
+- **Quick Actions**: Preset stacking combinations
+- **Visual Effects**: Enhanced card animations
 
 ## License
 MIT License - see main project README for details.

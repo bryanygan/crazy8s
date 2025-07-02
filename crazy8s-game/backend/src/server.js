@@ -412,7 +412,21 @@ io.on('connection', (socket) => {
             }
             
             // Store timer settings on the game object
+            const oldSettings = game.timerSettings || {};
             game.timerSettings = timerSettings;
+            
+            // Generate specific success message based on what changed
+            let message = 'Timer settings updated';
+            if (oldSettings.enableTimer !== timerSettings.enableTimer) {
+                message = timerSettings.enableTimer ? 'Turn timer enabled' : 'Turn timer disabled';
+            } else if (oldSettings.timerDuration !== timerSettings.timerDuration) {
+                const minutes = Math.floor(timerSettings.timerDuration / 60);
+                const seconds = timerSettings.timerDuration % 60;
+                const timeStr = minutes > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : `${seconds}s`;
+                message = `Timer duration set to ${timeStr}`;
+            } else if (oldSettings.timerWarningTime !== timerSettings.timerWarningTime) {
+                message = `Timer warning set to ${timerSettings.timerWarningTime} seconds`;
+            }
             
             // If game is in progress, restart timer with new settings
             if (game.gameState === 'playing' && timerSettings.enableTimer) {
@@ -421,7 +435,7 @@ io.on('connection', (socket) => {
             manageGameTimer(gameId, 'stop');
             }
             
-            socket.emit('success', 'Timer settings updated');
+            socket.emit('success', message);
             
         } catch (error) {
             console.error('Error updating timer settings:', error);
@@ -901,23 +915,46 @@ const manageGameTimer = (gameId, action, settings = {}) => {
         clearInterval(interval);
         gameTimers.delete(gameId);
         
-        // Auto-draw for the current player
+        // Handle timer expiration for the current player
         const game = Game.findById(gameId);
         if (game && game.gameState === 'playing') {
           const currentPlayer = game.getCurrentPlayer();
           if (currentPlayer) {
-            console.log(`⏰ Timer expired for ${currentPlayer.name} - auto drawing card`);
+            console.log(`⏰ Timer expired for ${currentPlayer.name}`);
             
-            // Auto-draw and pass turn
-            const drawResult = game.drawCards(currentPlayer.id, 1);
-            if (drawResult.success) {
-              setTimeout(() => {
+            // Check if player has already drawn this turn
+            const hasDrawn = game.playersWhoHaveDrawn.has(currentPlayer.id);
+            
+            if (!hasDrawn) {
+              // Player hasn't drawn yet - auto-draw card
+              console.log(`Auto-drawing card for ${currentPlayer.name}`);
+              const drawResult = game.drawCards(currentPlayer.id, 1);
+              if (drawResult.success) {
+                setTimeout(() => {
+                  // Check if pendingTurnPass was set (player has playable cards)
+                  if (game.pendingTurnPass === currentPlayer.id) {
+                    game.passTurnAfterDraw(currentPlayer.id);
+                  }
+                  // If pendingTurnPass is null, turn was already auto-passed
+                  broadcastGameState(gameId);
+                  
+                  // Start timer for next player
+                  manageGameTimer(gameId, 'start', settings);
+                }, 500);
+              }
+            } else {
+              // Player has drawn but hasn't passed turn - force pass
+              console.log(`Force passing turn for ${currentPlayer.name} who already drew`);
+              if (game.pendingTurnPass === currentPlayer.id) {
                 game.passTurnAfterDraw(currentPlayer.id);
-                broadcastGameState(gameId);
-                
-                // Start timer for next player
-                manageGameTimer(gameId, 'start', settings);
-              }, 500);
+              } else {
+                // Fallback: just advance to next player
+                game.nextPlayer();
+              }
+              broadcastGameState(gameId);
+              
+              // Start timer for next player
+              manageGameTimer(gameId, 'start', settings);
             }
             
             broadcastGameState(gameId);

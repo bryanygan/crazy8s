@@ -1,26 +1,26 @@
 # Crazy 8's Game Backend
 
 ## Overview
-This is the backend for the Crazy 8's game, built using Node.js, Express, and Socket.IO. The backend handles comprehensive game logic, advanced card play validation, player interactions, and real-time communication between players.
+This is the backend for the Crazy 8's game, built using Node.js, Express, and Socket.IO. The backend handles **advanced sequential card stacking logic**, sophisticated turn control simulation, multi-stage validation, player interactions, and real-time communication between players.
 
 ## Architecture Overview
 
 ### Core Components
-- **Game Engine**: Complete rule implementation with advanced validation
-- **Socket.IO Server**: Real-time multiplayer communication
+- **Advanced Game Engine**: Sequential stacking with turn control simulation
+- **Multi-Stage Validation System**: Ownership → Stacking → Play rules → Turn control
+- **Socket.IO Server**: Real-time multiplayer communication with debugging
 - **REST API**: HTTP endpoints for game operations
-- **Validation System**: Multi-stage card play validation
-- **Testing Suite**: Comprehensive test coverage (95%+)
+- **Comprehensive Testing Suite**: 95%+ coverage with 350+ unit tests
 
 ## Directory Structure
 ```
 backend/
 ├── src/
 │   ├── app.js                 # Express application setup
-│   ├── server.js             # Socket.IO server with game logic
+│   ├── server.js             # Socket.IO server with advanced game logic
 │   ├── models/               # Game logic and data structures
-│   │   ├── game.js           # Main game engine
-│   │   ├── cardPlayLogic.js  # Advanced validation system
+│   │   ├── game.js           # Main game engine with sequential stacking
+│   │   ├── cardPlayLogic.js  # Multi-stage validation system
 │   │   ├── Card.js           # Card entity with special effects
 │   │   ├── Deck.js           # Deck management utilities
 │   │   ├── Player.js         # Player entity and methods
@@ -41,24 +41,153 @@ backend/
 
 ## Key Features
 
-### Advanced Game Engine
-- **Complete Rule Implementation**: All Crazy 8's rules with edge cases
-- **Card Stacking System**: Complex multi-card plays with validation
-- **Special Card Effects**: Jack (skip), Queen (reverse), Ace (+4), 2 (+2), 8 (wild)
-- **Turn Control Logic**: Sophisticated turn management for stacking
-- **Draw Stack Management**: Accumulating penalties with counter mechanics
+### Advanced Sequential Stacking Engine
+- **Turn Control Simulation**: Sophisticated logic determining whether players maintain turn control after card sequences
+- **Multi-Stage Validation**: Complete validation pipeline with detailed error reporting
+- **2-Player vs Multiplayer Logic**: Different stacking rules for different game sizes
+- **Complex Special Card Interactions**: Jack, Queen, Ace, 2, and 8 combinations
 
-### Validation System (`cardPlayLogic.js`)
-- **Multi-Stage Validation**: Basic requirements → Ownership → Stacking → Play rules
-- **Turn Simulation**: Validates complex card chains using turn control logic
-- **Detailed Error Messages**: Specific feedback for invalid plays
-- **Performance Optimized**: Efficient validation for rapid gameplay
+### Turn Control System (`game.js` - `simulateTurnControl`)
 
-### Real-Time Communication
-- **Socket.IO Integration**: Instant game state synchronization
-- **Game State Broadcasting**: Automatic updates to all players
-- **Chat System**: Real-time messaging with game action logs
-- **Connection Management**: Handle player connects/disconnects/reconnects
+#### Core Logic
+The system simulates what happens when cards are played sequentially:
+
+```javascript
+// Example: J♦ → 10♦ → 10♥ → 2♥
+// Turn 1: [J♦] → Keep turn (Jack skips opponent)
+// Turn 2: [10♦, 10♥] → Pass turn (normal cards)
+// Turn 3: [2♥] → BLOCKED (no turn control after Turn 2)
+```
+
+#### Turn Control Rules (2-Player)
+
+**Turn-Keeping Effects:**
+- **Jack**: Skips opponent → keeps turn
+- **Even Queens**: Double reverse cancels out → keeps turn
+- **Pure Jack Stacks**: Multiple Jacks → keeps turn
+
+**Turn-Passing Effects:**
+- **Odd Queens**: Single reverse → passes turn
+- **Normal Cards**: `3,4,5,6,7,9,10,King` → pass turn
+- **Draw Cards**: `Ace,2` → pass turn (after penalty)
+- **Wild Cards**: `8` → pass turn (after suit declaration)
+
+#### Algorithm Implementation
+```javascript
+simulateTurnControl(cardStack) {
+    // Special case: Pure Jack stacks in 2-player
+    if (isPureJackStack && is2PlayerGame) {
+        return true; // Always keep turn
+    }
+    
+    // Check what the stack ends with
+    const lastCard = cardStack[cardStack.length - 1];
+    
+    // If ends with turn-passing cards, turn passes
+    if (isNormalCard(lastCard) || isDrawCard(lastCard) || isWildCard(lastCard)) {
+        return false;
+    }
+    
+    // If ends with special cards, analyze the combination
+    const queenCount = countQueens(cardStack);
+    if (queenCount > 0) {
+        return (queenCount % 2 === 0); // Even = keep, odd = pass
+    }
+    
+    // Pure Jack effects
+    return hasJacks(cardStack);
+}
+```
+
+### Multi-Stage Validation System (`cardPlayLogic.js`)
+
+#### Validation Pipeline
+1. **Basic Requirements**: Game state, player turn, card ownership
+2. **Card Ownership**: Verify player has all specified cards
+3. **Stacking Validation**: Check card-to-card transitions using turn control
+4. **Play Validation**: Verify cards can be played on current top card
+5. **Execution**: Apply effects and update game state
+
+#### Enhanced Stacking Logic
+```javascript
+validateCardStack(cards) {
+    for (let i = 1; i < cards.length; i++) {
+        const prevCard = cards[i - 1];
+        const currentCard = cards[i];
+        
+        // Same rank always allowed
+        if (prevCard.rank === currentCard.rank) continue;
+        
+        // Same suit requires turn control validation
+        if (prevCard.suit === currentCard.suit) {
+            const stackUpToPrevious = cards.slice(0, i);
+            const wouldHaveTurnControl = simulateTurnControl(stackUpToPrevious);
+            
+            if (!wouldHaveTurnControl) {
+                return { 
+                    isValid: false, 
+                    error: "No turn control after previous cards" 
+                };
+            }
+        }
+    }
+    return { isValid: true };
+}
+```
+
+### Penalty Card System
+
+#### Draw Stack Mechanics
+- **Accumulation**: Multiple Aces/2s stack penalties
+- **Countering**: Specific counter cards can block penalties
+- **Resolution**: Players must draw all penalty cards or counter
+
+#### Counter Rules
+```javascript
+canCounterDraw(card, topCard) {
+    if (topCard.rank === 'Ace') {
+        // Counter Ace with: Any Ace OR same-suit 2
+        return card.rank === 'Ace' || 
+               (card.rank === '2' && card.suit === topCard.suit);
+    }
+    if (topCard.rank === '2') {
+        // Counter 2 with: Any 2 OR same-suit Ace  
+        return card.rank === '2' || 
+               (card.rank === 'Ace' && card.suit === topCard.suit);
+    }
+    return false;
+}
+```
+
+### Real-time Multiplayer Features
+
+#### Socket.IO Integration
+```javascript
+// Enhanced game state broadcasting with debug info
+socket.on('playCard', (data) => {
+    const result = game.playCard(playerId, cards, declaredSuit);
+    
+    if (result.success) {
+        // Reset timer for next player
+        manageGameTimer(gameId, 'reset', timerSettings);
+        
+        // Broadcast with detailed logging
+        broadcastGameState(gameId);
+        
+        // Notify other players with formatted message
+        socket.to(gameId).emit('cardPlayed', {
+            playerName: player.name,
+            message: result.message // Advanced formatting for stacks
+        });
+    }
+});
+```
+
+#### Game State Management
+- **Real-time Synchronization**: Instant updates across all clients
+- **Turn Management**: Advanced turn control with timer integration
+- **Player State**: Comprehensive tracking of hands, turns, and penalties
+- **Debug Information**: Extensive logging for complex stacking scenarios
 
 ## Setup Instructions
 
@@ -95,49 +224,16 @@ npm run test:watch
 # Generate coverage report
 npm run test:coverage
 
-# Verbose test output
+# Verbose test output (useful for stacking logic debugging)
 npm run test:verbose
 ```
 
 ## API Documentation
 
-### REST Endpoints
-
-#### POST `/api/games/start`
-Start a new game with specified players.
-
-**Request Body:**
-```json
-{
-  "playerIds": ["socket_id_1", "socket_id_2"],
-  "playerNames": ["Alice", "Bob"]
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Game started",
-  "gameId": "game_abc123",
-  "gameState": { /* complete game state */ }
-}
-```
-
-#### POST `/api/games/join`
-Join an existing game.
-
-**Request Body:**
-```json
-{
-  "gameId": "game_abc123",
-  "playerId": "socket_id_3",
-  "playerName": "Charlie"
-}
-```
+### Enhanced REST Endpoints
 
 #### POST `/api/games/move`
-Make a card play (supports single cards and stacking).
+Play cards with advanced stacking support.
 
 **Request Body:**
 ```json
@@ -145,270 +241,256 @@ Make a card play (supports single cards and stacking).
   "gameId": "game_abc123",
   "playerId": "socket_id_1",
   "cards": [
-    {"suit": "Hearts", "rank": "7"},
-    {"suit": "Clubs", "rank": "7"}
+    {"suit": "Diamonds", "rank": "Jack"},
+    {"suit": "Diamonds", "rank": "Queen"},
+    {"suit": "Diamonds", "rank": "10"}
   ],
-  "declaredSuit": "Spades" // For wild cards (8s)
+  "declaredSuit": "Hearts" // For wild cards (8s)
 }
 ```
 
-#### POST `/api/games/draw`
-Draw cards from the deck.
-
-**Request Body:**
-```json
-{
-  "gameId": "game_abc123",
-  "playerId": "socket_id_1",
-  "count": 1 // Optional, defaults to 1 or draw stack amount
-}
-```
-
-#### GET `/api/games/state/:gameId`
-Get current game state.
-
-**Response:**
+**Response (Success):**
 ```json
 {
   "success": true,
-  "gameState": {
-    "gameId": "game_abc123",
-    "gameState": "playing",
-    "currentPlayer": "Alice",
-    "currentPlayerId": "socket_id_1",
-    "topCard": "7 of Hearts",
-    "declaredSuit": null,
-    "direction": 1,
-    "drawStack": 0,
-    "roundNumber": 1,
-    "players": [/* player objects */],
-    "drawPileSize": 35,
-    "discardPileSize": 1
-  }
+  "message": "Played J♦, Q♦, 10♦",
+  "gameState": { /* complete game state */ },
+  "cardsPlayed": ["Jack of Diamonds", "Queen of Diamonds", "10 of Diamonds"]
 }
 ```
 
-### Socket.IO Events
+**Response (Validation Error):**
+```json
+{
+  "success": false,
+  "error": "Cannot stack 10 of Diamonds after Queen of Diamonds. You don't maintain turn control after playing the previous cards in the sequence."
+}
+```
+
+### Enhanced Socket.IO Events
 
 #### Client → Server Events
 
-**`createGame`**
-```javascript
-socket.emit('createGame', {
-  playerName: "Alice"
-});
-```
-
-**`joinGame`**
-```javascript
-socket.emit('joinGame', {
-  gameId: "game_abc123",
-  playerName: "Bob"
-});
-```
-
-**`startGame`**
-```javascript
-socket.emit('startGame', {
-  gameId: "game_abc123"
-});
-```
-
-**`playCard`**
+**`playCard` (Enhanced)**
 ```javascript
 socket.emit('playCard', {
   gameId: "game_abc123",
   cards: [
-    {"suit": "Hearts", "rank": "King"},
-    {"suit": "Clubs", "rank": "King"}
+    {"suit": "Hearts", "rank": "Jack"},
+    {"suit": "Hearts", "rank": "Queen"},
+    {"suit": "Hearts", "rank": "Queen"}
   ],
-  declaredSuit: "Spades" // For wild cards
+  declaredSuit: "Spades", // For wild cards
+  timerSettings: {
+    enableTimer: true,
+    timerDuration: 60,
+    timerWarningTime: 15
+  }
 });
-```
-
-**`drawCard`**
-```javascript
-socket.emit('drawCard', {
-  gameId: "game_abc123"
-});
-```
-
-**`chat message`**
-```javascript
-socket.emit('chat message', "Hello everyone!");
 ```
 
 #### Server → Client Events
 
-**`gameUpdate`**
-- Broadcast to all players when game state changes
-- Contains complete game state object
+**`gameUpdate` (Enhanced)**
+- Complete game state with advanced turn control information
+- Debug information for stacking validation (in development)
 
-**`handUpdate`**
-- Sent to individual players with their current hand
-- Array of card objects
+**`cardPlayed` (Enhanced)**
+```javascript
+// Advanced message formatting for complex stacks
+{
+  playerName: "Alice",
+  playerId: "socket_id_1",
+  message: "Played J♥, Q♥, Q♠ and declared Hearts"
+}
+```
 
-**`cardPlayed`**
-- Broadcast when a player makes a move
-- Contains player name and cards played
+## Advanced Game Logic Details
 
-**`playerDrewCards`**
-- Broadcast when a player draws cards
-- Contains player name and number of cards drawn
+### Sequential Stacking Examples
 
-**`success` / `error`**
-- Action feedback messages
-- String messages for user notifications
+#### Valid Complex Stacks
 
-**`playerDisconnected` / `playerReconnected`**
-- Connection status updates
-- Contains player name
+**Two Queens Maintaining Turn Control:**
+```javascript
+// Q♦ → Q♥ → 10♥
+// Turn 1: [Q♦, Q♥] (2 Queens = even = keep turn)
+// Turn 2: [10♥] (normal card = pass turn)
+// Result: Valid stack, final turn passes
+```
 
-## Game Logic Details
+**Jack-Based Stacking:**
+```javascript
+// J♦ → 10♦ → 10♥  
+// Turn 1: [J♦] (Jack keeps turn)
+// Turn 2: [10♦, 10♥] (same rank = valid, normal cards = pass turn)
+// Result: Valid stack, final turn passes
+```
 
-### Card Stacking Rules
+#### Invalid Complex Stacks
 
-1. **Same Rank Stacking**: Always allowed
-   ```javascript
-   // Valid: Multiple 7s of any suits
-   ["7♥", "7♣", "7♠"]
-   ```
+**No Turn Control After Normal Cards:**
+```javascript
+// J♦ → 10♦ → 10♥ → 2♥
+// Turn 1: [J♦] (keeps turn)
+// Turn 2: [10♦, 10♥] (pass turn) 
+// Turn 3: [2♥] → BLOCKED (no turn control after Turn 2)
+```
 
-2. **Same Suit Stacking**: Must maintain turn control
-   ```javascript
-   // Valid in 1v1: Jack skips, Queen reverses back
-   ["Jack♥", "Queen♥"]
-   ```
+**Queen Reversal Breaking Control:**
+```javascript
+// Q♦ → J♦
+// Turn 1: [Q♦] (1 Queen = odd = pass turn)
+// Turn 2: [J♦] → BLOCKED (no turn control after Turn 1)
+```
 
-3. **Special Cross-Stacking**: Aces and 2s can cross-stack with same suit
-   ```javascript
-   // Valid: Same suit Ace + 2
-   ["Ace♠", "2♠"]
-   ```
+### Message Generation for Complex Stacks
 
-### Special Card Effects
-
-| Card | Effect | Implementation |
-|------|--------|----------------|
-| **Jack** | Skip next player | `nextPlayer()` called twice |
-| **Queen** | Reverse direction | `direction *= -1` (or skip in 2-player) |
-| **Ace** | +4 cards | `drawStack += 4` |
-| **2** | +2 cards | `drawStack += 2` |
-| **8** | Wild card | Set `declaredSuit` |
-
-### Validation Flow
-
-1. **Basic Requirements**: Game state, player turn, card count
-2. **Card Ownership**: Verify player has all specified cards
-3. **Stacking Validation**: Check multi-card play rules
-4. **Play Validation**: Verify cards can be played on current top card
-5. **Execution**: Remove from hand, add to discard pile, apply effects
+```javascript
+generatePlayMessage(cards, declaredSuit) {
+    if (cards.length === 1) {
+        return `Played ${cards[0].rank} of ${cards[0].suit}`;
+    }
+    
+    // Check if all same rank
+    const allSameRank = cards.every(card => card.rank === cards[0].rank);
+    
+    if (allSameRank) {
+        const rank = cards[0].rank;
+        const suits = cards.map(card => card.suit).join(', ');
+        return `Played ${cards.length} ${rank}s: ${suits}`;
+    } else {
+        // Mixed ranks - use compact notation
+        const cardStrings = cards.map(card => {
+            const shortRank = {'Jack': 'J', 'Queen': 'Q', 'King': 'K', 'Ace': 'A'}[card.rank] || card.rank;
+            const suitSymbol = {'Hearts': '♥', 'Diamonds': '♦', 'Clubs': '♣', 'Spades': '♠'}[card.suit];
+            return `${shortRank}${suitSymbol}`;
+        });
+        return `Played ${cardStrings.join(', ')}`;
+    }
+}
+```
 
 ## Testing Architecture
 
-### Test Coverage
-- **Core Game Logic**: 150+ tests covering all game mechanics
-- **Validation System**: 200+ tests for card play validation
-- **Integration Tests**: End-to-end gameplay scenarios
-- **Error Handling**: Edge cases and invalid inputs
-- **Performance Tests**: Stress testing with rapid operations
+### Comprehensive Test Coverage
 
-### Test Categories
-
-**Unit Tests (`game.test.js`)**
-- Game initialization and setup
-- Turn management
-- Card validation
-- Special card effects
-- Win conditions
-- Error handling
-
-**Validation Tests (`cardPlayLogic.test.js`)**
-- Multi-stage validation process
-- Card stacking logic
-- Turn simulation
-- Error message generation
-- Performance testing
-
-**Integration Tests (`crazy8.test.js`)**
-- Complete game flow
-- Multiplayer scenarios
-- State consistency
-- Real-time updates
-
-### Running Specific Tests
-```bash
-# Run specific test file
-npm test game.test.js
-
-# Run tests matching pattern
-npm test -- --testNamePattern="stacking"
-
-# Run with coverage for specific file
-npm test -- --collectCoverageFrom="src/models/game.js"
+**Stacking Logic Tests (`cardPlayLogic.test.js`)**
+```javascript
+describe('Advanced Stacking Validation', () => {
+    test('should allow Jack → Queen in same suit', () => {
+        const cards = [
+            { suit: 'Hearts', rank: 'Jack' },
+            { suit: 'Hearts', rank: 'Queen' }
+        ];
+        expect(game.validateCardStack(cards).isValid).toBe(true);
+    });
+    
+    test('should block normal cards after turn loss', () => {
+        const cards = [
+            { suit: 'Hearts', rank: 'Queen' }, // Passes turn
+            { suit: 'Hearts', rank: 'Jack' }   // Should be blocked
+        ];
+        expect(game.validateCardStack(cards).isValid).toBe(false);
+    });
+    
+    test('should handle complex Queen counting', () => {
+        const cards = [
+            { suit: 'Hearts', rank: 'Queen' },
+            { suit: 'Hearts', rank: 'Queen' },
+            { suit: 'Hearts', rank: '10' }
+        ];
+        expect(game.validateCardStack(cards).isValid).toBe(true);
+    });
+});
 ```
 
-## Configuration
-
-### Environment Variables
-```bash
-PORT=3001                    # Server port
-NODE_ENV=development         # Environment mode
+**Turn Control Simulation Tests (`game.test.js`)**
+```javascript
+describe('Turn Control Simulation', () => {
+    test('single Jack should keep turn in 2-player', () => {
+        const cards = [{ suit: 'Hearts', rank: 'Jack' }];
+        expect(game.simulateTurnControl(cards)).toBe(true);
+    });
+    
+    test('even Queens should keep turn', () => {
+        const cards = [
+            { suit: 'Hearts', rank: 'Queen' },
+            { suit: 'Clubs', rank: 'Queen' }
+        ];
+        expect(game.simulateTurnControl(cards)).toBe(true);
+    });
+    
+    test('normal cards should pass turn', () => {
+        const cards = [
+            { suit: 'Hearts', rank: '7' },
+            { suit: 'Clubs', rank: '7' }
+        ];
+        expect(game.simulateTurnControl(cards)).toBe(false);
+    });
+});
 ```
 
-### Dependencies
+### Test Matrix for Stacking Scenarios
 
-**Production Dependencies:**
-- `express`: Web framework
-- `socket.io`: Real-time communication
-
-**Development Dependencies:**
-- `jest`: Testing framework
-- `nodemon`: Development auto-restart
-- `@types/jest`: TypeScript definitions for Jest
+```javascript
+const stackingTestMatrix = [
+    // [cards, expected, description]
+    [[{suit: 'Hearts', rank: 'Jack'}], true, 'Single Jack keeps turn'],
+    [[{suit: 'Hearts', rank: 'Queen'}], false, 'Single Queen passes turn'],
+    [[{suit: 'Hearts', rank: 'Queen'}, {suit: 'Clubs', rank: 'Queen'}], true, 'Two Queens keep turn'],
+    [[{suit: 'Hearts', rank: 'Jack'}, {suit: 'Hearts', rank: '10'}], false, 'Jack + normal passes turn'],
+    // ... 50+ more test cases
+];
+```
 
 ## Performance Considerations
 
-### Optimizations
-- **In-Memory Storage**: Fast game state access
-- **Efficient Validation**: Optimized card checking algorithms
-- **Minimal Broadcasting**: Only send necessary updates
-- **Connection Pooling**: Efficient Socket.IO connection management
-
-### Scalability
-- **Stateless Design**: Easy to scale horizontally
-- **Game Instance Isolation**: Independent game states
+### Optimization Strategies
+- **Efficient Turn Simulation**: O(n) complexity for card stack validation
+- **Minimal State Updates**: Only broadcast necessary game state changes
+- **Smart Validation Caching**: Cache turn control results for repeated calculations
 - **Memory Management**: Automatic cleanup of finished games
-- **Database Ready**: Easy migration to persistent storage
 
-## Debugging
+### Scalability Features  
+- **Stateless Validation**: Pure functions enable horizontal scaling
+- **Game Instance Isolation**: Independent game states prevent interference
+- **Connection Pooling**: Efficient Socket.IO connection management
+- **Database Ready**: Architecture supports easy migration to persistent storage
 
-### Debug Information
-- **Socket Events**: Detailed logging of all socket communications
-- **Game State Changes**: Comprehensive state transition logs
-- **Validation Steps**: Step-by-step validation process logging
-- **Error Tracking**: Detailed error messages with context
+## Debug Tools
 
-### Common Issues
-1. **Turn Synchronization**: Check player ID matching
-2. **Card Validation**: Verify card ownership and rules
-3. **Socket Connections**: Monitor connection/disconnection events
-4. **State Consistency**: Ensure proper game state updates
+### Advanced Logging
+```javascript
+// Enable debug mode for detailed stacking logs
+game.debugMode = true;
+
+// Detailed turn control simulation logging
+🔍 [DEBUG] simulateTurnControl: [J♦, 10♦, 10♥] with 2 players
+🔍 [DEBUG] Stack ends with turn-passing card (10) - turn passes
+🔍 [DEBUG] simulateTurnControl result: PASS TURN
+```
+
+### Debug Functions
+```javascript
+// Test turn control scenarios
+game.testTurnControl();
+
+// Debug specific card combinations  
+game.debugTurnControl([
+    { suit: 'Hearts', rank: 'Jack' },
+    { suit: 'Hearts', rank: 'Queen' }
+]);
+```
 
 ## Future Enhancements
 
 ### Planned Features
-- **Database Integration**: Persistent game storage
-- **User Authentication**: Account-based player management
-- **Game Analytics**: Statistics and performance tracking
-- **Load Balancing**: Multi-server deployment support
-- **API Rate Limiting**: Protection against abuse
-
-### Technical Debt
-- **Tournament System**: Complete multi-round elimination
-- **Reconnection Logic**: Improved mid-game reconnection
-- **Memory Optimization**: Better large-scale performance
-- **Error Recovery**: Graceful handling of edge cases
+- **3+ Player Stacking Rules**: Enhanced logic for multiplayer games
+- **Advanced AI Opponents**: Strategic stacking AI
+- **Performance Optimization**: Further optimization for complex stacks
+- **Rule Variations**: Configurable stacking rule sets
+- **Analytics**: Detailed stacking statistics and patterns
 
 ## License
 MIT License - see main project README for details.

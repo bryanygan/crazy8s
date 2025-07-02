@@ -123,7 +123,8 @@ class Game {
             direction: this.direction,
             drawStack: this.drawStack,
             roundNumber: this.roundNumber,
-            pendingTurnPass: this.pendingTurnPass, // New field
+            pendingTurnPass: this.pendingTurnPass,
+            playersWhoHaveDrawn: Array.from(this.playersWhoHaveDrawn), // Add draw tracking
             players: this.players.map(player => ({
                 id: player.id,
                 name: player.name,
@@ -439,9 +440,9 @@ class Game {
         }
 
         if (this.debugMode) {
-            console.log('🐛 [DEBUG] validating stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+            console.log('🔍 [DEBUG] Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
         } else {
-            console.log('Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+            console.log('🔍 Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
         }
 
         // Check each card-to-card transition in the stack
@@ -449,7 +450,11 @@ class Game {
             const prevCard = cards[i - 1];
             const currentCard = cards[i];
             
-            console.log(`Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
+            if (this.debugMode) {
+                console.log(`🔍 [DEBUG] Checking transition ${i}: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
+            } else {
+                console.log(`  Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
+            }
             
             // Cards must match by suit or rank
             const matchesSuit = prevCard.suit === currentCard.suit;
@@ -461,36 +466,78 @@ class Game {
                 (prevCard.rank === '2' && currentCard.rank === 'Ace')
             ) && prevCard.suit === currentCard.suit;
             
-            console.log(`  Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+            if (this.debugMode) {
+                console.log(`🔍 [DEBUG]   Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+            } else {
+                console.log(`    Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+            }
             
             // Basic matching requirement
             if (!matchesSuit && !matchesRank && !isAce2Cross) {
-                console.log(`  ❌ Invalid transition - no suit/rank match!`);
+                if (this.debugMode) {
+                    console.log(`❌ [DEBUG] Invalid transition - no suit/rank match!`);
+                } else {
+                    console.log(`    ❌ Invalid transition - no suit/rank match!`);
+                }
                 return {
                     isValid: false,
                     error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank.`
                 };
             }
             
-            // If different rank but same suit, validate turn chain logic
-            if (matchesSuit && !matchesRank && !isAce2Cross) {
-                const stackUpToHere = cards.slice(0, i);
-                const wouldHaveTurnControl = this.simulateTurnControl(stackUpToHere);
-                
-                if (!wouldHaveTurnControl) {
-                    console.log(`  ❌ Invalid transition - no turn control after previous cards!`);
-                    return {
-                        isValid: false,
-                        error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Previous cards don't maintain turn control.`
-                    };
+            // FIXED LOGIC: If cards match by rank, always allow (this is standard stacking)
+            if (matchesRank || isAce2Cross) {
+                if (this.debugMode) {
+                    console.log(`✅ [DEBUG] Valid transition - same rank or Ace/2 cross-stack`);
+                } else {
+                    console.log(`    ✅ Valid transition - same rank or Ace/2 cross-stack`);
                 }
+                continue;
             }
             
-            console.log(`  ✅ Valid transition`);
+            // FIXED LOGIC: If cards only match by suit (different ranks), 
+            // we need to validate the entire turn control chain up to this point
+            if (matchesSuit && !matchesRank) {
+                if (this.debugMode) {
+                    console.log(`🔍 [DEBUG] Same suit, different rank - checking turn control logic`);
+                } else {
+                    console.log(`    Same suit, different rank - checking turn control logic`);
+                }
+                
+                // CRITICAL FIX: For same-suit different-rank transitions, we need to validate that 
+                // the player would maintain turn control after playing all cards UP TO AND INCLUDING the previous card
+                // This simulates: "After playing the previous cards, do I still have the turn to play this card?"
+                const stackUpToPrevious = cards.slice(0, i);
+                const wouldHaveTurnControl = this.simulateTurnControl(stackUpToPrevious);
+                
+                if (this.debugMode) {
+                    console.log(`🔍 [DEBUG] Turn control after ${stackUpToPrevious.map(c => `${c.rank}${c.suit[0]}`).join(', ')}: ${wouldHaveTurnControl}`);
+                } else {
+                    console.log(`    Turn control after previous cards: ${wouldHaveTurnControl}`);
+                }
+                
+                if (!wouldHaveTurnControl) {
+                    if (this.debugMode) {
+                        console.log(`❌ [DEBUG] Invalid transition - no turn control after previous cards!`);
+                    } else {
+                        console.log(`    ❌ Invalid transition - no turn control after previous cards!`);
+                    }
+                    return {
+                        isValid: false,
+                        error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. You don't maintain turn control after playing the previous cards in the sequence.`
+                    };
+                }
+                
+                if (this.debugMode) {
+                    console.log(`✅ [DEBUG] Valid transition - turn control maintained`);
+                } else {
+                    console.log(`    ✅ Valid transition - turn control maintained`);
+                }
+            }
         }
         
         if (this.debugMode) {
-            console.log('🐛 [DEBUG] stack validation passed');
+            console.log('✅ [DEBUG] Stack validation passed');
         } else {
             console.log('✅ Stack validation passed');
         }
@@ -503,60 +550,128 @@ class Game {
 
         const playerCount = this.activePlayers.length;
         
+        if (this.debugMode) {
+            console.log(`🔍 [DEBUG] simulateTurnControl: [${cardStack.map(c => c.rank + c.suit[0]).join(', ')}] with ${playerCount} players`);
+        }
+        
         // Check if this is a pure Jack stack in a 2-player game
         const isPureJackStack = cardStack.every(card => card.rank === 'Jack');
         const is2PlayerGame = playerCount === 2;
         
         if (isPureJackStack && is2PlayerGame) {
-            console.log('🎯 Pure Jack stack in 2-player game - original player keeps turn');
+            if (this.debugMode) {
+                console.log('🎯 [DEBUG] Pure Jack stack in 2-player game - original player keeps turn');
+            }
             return true; // Original player always keeps turn
         }
         
-        // Original turn simulation logic for other cases
-        let currentIndex = 0; // Start relative to the current player
-        let direction = this.direction;
-        let pendingSkips = 0;
-
+        // CORRECTED LOGIC: Check what the stack ends with
+        // The final turn control is determined by the nature of the ending cards
+        
+        // Find the last card and check if it's a turn-passing type
+        const lastCard = cardStack[cardStack.length - 1];
+        const normalCardRanks = ['3', '4', '5', '6', '7', '9', '10', 'King'];
+        const drawCardRanks = ['2', 'Ace']; // These pass turn but have draw effects
+        const wildCardRanks = ['8']; // These pass turn but change suit
+        
+        // If stack ends with normal/draw/wild cards, turn passes regardless of earlier cards
+        if (normalCardRanks.includes(lastCard.rank) || 
+            drawCardRanks.includes(lastCard.rank) || 
+            wildCardRanks.includes(lastCard.rank)) {
+            if (this.debugMode) {
+                console.log(`🔍 [DEBUG] Stack ends with turn-passing card (${lastCard.rank}) - turn passes`);
+            }
+            return false;
+        }
+        
+        // If we reach here, stack ends with Jack or Queen - need to analyze the special card effects
+        
+        // Count Queens in the entire stack for even/odd logic
+        let queenCount = 0;
+        let jackCount = 0;
+        
         for (const card of cardStack) {
-            if (card.rank === 'Jack') {
-                // Accumulate skip effects; actual move applied when a non-Jack is processed
-                if (playerCount !== 2) {
-                    pendingSkips += 1;
+            if (card.rank === 'Queen') queenCount++;
+            if (card.rank === 'Jack') jackCount++;
+        }
+        
+        if (this.debugMode) {
+            console.log(`🔍 [DEBUG] Special cards in stack: Jacks=${jackCount}, Queens=${queenCount}`);
+        }
+        
+        if (is2PlayerGame) {
+            // 2-player logic for stacks ending with special cards
+            
+            if (queenCount > 0) {
+                // Queen logic: even count = keep turn, odd count = pass turn
+                const queenKeepsTurn = (queenCount % 2 === 0);
+                if (this.debugMode) {
+                    console.log(`🔍 [DEBUG] 2-player Queens: ${queenCount} → ${queenKeepsTurn ? 'keep turn' : 'pass turn'}`);
                 }
+                return queenKeepsTurn;
+            }
+            
+            if (jackCount > 0) {
+                // Pure Jack effect (since no Queens and no normal cards at end)
+                if (this.debugMode) {
+                    console.log(`🔍 [DEBUG] 2-player: Stack ends with Jack(s) → keep turn`);
+                }
+                return true;
+            }
+        } else {
+            // 3+ player logic (simplified)
+            if (this.debugMode) {
+                console.log(`🔍 [DEBUG] 3+ player: Most combinations pass turn`);
+            }
+            return false;
+        }
+        
+        // Fallback
+        if (this.debugMode) {
+            console.log(`🔍 [DEBUG] Fallback: pass turn`);
+        }
+        return false;
+    }
+
+    getPlayableCardsAfterPenalty(drawnCards, playerId) {
+        const topCard = this.getTopDiscardCard();
+        if (!topCard) return drawnCards.map(card => this.cardToString(card));
+
+        const playableCards = [];
+        
+        console.log(`🔍 Checking post-penalty playability of ${drawnCards.length} drawn cards against top card: ${this.cardToString(topCard)}`);
+        console.log(`🔍 Draw stack after penalty: ${this.drawStack} (should be 0)`);
+        console.log(`🔍 Declared suit: ${this.declaredSuit || 'none'}`);
+        
+        for (const card of drawnCards) {
+            console.log(`🔍 Checking drawn card: ${this.cardToString(card)}`);
+            
+            // 8s are always playable (wild cards)
+            if (card.rank === '8') {
+                console.log(`  ✅ 8 is always playable (wild)`);
+                playableCards.push(this.cardToString(card));
                 continue;
             }
-
-            if (pendingSkips > 0) {
-                if (playerCount !== 2) {
-                    currentIndex = (currentIndex + pendingSkips + 1) % playerCount;
-                }
-                pendingSkips = 0;
-            }
-
-            switch (card.rank) {
-                case 'Queen':
-                    direction *= -1;
-                    currentIndex = (currentIndex + direction + playerCount) % playerCount;
-                    break;
-                case 'Ace':
-                case '2':
-                case '8':
-                    currentIndex = (currentIndex + direction + playerCount) % playerCount;
-                    break;
-                default:
-                    currentIndex = (currentIndex + direction + playerCount) % playerCount;
-                    break;
+            
+            // After penalty is paid, normal matching rules apply (no more draw stack)
+            const suitToMatch = this.declaredSuit || topCard.suit;
+            const matchesSuit = card.suit === suitToMatch;
+            const matchesRank = card.rank === topCard.rank;
+            
+            console.log(`  Suit to match: ${suitToMatch}`);
+            console.log(`  Matches suit: ${matchesSuit} (${card.suit} vs ${suitToMatch})`);
+            console.log(`  Matches rank: ${matchesRank} (${card.rank} vs ${topCard.rank})`);
+            
+            if (matchesSuit || matchesRank) {
+                console.log(`  ✅ Matches suit or rank (normal play after penalty)`);
+                playableCards.push(this.cardToString(card));
+            } else {
+                console.log(`  ❌ No match`);
             }
         }
-
-        if (pendingSkips > 0) {
-            if (playerCount !== 2) {
-                currentIndex = (currentIndex + pendingSkips + 1) % playerCount;
-            }
-        }
-
-        // Player keeps the turn only if we end back at index 0
-        return currentIndex === 0;
+        
+        console.log(`🔍 Post-penalty result: ${playableCards.length} playable cards: [${playableCards.join(', ')}]`);
+        return playableCards;
     }
 
     // Fixed handleMultipleSpecialCards method for game.js
@@ -676,40 +791,27 @@ class Game {
         let finalPlayerIndex = 0; // Start with current player (index 0)
 
         if (playerCount === 2) {
-            // 2-player game logic (original behavior for non-pure-Jack stacks)
-            let shouldPassTurn = false;
-            
-            // Handle Jacks (skips) - odd number = keep turn, even number = pass turn
-            if (totalSkips > 0) {
-                const keepTurnFromSkips = (totalSkips % 2 === 1);
-                shouldPassTurn = !keepTurnFromSkips;
-                console.log(`🎮 2-player Jacks: ${totalSkips} skips → ${keepTurnFromSkips ? 'keep turn' : 'pass turn'}`);
-            }
-            
-            // Handle Queens (reverses) - odd number = pass turn, even number = keep turn
-            if (totalReverses > 0) {
-                const passTurnFromReverses = (totalReverses % 2 === 1);
-                // If we already determined to pass from skips, this modifies it
-                if (totalSkips > 0) {
-                    // Both effects present - combine them
-                    shouldPassTurn = shouldPassTurn !== passTurnFromReverses; // XOR logic
-                } else {
-                    // Only reverses
-                    shouldPassTurn = passTurnFromReverses;
-                }
-                console.log(`🎮 2-player Queens: ${totalReverses} reverses → ${passTurnFromReverses ? 'pass turn' : 'keep turn'}`);
-            }
-            
+            // Corrected 2-player game logic
+            let shouldPassTurn;
+
+            // A stack ending in a normal/draw/wild card ALWAYS passes the turn
             // Handle normal cards, draw cards, or wilds - these ALWAYS pass turn
             if (endsWithNormalCard || totalDrawEffect > 0 || hasWild) {
                 shouldPassTurn = true;
                 console.log(`🎮 2-player: Stack ends with normal/draw/wild card → pass turn`);
-            }
-            // Only keep turn if ONLY special cards (Jacks/Queens) and the logic says to keep turn
-            else if (totalSkips === 0 && totalReverses === 0) {
-                // No special cards at all - this shouldn't happen, but pass turn as fallback
-                shouldPassTurn = true;
-                console.log(`🎮 2-player: No special cards → pass turn`);
+            } else {
+                // Logic for stacks ending in only Jacks and/or Queens
+                // In a 2-player game, an odd number of skips/reverses passes the turn.
+                // An even number keeps the turn. We can XOR the effects.
+                const passFromSkips = (totalSkips % 2 === 1);
+                const passFromReverses = (totalReverses % 2 === 1);
+
+                console.log(`🎮 2-player Jacks: ${totalSkips} skips → ${passFromSkips ? 'pass turn' : 'keep turn'}`);
+                console.log(`🎮 2-player Queens: ${totalReverses} reverses → ${passFromReverses ? 'pass turn' : 'keep turn'}`);
+
+                // XOR the two effects. If they are the same (both pass or both keep),
+                // the result is to keep the turn. If they are different, pass the turn.
+                shouldPassTurn = passFromSkips !== passFromReverses;
             }
             
             finalPlayerIndex = shouldPassTurn ? 1 : 0;
@@ -906,34 +1008,27 @@ class Game {
             this.playersWhoHaveDrawn.add(playerId);
         }
 
-        // Check which drawn cards can be played immediately
-        const playableDrawnCards = this.getPlayableDrawnCards(drawnCards, playerId);
-        const canPlayDrawnCard = playableDrawnCards.length > 0;
+        // After drawing, check if the player has any playable cards in their entire hand
+        const hasPlayableCards = this.playerHasPlayableCard(playerId);
 
-        // FIXED: Handle turn progression based on card type and playability
-        if (isFromSpecialCard) {
-            // After drawing penalty cards, check if player can play any
-            if (canPlayDrawnCard) {
-                // Player drew penalty cards but can play some - they keep their turn with pending pass
-                this.pendingTurnPass = playerId;
-                console.log(`🎲 Player drew ${actualDrawCount} penalty cards`);
-            } else {
-                // No playable cards after penalty draw - advance turn immediately
-                this.pendingTurnPass = null;
-                this.nextPlayer();
-                console.log(`🎲 Player drew ${actualDrawCount} penalty cards with no playable cards - turn advanced`);
-            }
+        // If it was a regular draw (not a penalty) and they have no playable cards, auto-pass the turn.
+        if (!isFromSpecialCard && !hasPlayableCards) {
+            console.log(`🎲 Player ${player.name} drew and has no playable cards. Auto-passing turn.`);
+            this.nextPlayer();
+            this.pendingTurnPass = null; // Ensure no pending pass is set
+            this.playersWhoHaveDrawn.delete(playerId); // Clear for next turn
         } else {
-            // Regular draw - always set pending turn pass regardless of playability
+            // Otherwise, the player's turn continues, and they must either play or manually pass.
             this.pendingTurnPass = playerId;
-            console.log(`🎲 Player drew ${actualDrawCount} regular cards - setting pending turn pass`);
+            console.log(`🎲 Player ${player.name} drew cards. Turn is pending pass.`);
         }
 
         const result = {
             success: true,
             drawnCards: drawnCards.map(card => this.cardToString(card)),
-            playableDrawnCards: playableDrawnCards,
-            canPlayDrawnCard: canPlayDrawnCard,
+            // This information is less critical now that the backend handles the auto-pass
+            playableDrawnCards: [], 
+            canPlayDrawnCard: hasPlayableCards,
             fromSpecialCard: isFromSpecialCard,
             gameState: this.getGameState(),
             newDeckAdded: needsNewDeck,
@@ -943,9 +1038,9 @@ class Game {
         console.log(`🎲 Draw complete:`, {
             cardsDrawn: drawnCards.length,
             playerHandSize: player.hand.length,
-            playableCards: playableDrawnCards.length,
+            playableCards: hasPlayableCards,
             newDeckAdded: needsNewDeck,
-            keptTurn: isFromSpecialCard && canPlayDrawnCard
+            keptTurn: this.pendingTurnPass === playerId // Turn is kept if pending pass is set
         });
 
         return result;
@@ -954,18 +1049,25 @@ class Game {
     // New method to get playable cards from drawn cards
     getPlayableDrawnCards(drawnCards, playerId) {
         const topCard = this.getTopDiscardCard();
-        if (!topCard) return [];
+        if (!topCard) return drawnCards.map(card => this.cardToString(card)); // All cards playable if no top card
 
         const playableCards = [];
         
         for (const card of drawnCards) {
+            // Special handling for 8s - they're always playable (wild cards)
+            if (card.rank === '8') {
+            playableCards.push(this.cardToString(card));
+            continue;
+            }
+            
+            // For other cards, use the standard validation but skip suit declaration requirement
             if (this.isValidPlay(card)) {
-                playableCards.push(this.cardToString(card));
+            playableCards.push(this.cardToString(card));
             }
         }
 
         return playableCards;
-    }
+        }
 
     // New method to play a specific drawn card
     playDrawnCard(playerId, card, declaredSuit = null) {
@@ -1539,5 +1641,7 @@ class Game {
         Game.games.delete(gameId);
     }
 }
+
+
 
 module.exports = Game;
