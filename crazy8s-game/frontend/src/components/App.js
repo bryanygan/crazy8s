@@ -298,20 +298,30 @@ const validateCardStackFrontend = (cards, activePlayers = 2) => {
       (prevCard.rank === '2' && currentCard.rank === 'Ace')
     ) && prevCard.suit === currentCard.suit;
     
-    console.log(`    Frontend: Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+    // Special case for 8s - if turn control is maintained, 8s can be played regardless of suit
+    const is8WithTurnControl = currentCard.rank === '8' && 
+      simulateTurnControlFrontend(cards.slice(0, i), activePlayers);
     
-    // Basic matching requirement
-    if (!matchesSuit && !matchesRank && !isAce2Cross) {
-      console.log(`    ❌ Frontend: Invalid transition - no suit/rank match!`);
+    console.log(`    Frontend: Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}, 8 with turn control: ${is8WithTurnControl}`);
+    
+    // Basic matching requirement (now includes 8s with turn control)
+    if (!matchesSuit && !matchesRank && !isAce2Cross && !is8WithTurnControl) {
+      console.log(`    ❌ Frontend: Invalid transition - no suit/rank match and no 8 flexibility!`);
       return {
         isValid: false,
-        error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank.`
+        error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank${currentCard.rank === '8' ? ', or 8s can be played if you maintain turn control' : ''}.`
       };
     }
     
     // If cards match by rank, always allow (this is standard stacking)
     if (matchesRank || isAce2Cross) {
       console.log(`    ✅ Frontend: Valid transition - same rank or Ace/2 cross-stack`);
+      continue;
+    }
+    
+    // If it's an 8 with turn control, allow it
+    if (is8WithTurnControl) {
+      console.log(`    ✅ Frontend: Valid transition - 8 played with maintained turn control`);
       continue;
     }
     
@@ -322,7 +332,6 @@ const validateCardStackFrontend = (cards, activePlayers = 2) => {
       
       // For same-suit different-rank transitions, we need to validate that 
       // the player would maintain turn control after playing all cards UP TO AND INCLUDING the previous card
-      // This is the key fix - we simulate what happens after playing cards[0] through cards[i-1]
       const stackUpToPrevious = cards.slice(0, i);
       const wouldHaveTurnControl = simulateTurnControlFrontend(stackUpToPrevious, activePlayers);
       
@@ -348,6 +357,23 @@ const validateCardStackFrontend = (cards, activePlayers = 2) => {
 const canStackCardsFrontend = (existingCards, newCard, activePlayers = 2) => {
   const testStack = [...existingCards, newCard];
   const validation = validateCardStackFrontend(testStack, activePlayers);
+  
+  // If validation passes, also log why for debugging
+  if (validation.isValid && existingCards.length > 0) {
+    const lastCard = existingCards[existingCards.length - 1];
+    const matchesSuit = lastCard.suit === newCard.suit;
+    const matchesRank = lastCard.rank === newCard.rank;
+    const isAce2Cross = (
+      (lastCard.rank === 'Ace' && newCard.rank === '2') ||
+      (lastCard.rank === '2' && newCard.rank === 'Ace')
+    ) && lastCard.suit === newCard.suit;
+    const is8WithTurnControl = newCard.rank === '8' && 
+      simulateTurnControlFrontend(existingCards, activePlayers);
+    
+    console.log(`🎯 Frontend canStack: ${newCard.rank}${newCard.suit[0]} after [${existingCards.map(c => `${c.rank}${c.suit[0]}`).join(', ')}]`);
+    console.log(`   Reasons: suit=${matchesSuit}, rank=${matchesRank}, ace2=${isAce2Cross}, 8+control=${is8WithTurnControl}`);
+  }
+  
   return validation.isValid;
 };
 
@@ -1988,7 +2014,7 @@ newSocket.on('playerDrewCards', (data) => {
       );
     } else {
       addToast(
-        `Drew ${data.drawnCards.length} cards. No playable cards drawn.`,
+        `Drew ${data.drawnCards.length} cards.`,
         'info'
       );
     }
@@ -2232,15 +2258,11 @@ useEffect(() => {
     
     if (hasWild) {
       // Check if ALL selected cards are 8s (can't mix 8s with other ranks unless same suit)
-      const non8Cards = selectedCards.filter(card => card.rank !== '8');
-      if (non8Cards.length > 0) {
-        // Check if all cards (including 8s) are same suit
-        const allSameSuit = selectedCards.every(card => card.suit === selectedCards[0].suit);
-        if (!allSameSuit) {
-          addToast('When playing 8s with other cards, all must be the same suit', 'error');
+      const validation = validateCardStackFrontend(selectedCards, activePlayers);
+        if (!validation.isValid) {
+          addToast(validation.error, 'error');
           return;
         }
-      }
       setShowSuitSelector(true);
     } else {
       console.log('🃏 Playing cards:', selectedCards);

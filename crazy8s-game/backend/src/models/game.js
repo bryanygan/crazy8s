@@ -451,9 +451,9 @@ class Game {
             const currentCard = cards[i];
             
             if (this.debugMode) {
-                console.log(`🔍 [DEBUG] Checking transition ${i}: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
+            console.log(`🔍 [DEBUG] Checking transition ${i}: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
             } else {
-                console.log(`  Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
+            console.log(`  Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
             }
             
             // Cards must match by suit or rank
@@ -462,77 +462,90 @@ class Game {
             
             // Special case: Aces and 2s can stack with each other if same suit
             const isAce2Cross = (
-                (prevCard.rank === 'Ace' && currentCard.rank === '2') ||
-                (prevCard.rank === '2' && currentCard.rank === 'Ace')
+            (prevCard.rank === 'Ace' && currentCard.rank === '2') ||
+            (prevCard.rank === '2' && currentCard.rank === 'Ace')
             ) && prevCard.suit === currentCard.suit;
             
+            // NEW: Special case for 8s - if turn control is maintained, 8s can be played regardless of suit
+            const is8WithTurnControl = currentCard.rank === '8' && 
+            this.simulateTurnControl(cards.slice(0, i));
+            
             if (this.debugMode) {
-                console.log(`🔍 [DEBUG]   Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+            console.log(`🔍 [DEBUG]   Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}, 8 with turn control: ${is8WithTurnControl}`);
             } else {
-                console.log(`    Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+            console.log(`    Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}, 8 with turn control: ${is8WithTurnControl}`);
             }
             
-            // Basic matching requirement
-            if (!matchesSuit && !matchesRank && !isAce2Cross) {
+            // Basic matching requirement (now includes 8s with turn control)
+            if (!matchesSuit && !matchesRank && !isAce2Cross && !is8WithTurnControl) {
+            if (this.debugMode) {
+                console.log(`❌ [DEBUG] Invalid transition - no suit/rank match and no 8 flexibility!`);
+            } else {
+                console.log(`    ❌ Invalid transition - no suit/rank match and no 8 flexibility!`);
+            }
+            return {
+                isValid: false,
+                error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank${currentCard.rank === '8' ? ', or 8s can be played if you maintain turn control' : ''}.`
+            };
+            }
+            
+            // If cards match by rank, always allow (this is standard stacking)
+            if (matchesRank || isAce2Cross) {
+            if (this.debugMode) {
+                console.log(`✅ [DEBUG] Valid transition - same rank or Ace/2 cross-stack`);
+            } else {
+                console.log(`    ✅ Valid transition - same rank or Ace/2 cross-stack`);
+            }
+            continue;
+            }
+            
+            // If it's an 8 with turn control, allow it
+            if (is8WithTurnControl) {
+            if (this.debugMode) {
+                console.log(`✅ [DEBUG] Valid transition - 8 played with maintained turn control`);
+            } else {
+                console.log(`    ✅ Valid transition - 8 played with maintained turn control`);
+            }
+            continue;
+            }
+            
+            // If cards only match by suit (different ranks), 
+            // we need to validate the entire turn control chain up to this point
+            if (matchesSuit && !matchesRank) {
+            if (this.debugMode) {
+                console.log(`🔍 [DEBUG] Same suit, different rank - checking turn control logic`);
+            } else {
+                console.log(`    Same suit, different rank - checking turn control logic`);
+            }
+            
+            // For same-suit different-rank transitions, we need to validate that 
+            // the player would maintain turn control after playing all cards UP TO AND INCLUDING the previous card
+            const stackUpToPrevious = cards.slice(0, i);
+            const wouldHaveTurnControl = this.simulateTurnControl(stackUpToPrevious);
+            
+            if (this.debugMode) {
+                console.log(`🔍 [DEBUG] Turn control after ${stackUpToPrevious.map(c => `${c.rank}${c.suit[0]}`).join(', ')}: ${wouldHaveTurnControl}`);
+            } else {
+                console.log(`    Turn control after previous cards: ${wouldHaveTurnControl}`);
+            }
+            
+            if (!wouldHaveTurnControl) {
                 if (this.debugMode) {
-                    console.log(`❌ [DEBUG] Invalid transition - no suit/rank match!`);
+                console.log(`❌ [DEBUG] Invalid transition - no turn control after previous cards!`);
                 } else {
-                    console.log(`    ❌ Invalid transition - no suit/rank match!`);
+                console.log(`    ❌ Invalid transition - no turn control after previous cards!`);
                 }
                 return {
-                    isValid: false,
-                    error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank.`
+                isValid: false,
+                error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. You don't maintain turn control after playing the previous cards in the sequence.`
                 };
             }
             
-            // FIXED LOGIC: If cards match by rank, always allow (this is standard stacking)
-            if (matchesRank || isAce2Cross) {
-                if (this.debugMode) {
-                    console.log(`✅ [DEBUG] Valid transition - same rank or Ace/2 cross-stack`);
-                } else {
-                    console.log(`    ✅ Valid transition - same rank or Ace/2 cross-stack`);
-                }
-                continue;
+            if (this.debugMode) {
+                console.log(`✅ [DEBUG] Valid transition - turn control maintained`);
+            } else {
+                console.log(`    ✅ Valid transition - turn control maintained`);
             }
-            
-            // FIXED LOGIC: If cards only match by suit (different ranks), 
-            // we need to validate the entire turn control chain up to this point
-            if (matchesSuit && !matchesRank) {
-                if (this.debugMode) {
-                    console.log(`🔍 [DEBUG] Same suit, different rank - checking turn control logic`);
-                } else {
-                    console.log(`    Same suit, different rank - checking turn control logic`);
-                }
-                
-                // CRITICAL FIX: For same-suit different-rank transitions, we need to validate that 
-                // the player would maintain turn control after playing all cards UP TO AND INCLUDING the previous card
-                // This simulates: "After playing the previous cards, do I still have the turn to play this card?"
-                const stackUpToPrevious = cards.slice(0, i);
-                const wouldHaveTurnControl = this.simulateTurnControl(stackUpToPrevious);
-                
-                if (this.debugMode) {
-                    console.log(`🔍 [DEBUG] Turn control after ${stackUpToPrevious.map(c => `${c.rank}${c.suit[0]}`).join(', ')}: ${wouldHaveTurnControl}`);
-                } else {
-                    console.log(`    Turn control after previous cards: ${wouldHaveTurnControl}`);
-                }
-                
-                if (!wouldHaveTurnControl) {
-                    if (this.debugMode) {
-                        console.log(`❌ [DEBUG] Invalid transition - no turn control after previous cards!`);
-                    } else {
-                        console.log(`    ❌ Invalid transition - no turn control after previous cards!`);
-                    }
-                    return {
-                        isValid: false,
-                        error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. You don't maintain turn control after playing the previous cards in the sequence.`
-                    };
-                }
-                
-                if (this.debugMode) {
-                    console.log(`✅ [DEBUG] Valid transition - turn control maintained`);
-                } else {
-                    console.log(`    ✅ Valid transition - turn control maintained`);
-                }
             }
         }
         
@@ -542,7 +555,7 @@ class Game {
             console.log('✅ Stack validation passed');
         }
         return { isValid: true };
-    }
+        }
 
     // Simulate turn control for a card sequence
     simulateTurnControl(cardStack) {
