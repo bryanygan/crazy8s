@@ -123,7 +123,8 @@ class Game {
             direction: this.direction,
             drawStack: this.drawStack,
             roundNumber: this.roundNumber,
-            pendingTurnPass: this.pendingTurnPass, // New field
+            pendingTurnPass: this.pendingTurnPass,
+            playersWhoHaveDrawn: Array.from(this.playersWhoHaveDrawn), // Add draw tracking
             players: this.players.map(player => ({
                 id: player.id,
                 name: player.name,
@@ -1007,36 +1008,27 @@ class Game {
             this.playersWhoHaveDrawn.add(playerId);
         }
 
-        // Check which drawn cards can be played immediately
-        const playableDrawnCards = this.getPlayableDrawnCards(drawnCards, playerId);
-        const canPlayDrawnCard = playableDrawnCards.length > 0;
+        // After drawing, check if the player has any playable cards in their entire hand
+        const hasPlayableCards = this.playerHasPlayableCard(playerId);
 
-        // FIXED: Handle turn progression based on card type and playability
-        if (isFromSpecialCard) {
-            // When drawing penalty cards, the draw stack gets cleared and player gets to play normally
-            // The penalty has been paid, now they can play matching cards
-            this.pendingTurnPass = playerId;
-            console.log(`🎲 Player drew ${actualDrawCount} penalty cards - draw stack cleared, can now play normal cards`);
-            
-            // After paying the penalty, check for playable cards using normal rules (not counter rules)
-            const normalPlayableCards = this.getPlayableCardsAfterPenalty(drawnCards, playerId);
-            
-            if (normalPlayableCards.length > 0) {
-                console.log(`🎲 After paying penalty, ${normalPlayableCards.length} cards are now playable: [${normalPlayableCards.join(', ')}]`);
-            } else {
-                console.log(`🎲 After paying penalty, no immediately playable cards from the draw, but player can check their full hand`);
-            }
+        // If it was a regular draw (not a penalty) and they have no playable cards, auto-pass the turn.
+        if (!isFromSpecialCard && !hasPlayableCards) {
+            console.log(`🎲 Player ${player.name} drew and has no playable cards. Auto-passing turn.`);
+            this.nextPlayer();
+            this.pendingTurnPass = null; // Ensure no pending pass is set
+            this.playersWhoHaveDrawn.delete(playerId); // Clear for next turn
         } else {
-            // Regular draw - always set pending turn pass regardless of playability
+            // Otherwise, the player's turn continues, and they must either play or manually pass.
             this.pendingTurnPass = playerId;
-            console.log(`🎲 Player drew ${actualDrawCount} regular cards - setting pending turn pass`);
+            console.log(`🎲 Player ${player.name} drew cards. Turn is pending pass.`);
         }
 
         const result = {
             success: true,
             drawnCards: drawnCards.map(card => this.cardToString(card)),
-            playableDrawnCards: playableDrawnCards,
-            canPlayDrawnCard: canPlayDrawnCard,
+            // This information is less critical now that the backend handles the auto-pass
+            playableDrawnCards: [], 
+            canPlayDrawnCard: hasPlayableCards,
             fromSpecialCard: isFromSpecialCard,
             gameState: this.getGameState(),
             newDeckAdded: needsNewDeck,
@@ -1046,9 +1038,9 @@ class Game {
         console.log(`🎲 Draw complete:`, {
             cardsDrawn: drawnCards.length,
             playerHandSize: player.hand.length,
-            playableCards: playableDrawnCards.length,
+            playableCards: hasPlayableCards,
             newDeckAdded: needsNewDeck,
-            keptTurn: isFromSpecialCard && canPlayDrawnCard
+            keptTurn: this.pendingTurnPass === playerId // Turn is kept if pending pass is set
         });
 
         return result;

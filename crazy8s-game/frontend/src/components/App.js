@@ -1152,7 +1152,7 @@ const ToastContainer = ({ toasts, onRemoveToast }) => {
       position: 'fixed',
       top: '20px',
       right: '20px',
-      zIndex: 1000,
+      zIndex: 2500,
       display: 'flex',
       flexDirection: 'column',
       gap: '10px',
@@ -1234,7 +1234,7 @@ const Toast = ({ toast, index, onClose }) => {
   };
 
   const getZIndex = () => {
-    return 1000 - index;
+    return 2500 - index;
   };
 
   return (
@@ -1663,6 +1663,7 @@ const App = () => {
   }
 }, [playerId]);
 
+
 // Keep hasDrawnThisTurn ref in sync
   useEffect(() => {
     hasDrawnThisTurnRef.current = hasDrawnThisTurn;
@@ -1732,13 +1733,31 @@ const App = () => {
   // Save settings to localStorage whenever they change
   const handleSettingsChange = (newSettings) => {
   const validatedSettings = validateTimerSettings(newSettings);
+  
+  // Check what local settings changed and show appropriate toast
+  const oldSettings = settings;
+  if (oldSettings.sortByRank !== validatedSettings.sortByRank) {
+    addToast(validatedSettings.sortByRank ? 'Card sorting by rank enabled' : 'Card sorting by rank disabled', 'success');
+  }
+  if (oldSettings.groupBySuit !== validatedSettings.groupBySuit) {
+    addToast(validatedSettings.groupBySuit ? 'Card grouping by suit enabled' : 'Card grouping by suit disabled', 'success');
+  }
+  if (oldSettings.experiencedMode !== validatedSettings.experiencedMode) {
+    addToast(validatedSettings.experiencedMode ? 'Experienced mode enabled' : 'Experienced mode disabled', 'success');
+  }
+  
   setSettings(validatedSettings);
   if (playerId) {
     localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(validatedSettings));
   }
   
-  // Send timer settings to server if in a game
-  if (socket && gameState?.gameId) {
+  // Only send timer settings to server if timer settings actually changed
+  const timerSettingsChanged = 
+    oldSettings.enableTimer !== validatedSettings.enableTimer ||
+    oldSettings.timerDuration !== validatedSettings.timerDuration ||
+    oldSettings.timerWarningTime !== validatedSettings.timerWarningTime;
+    
+  if (socket && gameState?.gameId && timerSettingsChanged) {
     socket.emit('updateTimerSettings', {
       gameId: gameState.gameId,
       timerSettings: {
@@ -1766,8 +1785,12 @@ const App = () => {
       setHasDrawnThisTurn(false);
       setIsDrawing(false);
       setIsSkipping(false); 
+    } else if (gameState?.currentPlayerId === playerId) {
+      // When it becomes our turn, sync with backend's draw tracking
+      const hasDrawnAccordingToServer = gameState?.playersWhoHaveDrawn?.includes(playerId) || false;
+      setHasDrawnThisTurn(hasDrawnAccordingToServer);
     }
-  }, [gameState?.currentPlayerId, playerId]);
+  }, [gameState?.currentPlayerId, gameState?.playersWhoHaveDrawn, playerId]);
 
   // Clear selected cards when turn changes
   useEffect(() => {
@@ -1880,6 +1903,10 @@ useEffect(() => {
     if (data.currentPlayerId !== playerIdRef.current) {
       setHasDrawnThisTurn(false);
       setIsDrawing(false);
+    } else {
+      // Sync with backend's authoritative draw tracking
+      const hasDrawnAccordingToServer = data.playersWhoHaveDrawn?.includes(playerIdRef.current) || false;
+      setHasDrawnThisTurn(hasDrawnAccordingToServer);
     }
     
     // Initialize play again voting when game finishes
@@ -2456,6 +2483,12 @@ const handleStartNewGame = () => {
             Please wait while we establish connection...
           </div>
         </div>
+        
+        {/* Toast Notifications */}
+        <ToastContainer 
+          toasts={toasts}
+          onRemoveToast={removeToast}
+        />
       </div>
     );
   }
@@ -2572,6 +2605,12 @@ const handleStartNewGame = () => {
             </button>
           </div>
         </div>
+        
+        {/* Toast Notifications */}
+        <ToastContainer 
+          toasts={toasts}
+          onRemoveToast={removeToast}
+        />
       </div>
     );
   }
