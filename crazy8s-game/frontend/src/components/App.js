@@ -263,8 +263,21 @@ const simulateTurnControlFrontend = (cardStack, activePlayers = 2) => {
       return true;
     }
   } else {
-    // 3+ player logic (simplified)
-    console.log(`🔍 Frontend: 3+ player: Most combinations pass turn`);
+    // 3+ player logic: even Queens = keep turn, odd Queens = pass turn
+    if (queenCount > 0) {
+      const queenKeepsTurn = (queenCount % 2 === 0);
+      console.log(`🔍 Frontend: 3+ player Queens: ${queenCount} → ${queenKeepsTurn ? 'keep turn' : 'pass turn'}`);
+      return queenKeepsTurn;
+    }
+    
+    if (jackCount > 0) {
+      // Pure Jack effect keeps turn
+      console.log(`🔍 Frontend: 3+ player: Stack ends with Jack(s) → keep turn`);
+      return true;
+    }
+    
+    // No special cards at end of stack
+    console.log(`🔍 Frontend: 3+ player: No special cards at end → pass turn`);
     return false;
   }
   
@@ -1471,6 +1484,435 @@ const TurnTimer = ({ timeLeft, isWarning, isVisible }) => {
   );
 };
 
+// Tournament Components
+
+// Tournament Status Display
+const TournamentStatus = ({ gameState }) => {
+  if (!gameState?.tournament?.active) return null;
+
+  const tournament = gameState.tournament;
+  
+  return (
+    <div style={{
+      backgroundColor: '#2c3e50',
+      color: '#fff',
+      padding: '15px',
+      borderRadius: '10px',
+      marginBottom: '20px',
+      boxShadow: '0 4px 8px rgba(0,0,0,0.2)'
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '10px'
+      }}>
+        <h3 style={{ margin: 0, fontSize: '18px' }}>🏆 Tournament Mode</h3>
+        <div style={{ fontSize: '14px', opacity: 0.8 }}>
+          Round {tournament.currentRound}
+        </div>
+      </div>
+      
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+        gap: '10px',
+        fontSize: '12px'
+      }}>
+        <div>
+          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Active Players</div>
+          <div style={{ color: '#3498db' }}>{tournament.activePlayers}</div>
+        </div>
+        <div>
+          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Safe This Round</div>
+          <div style={{ color: '#27ae60' }}>{tournament.safeThisRound}</div>
+        </div>
+        <div>
+          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Eliminated</div>
+          <div style={{ color: '#e74c3c' }}>{tournament.eliminatedThisRound}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Safe Player Notification
+const SafePlayerNotification = ({ isPlayerSafe, playerName, gameState, onStartNextRound }) => {
+  if (!isPlayerSafe) return null;
+
+  const showStartButton = gameState?.tournament?.active && !gameState?.tournament?.roundInProgress;
+
+  return (
+    <div style={{
+      backgroundColor: '#27ae60',
+      color: '#fff',
+      padding: '15px',
+      borderRadius: '10px',
+      marginBottom: '20px',
+      textAlign: 'center',
+      boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+      animation: 'pulse 1s infinite'
+    }}>
+      <div style={{ fontSize: '24px', marginBottom: '8px' }}>🏆</div>
+      <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '4px' }}>
+        You're Safe!
+      </div>
+      <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: showStartButton ? '15px' : '0' }}>
+        You advance to the next round and cannot play more cards.
+      </div>
+      
+      {showStartButton && (
+        <button
+          onClick={onStartNextRound}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#2c3e50',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseEnter={(e) => e.target.style.backgroundColor = '#34495e'}
+          onMouseLeave={(e) => e.target.style.backgroundColor = '#2c3e50'}
+        >
+          🚀 Start Next Round
+        </button>
+      )}
+    </div>
+  );
+};
+
+// Round End Modal
+const RoundEndModal = ({ isOpen, roundData, nextRoundTimer, onClose, onStartNextRound, isPlayerSafe }) => {
+  if (!isOpen || !roundData) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.8)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1500
+    }}>
+      <div style={{
+        backgroundColor: '#fff',
+        padding: '30px',
+        borderRadius: '15px',
+        maxWidth: '500px',
+        width: '90%',
+        textAlign: 'center',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+      }}>
+        <h2 style={{ color: '#2c3e50', marginBottom: '20px' }}>
+          🏁 Round {roundData.round} Complete!
+        </h2>
+        
+        <div style={{
+          backgroundColor: '#f8f9fa',
+          padding: '20px',
+          borderRadius: '10px',
+          marginBottom: '20px'
+        }}>
+          <div style={{ marginBottom: '15px' }}>
+            <div style={{ fontSize: '14px', color: '#7f8c8d', marginBottom: '5px' }}>
+              Safe Players (Advancing):
+            </div>
+            <div style={{ color: '#27ae60', fontWeight: 'bold' }}>
+              {roundData.safeePlayers.join(', ') || 'None'}
+            </div>
+          </div>
+          
+          <div>
+            <div style={{ fontSize: '14px', color: '#7f8c8d', marginBottom: '5px' }}>
+              Eliminated:
+            </div>
+            <div style={{ color: '#e74c3c', fontWeight: 'bold' }}>
+              {roundData.eliminatedPlayers.join(', ') || 'None'}
+            </div>
+          </div>
+        </div>
+        
+        <div style={{
+          display: 'flex',
+          gap: '15px',
+          justifyContent: 'center',
+          marginBottom: '20px'
+        }}>
+          {isPlayerSafe && onStartNextRound && (
+            <button
+              onClick={onStartNextRound}
+              style={{
+                padding: '12px 25px',
+                backgroundColor: '#27ae60',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#2ecc71'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#27ae60'}
+            >
+              🚀 Start Next Round Now
+            </button>
+          )}
+        </div>
+        
+        {nextRoundTimer > 0 && (
+          <div style={{
+            backgroundColor: '#3498db',
+            color: '#fff',
+            padding: '15px',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            marginBottom: '15px'
+          }}>
+            {isPlayerSafe ? 'Auto-start in' : 'Next round starts in'} {nextRoundTimer} second{nextRoundTimer !== 1 ? 's' : ''}...
+          </div>
+        )}
+        
+        <div style={{
+          fontSize: '14px',
+          color: '#7f8c8d'
+        }}>
+          {roundData.activePlayers} players remaining in tournament
+          {isPlayerSafe && (
+            <div style={{ marginTop: '5px', color: '#27ae60', fontWeight: 'bold' }}>
+              ✨ You're advancing to the next round!
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Tournament Winner Modal
+const TournamentWinnerModal = ({ isOpen, winnerData, onClose }) => {
+  if (!isOpen || !winnerData) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.8)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1500
+    }}>
+      <div style={{
+        backgroundColor: '#fff',
+        padding: '40px',
+        borderRadius: '20px',
+        maxWidth: '600px',
+        width: '90%',
+        textAlign: 'center',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+      }}>
+        <div style={{ fontSize: '64px', marginBottom: '20px' }}>🏆</div>
+        
+        <h1 style={{ 
+          color: '#f39c12', 
+          marginBottom: '10px',
+          fontSize: '32px',
+          textShadow: '2px 2px 4px rgba(0,0,0,0.1)'
+        }}>
+          Tournament Champion!
+        </h1>
+        
+        <div style={{
+          fontSize: '24px',
+          color: '#2c3e50',
+          fontWeight: 'bold',
+          marginBottom: '30px'
+        }}>
+          🥇 {winnerData.winner.name}
+        </div>
+        
+        {winnerData.stats && (
+          <div style={{
+            backgroundColor: '#f8f9fa',
+            padding: '20px',
+            borderRadius: '10px',
+            marginBottom: '30px',
+            textAlign: 'left'
+          }}>
+            <h3 style={{ color: '#2c3e50', marginBottom: '15px', textAlign: 'center' }}>
+              📊 Tournament Statistics
+            </h3>
+            
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: '15px',
+              fontSize: '14px'
+            }}>
+              <div>
+                <div style={{ fontWeight: 'bold', color: '#7f8c8d' }}>Total Rounds:</div>
+                <div style={{ color: '#2c3e50' }}>{winnerData.stats.totalRounds}</div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 'bold', color: '#7f8c8d' }}>Total Players:</div>
+                <div style={{ color: '#2c3e50' }}>{winnerData.stats.totalPlayers}</div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 'bold', color: '#7f8c8d' }}>Duration:</div>
+                <div style={{ color: '#2c3e50' }}>
+                  {Math.floor(winnerData.stats.totalTime / 60000)} minutes
+                </div>
+              </div>
+            </div>
+            
+            {winnerData.stats.eliminationOrder && winnerData.stats.eliminationOrder.length > 0 && (
+              <div style={{ marginTop: '20px' }}>
+                <div style={{ fontWeight: 'bold', color: '#7f8c8d', marginBottom: '10px' }}>
+                  Final Rankings:
+                </div>
+                <div style={{ fontSize: '12px' }}>
+                  {winnerData.stats.eliminationOrder.map((entry, index) => (
+                    <div key={index} style={{ 
+                      padding: '4px 0',
+                      borderBottom: index < winnerData.stats.eliminationOrder.length - 1 ? '1px solid #eee' : 'none'
+                    }}>
+                      #{entry.position}: {entry.player.name}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            padding: '15px 30px',
+            backgroundColor: '#3498db',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '10px',
+            cursor: 'pointer',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
+          onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
+        >
+          🏠 Return to Lobby
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Tournament Player Display
+const TournamentPlayerDisplay = ({ players, gameState }) => {
+  if (!gameState?.tournament?.active) return null;
+
+  const playingPlayers = players.filter(p => !p.isSafe && !p.isEliminated);
+  const safePlayers = players.filter(p => p.isSafe);
+  const eliminatedPlayers = players.filter(p => p.isEliminated);
+
+  return (
+    <div style={{
+      backgroundColor: '#fff',
+      padding: '15px',
+      borderRadius: '10px',
+      marginBottom: '20px',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    }}>
+      <h4 style={{ margin: '0 0 15px 0', color: '#2c3e50' }}>Tournament Status</h4>
+      
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '15px',
+        fontSize: '14px'
+      }}>
+        {playingPlayers.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 'bold', color: '#2c3e50', marginBottom: '8px' }}>
+              🎮 Still Playing ({playingPlayers.length})
+            </div>
+            {playingPlayers.map(player => (
+              <div key={player.id} style={{
+                padding: '6px 10px',
+                margin: '2px 0',
+                backgroundColor: player.isCurrentPlayer ? '#3498db' : '#ecf0f1',
+                color: player.isCurrentPlayer ? '#fff' : '#2c3e50',
+                borderRadius: '4px',
+                fontSize: '12px'
+              }}>
+                {player.name} ({player.handSize} cards)
+                {player.isCurrentPlayer && ' 🎯'}
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {safePlayers.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 'bold', color: '#27ae60', marginBottom: '8px' }}>
+              🏆 Safe ({safePlayers.length})
+            </div>
+            {safePlayers.map(player => (
+              <div key={player.id} style={{
+                padding: '6px 10px',
+                margin: '2px 0',
+                backgroundColor: '#d5f4e6',
+                color: '#27ae60',
+                borderRadius: '4px',
+                fontSize: '12px'
+              }}>
+                {player.name} ✓
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {eliminatedPlayers.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 'bold', color: '#e74c3c', marginBottom: '8px' }}>
+              ❌ Eliminated ({eliminatedPlayers.length})
+            </div>
+            {eliminatedPlayers.map(player => (
+              <div key={player.id} style={{
+                padding: '6px 10px',
+                margin: '2px 0',
+                backgroundColor: '#fadbd8',
+                color: '#e74c3c',
+                borderRadius: '4px',
+                fontSize: '12px'
+              }}>
+                {player.name}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // Simple Debug Panel
 const DebugPanel = ({ isOpen, logs, onClose, onStart, players, currentId, onSwitch }) => {
   if (!isOpen) return null;
@@ -1532,6 +1974,14 @@ const App = () => {
     isWarning: false,
     isActive: false
   });
+
+  // Tournament state
+  const [showRoundEndModal, setShowRoundEndModal] = useState(false);
+  const [roundEndData, setRoundEndData] = useState(null);
+  const [nextRoundTimer, setNextRoundTimer] = useState(0);
+  const [showTournamentWinnerModal, setShowTournamentWinnerModal] = useState(false);
+  const [tournamentWinnerData, setTournamentWinnerData] = useState(null);
+  const [, setTournamentStatus] = useState(null);
 
   // Debug mode state
   const [debugMode, setDebugMode] = useState(false);
@@ -2087,6 +2537,50 @@ newSocket.on('playerDrewCards', (data) => {
     console.log(`🎮 New game started with ${data.playerCount} players`);
   });
 
+  // Tournament-specific socket listeners
+  newSocket.on('playerSafe', (data) => {
+    console.log('🏆 Player safe:', data);
+    addToast(`🏆 ${data.message}`, 'success');
+  });
+
+  newSocket.on('roundEnded', (data) => {
+    console.log('🏁 Round ended:', data);
+    setRoundEndData(data);
+    setShowRoundEndModal(true);
+    setNextRoundTimer(data.nextRoundStartsIn);
+    
+    // Start countdown timer
+    const timer = setInterval(() => {
+      setNextRoundTimer(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setShowRoundEndModal(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  });
+
+  newSocket.on('tournamentFinished', (data) => {
+    console.log('🏆 Tournament finished:', data);
+    setTournamentWinnerData(data);
+    setShowTournamentWinnerModal(true);
+    addToast(`🏆 ${data.message}`, 'success');
+  });
+
+  newSocket.on('tournamentStatus', (data) => {
+    console.log('📊 Tournament status:', data);
+    setTournamentStatus(data);
+  });
+
+  newSocket.on('roundStarted', (data) => {
+    console.log('🚀 Round started:', data);
+    addToast(`🚀 ${data.message}`, 'success');
+    setShowRoundEndModal(false);
+    setNextRoundTimer(0);
+  });
+
   return () => {
     console.log('🔌 Cleaning up socket connection');
     newSocket.close();
@@ -2412,6 +2906,16 @@ useEffect(() => {
       gameId: gameState.gameId
     });
   }
+};
+
+const handleStartNextRound = () => {
+  if (!socket || !gameState?.gameId) {
+    addToast('Cannot start next round - no active game found', 'error');
+    return;
+  }
+
+  console.log('🚀 Starting next round manually');
+  socket.emit('startNextRound', { gameId: gameState.gameId });
 };
 
 const handleStartNewGame = () => {
@@ -2838,6 +3342,18 @@ const handleStartNewGame = () => {
     </div>
 
       {/* Game Board */}
+      {/* Tournament Components */}
+      <TournamentStatus gameState={gameState} />
+      
+      <SafePlayerNotification 
+        isPlayerSafe={gameState?.players?.find(p => p.id === playerId)?.isSafe || false}
+        playerName={playerName}
+        gameState={gameState}
+        onStartNextRound={handleStartNextRound}
+      />
+      
+      <TournamentPlayerDisplay players={gameState?.players || []} gameState={gameState} />
+
       <GameBoard 
         gameState={gameState}
         onDrawCard={drawCard}
@@ -3302,6 +3818,21 @@ const handleStartNewGame = () => {
         onSettingsChange={handleSettingsChange}
       />
 
+      {/* Tournament Modals */}
+      <RoundEndModal 
+        isOpen={showRoundEndModal}
+        roundData={roundEndData}
+        nextRoundTimer={nextRoundTimer}
+        onClose={() => setShowRoundEndModal(false)}
+        onStartNextRound={handleStartNextRound}
+        isPlayerSafe={gameState?.players?.find(p => p.id === playerId)?.isSafe || false}
+      />
+      
+      <TournamentWinnerModal 
+        isOpen={showTournamentWinnerModal}
+        winnerData={tournamentWinnerData}
+        onClose={() => setShowTournamentWinnerModal(false)}
+      />
 
       {/* Suit Selector Modal */}
       {showSuitSelector && (

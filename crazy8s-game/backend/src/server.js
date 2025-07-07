@@ -90,6 +90,56 @@ const broadcastGameState = (gameId) => {
     }
 };
 
+// Helper function to check tournament progress and send notifications
+const checkTournamentProgress = (gameId) => {
+    const game = Game.findById(gameId);
+    if (!game || !game.tournamentActive) return;
+    
+    // Check for player safety notifications
+    game.safePlayersThisRound.forEach(player => {
+        const alreadyNotified = game.safePlayerNotifications?.has(player.id);
+        if (!alreadyNotified) {
+            if (!game.safePlayerNotifications) {
+                game.safePlayerNotifications = new Set();
+            }
+            game.safePlayerNotifications.add(player.id);
+            
+            io.to(gameId).emit('playerSafe', {
+                playerId: player.id,
+                playerName: player.name,
+                safePosition: game.safePlayersThisRound.length,
+                message: `${player.name} is safe and advances to the next round!`
+            });
+        }
+    });
+    
+    // Check for round end
+    const playersStillPlaying = game.activePlayers.filter(p => !p.isSafe && !p.isEliminated);
+    if (playersStillPlaying.length <= 1 && game.roundInProgress) {
+        // Round is ending soon
+        setTimeout(() => {
+            const updatedGame = Game.findById(gameId);
+            if (updatedGame && updatedGame.gameState === 'tournament_finished') {
+                // Tournament finished
+                io.to(gameId).emit('tournamentFinished', {
+                    winner: updatedGame.tournamentWinner,
+                    stats: updatedGame.calculateTournamentStats(),
+                    message: `🏆 ${updatedGame.tournamentWinner.name} wins the tournament!`
+                });
+            } else if (updatedGame && !updatedGame.roundInProgress) {
+                // Round ended, new round starting
+                io.to(gameId).emit('roundEnded', {
+                    round: updatedGame.currentRound - 1,
+                    safeePlayers: updatedGame.safePlayersThisRound.map(p => p.name),
+                    eliminatedPlayers: updatedGame.eliminatedThisRound.map(p => p.name),
+                    nextRoundStartsIn: 10,
+                    activePlayers: updatedGame.activePlayers.length
+                });
+            }
+        }, 500);
+    }
+};
+
 // Set up Socket.IO connections
 io.on('connection', (socket) => {
     console.log('A player connected:', socket.id);
@@ -376,6 +426,9 @@ io.on('connection', (socket) => {
             if (timerSettings && timerSettings.enableTimer) {
                 manageGameTimer(gameId, 'reset', timerSettings);
             }
+            
+            // Check tournament progress for safety notifications
+            checkTournamentProgress(gameId);
             
             // Broadcast updated game state to all players in the game
             broadcastGameState(gameId);
@@ -876,6 +929,173 @@ io.on('connection', (socket) => {
         } catch (error) {
             console.error('🚀 Error starting new game:', error);
             socket.emit('error', 'Failed to start new game: ' + error.message);
+        }
+    });
+
+    // Handle getting tournament status
+    socket.on('getTournamentStatus', (data) => {
+        try {
+            const { gameId } = data;
+            const game = Game.findById(gameId);
+            
+            if (!game) {
+                socket.emit('error', 'Game not found');
+                return;
+            }
+
+            const tournamentStatus = game.getTournamentStatus();
+            socket.emit('tournamentStatus', tournamentStatus);
+
+        } catch (error) {
+            console.error('Error getting tournament status:', error);
+            socket.emit('error', 'Failed to get tournament status');
+        }
+    });
+
+    // Handle reconnecting to tournament
+    socket.on('reconnectToTournament', (data) => {
+        try {
+            const { gameId, playerName } = data;
+            
+            if (!gameId || !playerName) {
+                socket.emit('error', 'Game ID and player name are required');
+                return;
+            }
+
+            const game = Game.findById(gameId);
+            if (!game) {
+                socket.emit('error', 'Game not found');
+                return;
+            }
+
+            // Find the player by name
+            const gamePlayer = game.players.find(p => p.name === playerName);
+            if (!gamePlayer) {
+                socket.emit('error', 'Player not found in this game');
+                return;
+            }
+
+            // Update player's socket ID and mark as connected
+            gamePlayer.id = socket.id;
+            gamePlayer.isConnected = true;
+
+            // Update stored player info
+            connectedPlayers.set(socket.id, {
+                name: playerName,
+                gameId: gameId,
+                playerId: gamePlayer.id
+            });
+
+            // Join socket room
+            socket.join(gameId);
+
+            // Send current tournament status
+            const tournamentStatus = game.getTournamentStatus();
+            socket.emit('tournamentStatus', tournamentStatus);
+            
+            // Send current game state
+            broadcastGameState(gameId);
+            
+            socket.emit('success', 'Reconnected to tournament successfully');
+            socket.to(gameId).emit('playerReconnected', { playerName });
+
+            console.log(`Player ${playerName} reconnected to tournament ${gameId}`);
+
+        } catch (error) {
+            console.error('Error handling tournament reconnection:', error);
+            socket.emit('error', 'Failed to reconnect to tournament');
+        }
+    });
+
+    // Handle manual start next round (by safe players)
+    socket.on('startNextRound', (data) => {
+        try {
+            const { gameId } = data;
+            const game = Game.findById(gameId);
+            
+            if (!game) {
+                socket.emit('error', 'Game not found');
+                return;
+            }
+
+            // Verify player is part of the game
+            const player = connectedPlayers.get(socket.id);
+            if (!player || player.gameId !== gameId) {
+                socket.emit('error', 'You are not part of this game');
+                return;
+            }
+
+            console.log(`🚀 Manual start next round requested by ${player.name} for game ${gameId}`);
+            console.log(`🔍 Debug - Socket ID: ${socket.id}, Player ID from mapping: ${player.playerId}`);
+            console.log(`🔍 Debug - Game players:`, game.players.map(p => ({ id: p.id, name: p.name, isSafe: p.isSafe })));
+
+            const result = game.manualStartNextRound(player.playerId);
+            
+            if (result.success) {
+                // Check tournament progress
+                checkTournamentProgress(gameId);
+                
+                // Broadcast updated state
+                broadcastGameState(gameId);
+                
+                socket.emit('success', result.message);
+                io.to(gameId).emit('roundStarted', {
+                    message: result.message,
+                    startedBy: result.startedBy,
+                    round: game.currentRound
+                });
+            } else {
+                socket.emit('error', result.error);
+            }
+
+        } catch (error) {
+            console.error('Error starting next round:', error);
+            socket.emit('error', 'Failed to start next round');
+        }
+    });
+
+    // Handle admin force next round (for testing/admin purposes)
+    socket.on('forceNextRound', (data) => {
+        try {
+            const { gameId } = data;
+            const game = Game.findById(gameId);
+            
+            if (!game) {
+                socket.emit('error', 'Game not found');
+                return;
+            }
+
+            // Verify player is part of the game (basic security)
+            const player = connectedPlayers.get(socket.id);
+            if (!player || player.gameId !== gameId) {
+                socket.emit('error', 'You are not part of this game');
+                return;
+            }
+
+            console.log(`🔧 Force next round requested by ${player.name} for game ${gameId}`);
+
+            // Force end current round if in progress
+            if (game.roundInProgress) {
+                game.endCurrentRound();
+                
+                // Check tournament progress
+                checkTournamentProgress(gameId);
+                
+                // Broadcast updated state
+                broadcastGameState(gameId);
+                
+                socket.emit('success', 'Round forced to end');
+                io.to(gameId).emit('adminAction', {
+                    action: 'forceNextRound',
+                    by: player.name
+                });
+            } else {
+                socket.emit('error', 'No round in progress to force');
+            }
+
+        } catch (error) {
+            console.error('Error forcing next round:', error);
+            socket.emit('error', 'Failed to force next round');
         }
     });
 });

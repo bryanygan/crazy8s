@@ -19,6 +19,15 @@ class Game {
         this.activePlayers = [...this.players]; // Players still in the tournament
         this.safeePlayers = []; // Players who finished current round
         this.eliminatedPlayers = []; // Players eliminated from tournament
+        this.tournamentActive = true;
+        this.tournamentRounds = [];
+        this.currentRound = 1;
+        this.roundInProgress = false;
+        this.safePlayersThisRound = [];
+        this.eliminatedThisRound = [];
+        this.tournamentWinner = null;
+        this.tournamentStartTime = Date.now();
+        this.nextRoundTimer = null;
         this.pendingTurnPass = null; // Track if player needs to pass turn after drawing
         this.playersWhoHaveDrawn = new Set(); // Track who has drawn this turn
         this.debugMode = false; // Enable verbose debug logging
@@ -124,7 +133,7 @@ class Game {
             drawStack: this.drawStack,
             roundNumber: this.roundNumber,
             pendingTurnPass: this.pendingTurnPass,
-            playersWhoHaveDrawn: Array.from(this.playersWhoHaveDrawn), // Add draw tracking
+            playersWhoHaveDrawn: Array.from(this.playersWhoHaveDrawn),
             players: this.players.map(player => ({
                 id: player.id,
                 name: player.name,
@@ -135,7 +144,17 @@ class Game {
                 isCurrentPlayer: player.id === (currentPlayer ? currentPlayer.id : null)
             })),
             drawPileSize: this.drawPile.length,
-            discardPileSize: this.discardPile.length
+            discardPileSize: this.discardPile.length,
+            tournament: {
+                active: this.tournamentActive,
+                currentRound: this.currentRound,
+                roundInProgress: this.roundInProgress,
+                activePlayers: this.activePlayers.length,
+                safeThisRound: this.safePlayersThisRound.length,
+                eliminatedThisRound: this.eliminatedThisRound.length,
+                winner: this.tournamentWinner ? { id: this.tournamentWinner.id, name: this.tournamentWinner.name } : null,
+                roundHistory: this.tournamentRounds
+            }
         };
     }
 
@@ -150,15 +169,34 @@ class Game {
             return null;
         }
 
-        // Ensure currentPlayerIndex is within bounds
-        if (this.currentPlayerIndex >= this.activePlayers.length) {
-            console.log(`Current player index ${this.currentPlayerIndex} out of bounds, resetting to 0`);
-            this.currentPlayerIndex = 0;
+        // Get non-safe, non-eliminated players
+        const playablePlayers = this.activePlayers.filter(p => !p.isSafe && !p.isEliminated);
+        
+        if (playablePlayers.length === 0) {
+            console.log('No playable players (all safe or eliminated)');
+            return null;
         }
 
-        const currentPlayer = this.activePlayers[this.currentPlayerIndex];
-        console.log(`Current player: ${currentPlayer ? currentPlayer.name : 'null'} at index ${this.currentPlayerIndex}`);
-        return currentPlayer;
+        // Ensure currentPlayerIndex is within bounds and points to a playable player
+        let attempts = 0;
+        while (attempts < this.activePlayers.length) {
+            if (this.currentPlayerIndex >= this.activePlayers.length) {
+                this.currentPlayerIndex = 0;
+            }
+            
+            const currentPlayer = this.activePlayers[this.currentPlayerIndex];
+            if (currentPlayer && !currentPlayer.isSafe && !currentPlayer.isEliminated) {
+                console.log(`Current player: ${currentPlayer.name} at index ${this.currentPlayerIndex}`);
+                return currentPlayer;
+            }
+            
+            // Move to next player
+            this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.activePlayers.length;
+            attempts++;
+        }
+
+        console.log('Could not find a valid current player');
+        return null;
     }
 
     getTopDiscardCard() {
@@ -207,6 +245,14 @@ class Game {
             return { 
                 success: false, 
                 error: 'Game is not currently active' 
+            };
+        }
+
+        // Validate player is not safe (safe players cannot play)
+        if (player.isSafe) {
+            return {
+                success: false,
+                error: 'You are safe and cannot play more cards this round'
             };
         }
 
@@ -273,11 +319,9 @@ class Game {
         // Handle multiple special card effects with proper turn management
         const totalDrawEffect = this.handleMultipleSpecialCards(cardsToPlay, declaredSuit);
 
-        // Check win condition
+        // Check win condition - tournament safety logic
         if (player.hand.length === 0) {
-            player.isSafe = true;
-            this.safeePlayers.push(player);
-            this.checkRoundEnd();
+            this.markPlayerSafe(player);
         }
         // Note: We don't call nextPlayer() here anymore because 
         // handleMultipleSpecialCards now manages turn control properly
@@ -400,10 +444,19 @@ class Game {
 
         switch (card.rank) {
             case 'Jack': // Skip
-                // Always skip the next player
-                this.nextPlayer();
-                // In a 1v1 game, the outer nextPlayer call will rotate
-                // back to the current player, effectively keeping the turn
+                // In tournament with 2 players left, Jack should keep turn (like 2-player game)
+                if (this.activePlayers.length === 2) {
+                    // In 2-player scenario, Jack keeps turn - don't advance
+                    if (this.debugMode) {
+                        console.log(`🃏 [DEBUG] Jack in 2-player tournament: keeping turn`);
+                    }
+                } else {
+                    // In 3+ player games, Jack skips the next player
+                    this.nextPlayer();
+                    if (this.debugMode) {
+                        console.log(`🃏 [DEBUG] Jack in multiplayer: skipping next player`);
+                    }
+                }
                 break;
 
             case 'Queen': // Reverse
@@ -632,9 +685,26 @@ class Game {
                 return true;
             }
         } else {
-            // 3+ player logic (simplified)
+            // 3+ player logic: even Queens = keep turn, odd Queens = pass turn
+            if (queenCount > 0) {
+                const queenKeepsTurn = (queenCount % 2 === 0);
+                if (this.debugMode) {
+                    console.log(`🔍 [DEBUG] 3+ player Queens: ${queenCount} → ${queenKeepsTurn ? 'keep turn' : 'pass turn'}`);
+                }
+                return queenKeepsTurn;
+            }
+            
+            if (jackCount > 0) {
+                // Pure Jack effect keeps turn
+                if (this.debugMode) {
+                    console.log(`🔍 [DEBUG] 3+ player: Stack ends with Jack(s) → keep turn`);
+                }
+                return true;
+            }
+            
+            // No special cards at end of stack
             if (this.debugMode) {
-                console.log(`🔍 [DEBUG] 3+ player: Most combinations pass turn`);
+                console.log(`🔍 [DEBUG] 3+ player: No special cards at end → pass turn`);
             }
             return false;
         }
@@ -894,8 +964,23 @@ class Game {
                 console.log(`🎮 Normal turn advancement based on special card effects`);
             }
             
+            // Set the target index and then find the next valid (non-safe, non-eliminated) player
             this.currentPlayerIndex = targetIndex;
-            console.log(`🎮 Turn advanced to index ${targetIndex}: ${this.activePlayers[targetIndex]?.name}`);
+            
+            // Ensure we advance to a valid player (skip safe/eliminated players)
+            let attempts = 0;
+            while (attempts < this.activePlayers.length) {
+                const targetPlayer = this.activePlayers[this.currentPlayerIndex];
+                if (targetPlayer && !targetPlayer.isSafe && !targetPlayer.isEliminated) {
+                    console.log(`🎮 Turn advanced to index ${this.currentPlayerIndex}: ${targetPlayer.name} (valid player)`);
+                    break;
+                }
+                
+                // Move to next player in current direction
+                this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+                attempts++;
+                console.log(`🎮 Skipping safe/eliminated player, trying index ${this.currentPlayerIndex}`);
+            }
         }
 
         console.log(`🎮 Final game state: Player ${this.currentPlayerIndex} (${this.getCurrentPlayer()?.name}) has the turn`);
@@ -1140,11 +1225,9 @@ class Game {
         // Clear pending turn pass
         this.pendingTurnPass = null;
 
-        // Check win condition
+        // Check win condition - tournament safety logic
         if (player.hand.length === 0) {
-            player.isSafe = true;
-            this.safeePlayers.push(player);
-            this.checkRoundEnd();
+            this.markPlayerSafe(player);
         } else {
             this.nextPlayer();
         }
@@ -1247,7 +1330,21 @@ class Game {
         if (this.activePlayers.length === 0) return;
 
         const oldIndex = this.currentPlayerIndex;
-        this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+        
+        // Skip safe and eliminated players
+        let attempts = 0;
+        do {
+            this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+            attempts++;
+            
+            const currentPlayer = this.activePlayers[this.currentPlayerIndex];
+            if (this.debugMode) {
+                console.log(`🐛 [DEBUG] nextPlayer attempt ${attempts}: index ${this.currentPlayerIndex}, player: ${currentPlayer?.name}, safe: ${currentPlayer?.isSafe}, eliminated: ${currentPlayer?.isEliminated}`);
+            }
+            
+        } while (attempts < this.activePlayers.length && 
+                 this.activePlayers[this.currentPlayerIndex] && 
+                 (this.activePlayers[this.currentPlayerIndex].isSafe || this.activePlayers[this.currentPlayerIndex].isEliminated));
 
         this.playersWhoHaveDrawn.clear();
         if (this.debugMode) {
@@ -1258,23 +1355,200 @@ class Game {
                 direction: this.direction
             });
         } else {
-            console.log(`Next player: ${oldIndex} -> ${this.currentPlayerIndex} (${this.activePlayers[this.currentPlayerIndex]?.name})`);
+            console.log(`🎮 Next player: ${oldIndex} -> ${this.currentPlayerIndex} (${this.activePlayers[this.currentPlayerIndex]?.name})`);
         }
+    }
+
+    markPlayerSafe(player) {
+        if (player.isSafe) return; // Already safe
+        
+        player.isSafe = true;
+        this.safeePlayers.push(player);
+        this.safePlayersThisRound.push(player);
+        
+        console.log(`🏆 ${player.name} is now safe and advances to next round!`);
+        this.checkRoundEnd();
     }
 
     checkRoundEnd() {
         const playersStillPlaying = this.activePlayers.filter(p => !p.isSafe && !p.isEliminated);
         
         if (playersStillPlaying.length <= 1) {
-            // Round ends, eliminate last player
-            if (playersStillPlaying.length === 1) {
-                const lastPlayer = playersStillPlaying[0];
-                lastPlayer.isEliminated = true;
-                this.eliminatedPlayers.push(lastPlayer);
-            }
-
-            this.endRound();
+            this.endCurrentRound();
         }
+    }
+
+    endCurrentRound() {
+        console.log(`🏁 Round ${this.currentRound} ending...`);
+        
+        // Eliminate remaining players
+        const playersStillPlaying = this.activePlayers.filter(p => !p.isSafe && !p.isEliminated);
+        if (playersStillPlaying.length === 1) {
+            const lastPlayer = playersStillPlaying[0];
+            lastPlayer.isEliminated = true;
+            this.eliminatedPlayers.push(lastPlayer);
+            this.eliminatedThisRound.push(lastPlayer);
+            console.log(`❌ ${lastPlayer.name} eliminated from tournament`);
+        }
+        
+        // Record round data
+        this.tournamentRounds.push({
+            round: this.currentRound,
+            startingPlayers: this.activePlayers.length,
+            safeePlayers: this.safePlayersThisRound.length,
+            eliminatedPlayers: this.eliminatedThisRound.length,
+            completed: true
+        });
+        
+        // Update active players
+        this.activePlayers = this.activePlayers.filter(p => !p.isEliminated);
+        
+        if (this.activePlayers.length <= 1) {
+            this.endTournament();
+        } else {
+            this.prepareNextRound();
+        }
+    }
+
+    prepareNextRound() {
+        console.log(`🔄 Preparing round ${this.currentRound + 1}...`);
+        
+        this.currentRound++;
+        this.roundInProgress = false;
+        
+        // Clear timers
+        if (this.nextRoundTimer) {
+            clearTimeout(this.nextRoundTimer);
+        }
+        
+        // 10-second delay before auto-starting next round (gives time for manual start)
+        this.nextRoundTimer = setTimeout(() => {
+            this.startNextRound();
+        }, 10000);
+    }
+
+    // Manual start next round (can be called by safe players)
+    manualStartNextRound(playerId) {
+        console.log(`🔍 manualStartNextRound called with playerId: ${playerId}`);
+        console.log(`🔍 Available players in game:`, this.players.map(p => ({ id: p.id, name: p.name, isSafe: p.isSafe })));
+        
+        // Verify player is in the game
+        const player = this.getPlayerById(playerId);
+        if (!player) {
+            console.log(`❌ Player not found for ID: ${playerId}`);
+            return { success: false, error: 'Player not found' };
+        }
+
+        console.log(`🔍 Found player: ${player.name}, isSafe: ${player.isSafe}`);
+        
+        // Verify player is safe (can start next round)
+        if (!player.isSafe) {
+            console.log(`❌ Player ${player.name} is not safe, cannot start next round`);
+            return { success: false, error: 'Only safe players can start the next round' };
+        }
+
+        // Verify we're between rounds
+        if (this.roundInProgress) {
+            return { success: false, error: 'Round is already in progress' };
+        }
+
+        // Clear any existing timer
+        if (this.nextRoundTimer) {
+            clearTimeout(this.nextRoundTimer);
+            this.nextRoundTimer = null;
+        }
+
+        console.log(`🚀 ${player.name} manually started round ${this.currentRound}`);
+        this.startNextRound();
+        
+        return { 
+            success: true, 
+            message: `Round ${this.currentRound} started by ${player.name}`,
+            startedBy: player.name
+        };
+    }
+
+    startNextRound() {
+        console.log(`🚀 Starting round ${this.currentRound}...`);
+        
+        // Reset round-specific data
+        this.safePlayersThisRound = [];
+        this.eliminatedThisRound = [];
+        this.roundInProgress = true;
+        
+        // Reset player states for active players only
+        this.activePlayers.forEach(player => {
+            player.isSafe = false;
+            player.hand = [];
+        });
+        
+        this.safeePlayers = [];
+        this.drawStack = 0;
+        this.declaredSuit = null;
+        this.direction = 1;
+        this.currentPlayerIndex = 0;
+        this.pendingTurnPass = null;
+        this.playersWhoHaveDrawn.clear();
+        
+        // Create new deck and deal cards
+        this.deck = createDeck();
+        this.deck = shuffleDeck(this.deck);
+        this.drawPile = [...this.deck];
+        this.discardPile = [];
+        
+        // Deal cards only to active players
+        this.dealCardsToActivePlayers();
+        
+        // Start discard pile
+        if (this.drawPile.length > 0) {
+            const firstCard = this.drawPile.pop();
+            this.discardPile.push(firstCard);
+        }
+        
+        this.gameState = 'playing';
+    }
+
+    endTournament() {
+        console.log(`🏆 Tournament complete!`);
+        
+        if (this.activePlayers.length === 1) {
+            this.tournamentWinner = this.activePlayers[0];
+            console.log(`🥇 Tournament winner: ${this.tournamentWinner.name}`);
+        }
+        
+        this.tournamentActive = false;
+        this.gameState = 'tournament_finished';
+        this.roundInProgress = false;
+    }
+
+    getTournamentStatus() {
+        return {
+            active: this.tournamentActive,
+            currentRound: this.currentRound,
+            roundInProgress: this.roundInProgress,
+            activePlayers: this.activePlayers.length,
+            safeThisRound: this.safePlayersThisRound.length,
+            eliminatedThisRound: this.eliminatedThisRound.length,
+            winner: this.tournamentWinner ? { id: this.tournamentWinner.id, name: this.tournamentWinner.name } : null,
+            roundHistory: this.tournamentRounds
+        };
+    }
+
+    calculateTournamentStats() {
+        const totalTime = Date.now() - this.tournamentStartTime;
+        const totalRounds = this.tournamentRounds.length;
+        const totalPlayers = this.players.length;
+        
+        return {
+            totalTime,
+            totalRounds,
+            totalPlayers,
+            eliminationOrder: this.eliminatedPlayers.map((p, i) => ({
+                position: totalPlayers - i,
+                player: { id: p.id, name: p.name }
+            })),
+            winner: this.tournamentWinner ? { id: this.tournamentWinner.id, name: this.tournamentWinner.name } : null
+        };
     }
 
     endRound() {
