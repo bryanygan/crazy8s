@@ -25,4 +25,13 @@ router.post('/play-drawn', gameController.playDrawnCard);
 // Route to pass turn after drawing
 router.post('/pass-turn', gameController.passTurnAfterDraw);
 
+// Route to add play again vote
+router.post('/play-again/vote', gameController.addPlayAgainVote);
+
+// Route to remove play again vote
+router.post('/play-again/remove-vote', gameController.removePlayAgainVote);
+
+// Route to get play again voting status
+router.get('/play-again/status/:gameId', gameController.getPlayAgainVotingStatus);
+
 module.exports = router;

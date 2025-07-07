@@ -276,7 +276,8 @@ describe('Crazy 8s Game Integration Tests', () => {
             const result = game.drawCards('p1', 5);
             
             expect(result.success).toBe(true);
-            expect(result.drawnCards).toHaveLength(0);
+            expect(result.drawnCards).toHaveLength(5); // New deck should be added automatically
+            expect(result.newDeckAdded).toBe(true); // Verify new deck was added
         });
 
         test('should validate game start requirements', () => {

@@ -125,6 +125,7 @@ class Game {
         return {
             gameId: this.id,
             gameState: this.gameState,
+            gameCreator: this.gameCreator,
             currentPlayer: currentPlayer ? currentPlayer.name : null,
             currentPlayerId: currentPlayer ? currentPlayer.id : null,
             topCard: topCard ? this.cardToString(topCard) : null,
@@ -154,7 +155,8 @@ class Game {
                 eliminatedThisRound: this.eliminatedThisRound.length,
                 winner: this.tournamentWinner ? { id: this.tournamentWinner.id, name: this.tournamentWinner.name } : null,
                 roundHistory: this.tournamentRounds
-            }
+            },
+            playAgainVoting: this.gameState === 'finished' ? this.getPlayAgainVotingStatus() : null
         };
     }
 
@@ -884,17 +886,22 @@ class Game {
                 console.log(`🎮 2-player: Stack ends with normal/draw/wild card → pass turn`);
             } else {
                 // Logic for stacks ending in only Jacks and/or Queens
-                // In a 2-player game, an odd number of skips/reverses passes the turn.
-                // An even number keeps the turn. We can XOR the effects.
-                const passFromSkips = (totalSkips % 2 === 1);
+                // In 2-player games:
+                // - Jacks KEEP turn control (don't pass)
+                // - Queens PASS turn (reverses effectively pass in 2-player)
+                
+                // Jacks in 2-player games maintain turn control (they don't "skip" to next player)
+                const jacksKeepTurn = true; // Jacks always keep turn in 2-player games
+                
+                // Queens in 2-player games: odd number passes turn, even number keeps turn
                 const passFromReverses = (totalReverses % 2 === 1);
 
-                console.log(`🎮 2-player Jacks: ${totalSkips} skips → ${passFromSkips ? 'pass turn' : 'keep turn'}`);
+                console.log(`🎮 2-player Jacks: ${totalSkips} jacks → keep turn (2-player rule)`);
                 console.log(`🎮 2-player Queens: ${totalReverses} reverses → ${passFromReverses ? 'pass turn' : 'keep turn'}`);
 
-                // XOR the two effects. If they are the same (both pass or both keep),
-                // the result is to keep the turn. If they are different, pass the turn.
-                shouldPassTurn = passFromSkips !== passFromReverses;
+                // In 2-player: only Queens matter for turn passing
+                // Jacks maintain turn, so only consider Queen effects
+                shouldPassTurn = passFromReverses;
             }
             
             finalPlayerIndex = shouldPassTurn ? 1 : 0;
@@ -943,9 +950,29 @@ class Game {
         const lastCard = cards[cards.length - 1];
         const endsWithPenaltyCard = (lastCard.rank === 'Ace' || lastCard.rank === '2');
         
-        // Set the final player - KEY FIX FOR PENALTY CARD LOGIC
-        if (finalPlayerIndex === 0 && !endsWithPenaltyCard) {
-            console.log('🎮 Turn control maintained - staying with current player (no penalty cards at end)');
+        // Set the final player - KEY FIX FOR NORMAL CARD LOGIC
+        if (endsWithNormalCard) {
+            // If stack ends with normal cards, always pass turn regardless of special card effects
+            console.log('🎮 Stack ends with normal cards → turn passes to next player');
+            const currentIndex = this.currentPlayerIndex;
+            const targetIndex = (currentIndex + this.direction + playerCount) % playerCount;
+            this.currentPlayerIndex = targetIndex;
+            
+            // Ensure we advance to a valid player (skip safe/eliminated players)
+            let attempts = 0;
+            while (attempts < this.activePlayers.length) {
+                const targetPlayer = this.activePlayers[this.currentPlayerIndex];
+                if (targetPlayer && !targetPlayer.isSafe && !targetPlayer.isEliminated) {
+                    console.log(`🎮 Turn advanced to index ${this.currentPlayerIndex}: ${targetPlayer.name} (valid player)`);
+                    break;
+                }
+                
+                // Move to next player in current direction
+                this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + playerCount) % playerCount;
+                attempts++;
+            }
+        } else if (finalPlayerIndex === 0 && !endsWithPenaltyCard) {
+            console.log('🎮 Turn control maintained - staying with current player (stack ends with special cards)');
             // Don't change currentPlayerIndex - player keeps the turn
         } else {
             // Either normal advancement OR stack ends with penalty cards
@@ -1517,8 +1544,18 @@ class Game {
         }
         
         this.tournamentActive = false;
-        this.gameState = 'tournament_finished';
+        this.gameState = 'finished';
         this.roundInProgress = false;
+        
+        // Initialize play again voting for all players in the tournament
+        console.log(`🗳️ Initializing play again voting after tournament completion`);
+        this.initializePlayAgainVoting();
+        
+        // Clear any existing votes to start fresh
+        this.playAgainVotes.clear();
+        
+        console.log(`🗳️ Tournament finished! All players can now vote to play again.`);
+        console.log(`🗳️ Connected players eligible to vote: ${this.players.filter(p => p.isConnected).map(p => p.name).join(', ')}`);
     }
 
     getTournamentStatus() {
@@ -1668,6 +1705,13 @@ class Game {
     }
 
     findCardInHand(hand, targetCard) {
+        // First try to find by unique ID if available
+        if (targetCard.id) {
+            const index = hand.findIndex(card => card.id === targetCard.id);
+            if (index !== -1) return index;
+        }
+        
+        // Fallback to suit/rank matching for backward compatibility
         return hand.findIndex(card => 
             card.suit === targetCard.suit && card.rank === targetCard.rank
         );
@@ -1849,22 +1893,31 @@ class Game {
         // Add the vote
         this.playAgainVotes.add(playerId);
         
+        // Only count connected players for voting - disconnected players are excluded
         const connectedPlayers = this.players.filter(p => p.isConnected);
+        const disconnectedPlayers = this.players.filter(p => !p.isConnected);
         const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
-        const allVoted = votedPlayers.length === connectedPlayers.length;
+        const allConnectedVoted = votedPlayers.length === connectedPlayers.length;
         const creatorVoted = this.playAgainVotes.has(this.gameCreator);
         
-        console.log(`🗳️ Vote status: ${votedPlayers.length}/${connectedPlayers.length} players voted`);
+        console.log(`🗳️ Vote status: ${votedPlayers.length}/${connectedPlayers.length} connected players voted`);
+        if (disconnectedPlayers.length > 0) {
+            console.log(`🗳️ Excluding ${disconnectedPlayers.length} disconnected players: ${disconnectedPlayers.map(p => p.name).join(', ')}`);
+        }
         console.log(`🗳️ Creator voted: ${creatorVoted}`);
-        console.log(`🗳️ All voted: ${allVoted}`);
+        console.log(`🗳️ All connected players voted: ${allConnectedVoted}`);
+        
+        // Can start game if all connected players voted AND creator voted
+        const canStartGame = allConnectedVoted && creatorVoted;
         
         return {
             success: true,
             votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
             totalPlayers: connectedPlayers.length,
-            allVoted: allVoted,
+            disconnectedPlayers: disconnectedPlayers.length,
+            allVoted: allConnectedVoted,
             creatorVoted: creatorVoted,
-            canStartGame: allVoted && creatorVoted,
+            canStartGame: canStartGame,
             gameCreator: this.gameCreator
         };
     }
@@ -1876,18 +1929,29 @@ class Game {
         this.initializePlayAgainVoting();
         this.playAgainVotes.delete(playerId);
         
+        // Only count connected players for voting - disconnected players are excluded
         const connectedPlayers = this.players.filter(p => p.isConnected);
+        const disconnectedPlayers = this.players.filter(p => !p.isConnected);
         const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
-        const allVoted = votedPlayers.length === connectedPlayers.length;
+        const allConnectedVoted = votedPlayers.length === connectedPlayers.length;
         const creatorVoted = this.playAgainVotes.has(this.gameCreator);
+        
+        console.log(`🗳️ Vote removed. Status: ${votedPlayers.length}/${connectedPlayers.length} connected players voted`);
+        if (disconnectedPlayers.length > 0) {
+            console.log(`🗳️ Excluding ${disconnectedPlayers.length} disconnected players from vote count`);
+        }
+        
+        // Can start game if all connected players voted AND creator voted
+        const canStartGame = allConnectedVoted && creatorVoted;
         
         return {
             success: true,
             votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
             totalPlayers: connectedPlayers.length,
-            allVoted: allVoted,
+            disconnectedPlayers: disconnectedPlayers.length,
+            allVoted: allConnectedVoted,
             creatorVoted: creatorVoted,
-            canStartGame: allVoted && creatorVoted,
+            canStartGame: canStartGame,
             gameCreator: this.gameCreator
         };
     }
@@ -1896,19 +1960,26 @@ class Game {
     getPlayAgainVotingStatus() {
         this.initializePlayAgainVoting();
         
+        // Only count connected players for voting - disconnected players are excluded
         const connectedPlayers = this.players.filter(p => p.isConnected);
+        const disconnectedPlayers = this.players.filter(p => !p.isConnected);
         const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
-        const allVoted = votedPlayers.length === connectedPlayers.length;
+        const allConnectedVoted = votedPlayers.length === connectedPlayers.length;
         const creatorVoted = this.playAgainVotes.has(this.gameCreator);
+        
+        // Can start game if all connected players voted AND creator voted
+        const canStartGame = allConnectedVoted && creatorVoted;
         
         return {
             votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
             totalPlayers: connectedPlayers.length,
-            allVoted: allVoted,
+            disconnectedPlayers: disconnectedPlayers.length,
+            allVoted: allConnectedVoted,
             creatorVoted: creatorVoted,
-            canStartGame: allVoted && creatorVoted,
+            canStartGame: canStartGame,
             gameCreator: this.gameCreator,
-            connectedPlayers: connectedPlayers.map(p => ({ id: p.id, name: p.name }))
+            connectedPlayers: connectedPlayers.map(p => ({ id: p.id, name: p.name })),
+            excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
         };
     }
 

@@ -394,6 +394,14 @@ const canStackCardsFrontend = (existingCards, newCard, activePlayers = 2) => {
 const getValidCardsForSelection = (playerHand, gameState, selectedCards, topCard) => {
   if (!gameState || playerHand.length === 0) return [];
   
+  // Helper function to check if two cards are the same (using ID if available, fallback to suit/rank)
+  const isSameCard = (card1, card2) => {
+    if (card1.id && card2.id) {
+      return card1.id === card2.id;
+    }
+    return card1.suit === card2.suit && card1.rank === card2.rank;
+  };
+  
   let valid = [];
   const activePlayers = gameState.players?.length || 2;
 
@@ -415,7 +423,7 @@ const getValidCardsForSelection = (playerHand, gameState, selectedCards, topCard
     // Cards already selected - show stackable cards
     valid = playerHand.filter(card => {
       // Already selected cards are always "valid" for reordering
-      const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
+      const isSelected = selectedCards.some(sc => isSameCard(sc, card));
       if (isSelected) return true;
       
       // Check if this card can be stacked with the current selection using proper validation
@@ -444,6 +452,14 @@ const canCounterDrawFrontend = (card, topCard) => {
 };
 
 const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, settings = {} }) => {
+  // Helper function to check if two cards are the same (using ID if available, fallback to suit/rank)
+  const isSameCard = (card1, card2) => {
+    if (card1.id && card2.id) {
+      return card1.id === card2.id;
+    }
+    return card1.suit === card2.suit && card1.rank === card2.rank;
+  };
+
   // Helper function to get rank value for sorting
   const getRankValue = (rank) => {
     const rankOrder = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace'];
@@ -561,11 +577,11 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
               justifyContent: 'center'
             }}>
               {group.cards.map((card) => {
-                const isPlayable = validCards.some(vc => vc.suit === card.suit && vc.rank === card.rank);
-                const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
-                const selectedIndex = selectedCards.findIndex(sc => sc.suit === card.suit && sc.rank === card.rank);
+                const isPlayable = validCards.some(vc => isSameCard(vc, card));
+                const isSelected = selectedCards.some(sc => isSameCard(sc, card));
+                const selectedIndex = selectedCards.findIndex(sc => isSameCard(sc, card));
                 const isBottomCard = selectedIndex === 0;
-                const cardKey = `${card.suit}-${card.rank}`;
+                const cardKey = card.id || `${card.suit}-${card.rank}`;
                 
                 return (
                   <Card
@@ -857,28 +873,32 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.7)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000,
-      overflowY: 'auto'
-    }}>
-      <div style={{
-        backgroundColor: '#fff',
-        padding: '30px',
-        borderRadius: '15px',
-        maxWidth: '500px',
-        width: '90%',
-        maxHeight: '90vh',
-        overflowY: 'auto',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+    <div 
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        overflowY: 'auto'
+      }}>
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: '#fff',
+          padding: '30px',
+          borderRadius: '15px',
+          maxWidth: '500px',
+          width: '90%',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
       }}>
         <div style={{
           display: 'flex',
@@ -2404,7 +2424,19 @@ useEffect(() => {
 
   newSocket.on('handUpdate', (hand) => {
     console.log('🃏 Hand updated:', hand.length, 'cards');
-    setPlayerHand(hand);
+    console.log('🔍 First few cards:', hand.slice(0, 3).map(card => ({ id: card.id, suit: card.suit, rank: card.rank })));
+    
+    // Ensure all cards have unique IDs, generate if missing
+    const handWithIds = hand.map((card, index) => {
+      if (!card.id) {
+        // Generate a unique ID using timestamp and index to ensure uniqueness
+        card.id = `frontend_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log(`🔧 Generated ID for ${card.rank} of ${card.suit}: ${card.id}`);
+      }
+      return card;
+    });
+    
+    setPlayerHand(handWithIds);
   });
 
   newSocket.on('error', (errorMsg) => {
@@ -2702,8 +2734,21 @@ useEffect(() => {
     });
   };
 
+  // Helper function to check if two cards are the same (using ID if available, fallback to suit/rank)
+  const isSameCard = (card1, card2) => {
+    if (card1.id && card2.id) {
+      const result = card1.id === card2.id;
+      console.log(`🔍 isSameCard ID comparison: ${card1.rank}${card1.suit[0]} (${card1.id?.slice(-6)}) vs ${card2.rank}${card2.suit[0]} (${card2.id?.slice(-6)}) = ${result}`);
+      return result;
+    }
+    const result = card1.suit === card2.suit && card1.rank === card2.rank;
+    console.log(`🔍 isSameCard suit/rank fallback: ${card1.rank}${card1.suit[0]} vs ${card2.rank}${card2.suit[0]} = ${result}`);
+    return result;
+  };
+
   const handleCardSelect = (card) => {
-    const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
+    console.log(`🎯 Selecting card: ${card.rank} of ${card.suit} (ID: ${card.id})`);
+    const isSelected = selectedCards.some(sc => isSameCard(sc, card));
     
     if (isSelected) {
       // If the card is already selected, handle reordering/deselection
@@ -2712,7 +2757,7 @@ useEffect(() => {
         setSelectedCards([]);
       } else {
         // Multiple cards selected - remove this card for reordering
-        setSelectedCards(prev => prev.filter(sc => !(sc.suit === card.suit && sc.rank === card.rank)));
+        setSelectedCards(prev => prev.filter(sc => !isSameCard(sc, card)));
       }
     } else {
       if (selectedCards.length === 0) {
@@ -3346,7 +3391,7 @@ const handleStartNewGame = () => {
       <TournamentStatus gameState={gameState} />
       
       <SafePlayerNotification 
-        isPlayerSafe={gameState?.players?.find(p => p.id === playerId)?.isSafe || false}
+        isPlayerSafe={(gameState?.players?.find(p => p.id === playerId)?.isSafe || false) && gameState?.gameState !== 'finished'}
         playerName={playerName}
         gameState={gameState}
         onStartNextRound={handleStartNextRound}

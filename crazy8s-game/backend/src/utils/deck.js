@@ -3,12 +3,21 @@
 const SUITS = ['Hearts', 'Diamonds', 'Clubs', 'Spades'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace'];
 
+// Function to generate unique card ID
+function generateCardId() {
+    return `card_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
 // Function to create a new deck of cards
 function createDeck() {
     const deck = [];
     for (const suit of SUITS) {
         for (const rank of RANKS) {
-            deck.push({ suit, rank });
+            deck.push({ 
+                id: generateCardId(),
+                suit, 
+                rank 
+            });
         }
     }
     return deck;
