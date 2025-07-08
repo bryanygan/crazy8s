@@ -1,8 +1,25 @@
-// Enhanced gameRoutes.js with new draw mechanics endpoints
-
 const express = require('express');
 const router = express.Router();
 const gameController = require('../controllers/gameController');
+const authMiddleware = require('../middleware/authMiddleware');
+const { body, param, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
+
+// Rate limiting for play-again votes to prevent spamming
+const playAgainLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 5, // Limit each IP to 5 requests per windowMs
+    message: 'Too many play again requests from this IP, please try again after a minute'
+});
+
+// Middleware to handle validation results
+const validateRequest = (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+    next();
+};
 
 // Route to start a new game
 router.post('/start', gameController.startGame);
@@ -24,5 +41,36 @@ router.post('/play-drawn', gameController.playDrawnCard);
 
 // Route to pass turn after drawing
 router.post('/pass-turn', gameController.passTurnAfterDraw);
+
+// Route to add play again vote
+router.post(
+    '/play-again/vote',
+    playAgainLimiter,
+    authMiddleware,
+    body('gameId').isString().notEmpty().withMessage('Game ID is required'),
+    body('playerId').isString().notEmpty().withMessage('Player ID is required'),
+    validateRequest,
+    gameController.addPlayAgainVote
+);
+
+// Route to remove play again vote
+router.post(
+    '/play-again/remove-vote',
+    playAgainLimiter,
+    authMiddleware,
+    body('gameId').isString().notEmpty().withMessage('Game ID is required'),
+    body('playerId').isString().notEmpty().withMessage('Player ID is required'),
+    validateRequest,
+    gameController.removePlayAgainVote
+);
+
+// Route to get play again voting status
+router.get(
+    '/play-again/status/:gameId',
+    authMiddleware,
+    param('gameId').isString().notEmpty().withMessage('Game ID is required'),
+    validateRequest,
+    gameController.getPlayAgainVotingStatus
+);
 
 module.exports = router;
