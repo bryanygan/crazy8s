@@ -11,9 +11,6 @@ This is the backend for the Crazy 8's game, built using Node.js, Express, and So
 - **Socket.IO Server**: Real-time multiplayer communication with debugging
 - **REST API**: HTTP endpoints for game operations
 - **Comprehensive Testing Suite**: 95%+ coverage with 350+ unit tests
-- **Tournament Management**: Round progression and player safety tracking
-- **Play Again System**: Voting mechanism and game continuation logic
-- **Victory Celebrations**: Game state management for celebrations and notifications
 
 ## Directory Structure
 ```
@@ -162,24 +159,6 @@ canCounterDraw(card, topCard) {
 }
 ```
 
-### Enhanced Game Features
-
-#### Tournament Management
-- **Round Progression**: Automatic advancement of safe players to next round
-- **Player Safety Tracking**: Monitor and notify when players become safe
-- **Tournament Winner Detection**: Identify and celebrate tournament victors
-- **Round End Handling**: Proper cleanup and transition between rounds
-
-#### Play Again System
-- **Voting Mechanism**: Players can vote to continue playing after game completion
-- **Vote Validation**: Ensure proper game conditions before starting new rounds
-- **Game Continuation**: Seamless transition between games with preserved player connections
-
-#### Victory Celebrations
-- **Game State Management**: Track victories and player safety for celebrations
-- **Notification System**: Broadcast victory and safety events to all players
-- **Celebration Triggers**: Coordinate frontend celebrations with backend events
-
 ### Real-time Multiplayer Features
 
 #### Socket.IO Integration
@@ -200,10 +179,6 @@ socket.on('playCard', (data) => {
             playerName: player.name,
             message: result.message // Advanced formatting for stacks
         });
-        
-        // Check for player safety and tournament progression
-        checkPlayerSafety(gameId, playerId);
-        checkTournamentProgression(gameId);
     }
 });
 ```
@@ -327,42 +302,6 @@ socket.emit('playCard', {
   playerName: "Alice",
   playerId: "socket_id_1",
   message: "Played J♥, Q♥, Q♠ and declared Hearts"
-}
-```
-
-**`playerSafe` (New)**
-```javascript
-// Player safety notification for tournaments
-{
-  playerId: "socket_id_1",
-  playerName: "Alice",
-  message: "Alice is safe and advances to the next round!"
-}
-```
-
-**`gameWon` (Enhanced)**
-```javascript
-// Game victory with celebration trigger
-{
-  winnerId: "socket_id_1",
-  winnerName: "Alice",
-  message: "Alice wins the game!",
-  triggerCelebration: true
-}
-```
-
-**`playAgainVote` (New)**
-```javascript
-// Play again voting system
-{
-  playerId: "socket_id_1",
-  playerName: "Alice",
-  vote: "yes", // "yes" or "no"
-  currentVotes: {
-    yes: 2,
-    no: 1,
-    total: 3
-  }
 }
 ```
 

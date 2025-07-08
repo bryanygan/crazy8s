@@ -13,9 +13,7 @@
   },
   "dependencies": {
     "express": "^4.17.1",
-    "socket.io": "^4.0.0",
-    "express-validator": "^7.0.1",
-    "express-rate-limit": "^7.1.5"
+    "socket.io": "^4.0.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

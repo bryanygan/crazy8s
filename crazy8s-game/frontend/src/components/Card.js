@@ -214,14 +214,6 @@ export default Card;
 // =============================================================================
 
 const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, settings = {} }) => {
-  // Helper function to check if two cards are the same (using ID if available, fallback to suit/rank)
-  const isSameCard = (card1, card2) => {
-    if (card1.id && card2.id) {
-      return card1.id === card2.id;
-    }
-    return card1.suit === card2.suit && card1.rank === card2.rank;
-  };
-
   // Helper functions for card organization (keep existing logic)
   const getRankValue = (rank) => {
     const rankOrder = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace'];
@@ -334,11 +326,11 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
               justifyContent: 'center'
             }}>
               {group.cards.map((card) => {
-                const isPlayable = validCards.some(vc => isSameCard(vc, card));
-                const isSelected = selectedCards.some(sc => isSameCard(sc, card));
-                const selectedIndex = selectedCards.findIndex(sc => isSameCard(sc, card));
+                const isPlayable = validCards.some(vc => vc.suit === card.suit && vc.rank === card.rank);
+                const isSelected = selectedCards.some(sc => sc.suit === card.suit && sc.rank === card.rank);
+                const selectedIndex = selectedCards.findIndex(sc => sc.suit === card.suit && sc.rank === card.rank);
                 const isBottomCard = selectedIndex === 0;
-                const cardKey = card.id || `${card.suit}-${card.rank}`;
+                const cardKey = `${card.suit}-${card.rank}`;
                 
                 return (
                   <Card
