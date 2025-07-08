@@ -875,7 +875,13 @@ class Game {
         // Calculate final turn position
         let finalPlayerIndex = 0; // Start with current player (index 0)
 
-        if (playerCount === 2) {
+        // Count active (non-safe, non-eliminated) players for Jack logic
+        const activePlayers = this.activePlayers.filter(p => !p.isSafe && !p.isEliminated);
+        const activePlayerCount = activePlayers.length;
+
+        console.log(`🎮 Total players: ${playerCount}, Active players: ${activePlayerCount}`);
+
+        if (playerCount === 2 || activePlayerCount === 2) {
             // Corrected 2-player game logic
             let shouldPassTurn;
 
@@ -883,7 +889,7 @@ class Game {
             // Handle normal cards, draw cards, or wilds - these ALWAYS pass turn
             if (endsWithNormalCard || totalDrawEffect > 0 || hasWild) {
                 shouldPassTurn = true;
-                console.log(`🎮 2-player: Stack ends with normal/draw/wild card → pass turn`);
+                console.log(`🎮 2-player/2-active: Stack ends with normal/draw/wild card → pass turn`);
             } else {
                 // Logic for stacks ending in only Jacks and/or Queens
                 // In 2-player games:
@@ -896,8 +902,8 @@ class Game {
                 // Queens in 2-player games: odd number passes turn, even number keeps turn
                 const passFromReverses = (totalReverses % 2 === 1);
 
-                console.log(`🎮 2-player Jacks: ${totalSkips} jacks → keep turn (2-player rule)`);
-                console.log(`🎮 2-player Queens: ${totalReverses} reverses → ${passFromReverses ? 'pass turn' : 'keep turn'}`);
+                console.log(`🎮 2-player/2-active Jacks: ${totalSkips} jacks → keep turn (2-player rule)`);
+                console.log(`🎮 2-player/2-active Queens: ${totalReverses} reverses → ${passFromReverses ? 'pass turn' : 'keep turn'}`);
 
                 // In 2-player: only Queens matter for turn passing
                 // Jacks maintain turn, so only consider Queen effects
@@ -905,7 +911,7 @@ class Game {
             }
             
             finalPlayerIndex = shouldPassTurn ? 1 : 0;
-            console.log(`🎮 2-player final result: ${shouldPassTurn ? 'pass turn' : 'keep turn'} (index ${finalPlayerIndex})`);
+            console.log(`🎮 2-player/2-active final result: ${shouldPassTurn ? 'pass turn' : 'keep turn'} (index ${finalPlayerIndex})`);
             
         } else {
             // Multiplayer game logic (3+ players)
@@ -1413,6 +1419,21 @@ class Game {
         if (playersStillPlaying.length === 1) {
             const lastPlayer = playersStillPlaying[0];
             lastPlayer.isEliminated = true;
+            
+            // Clear eliminated player's hand and optionally return cards to draw pile
+            if (lastPlayer.hand.length > 0) {
+                console.log(`🗑️ Clearing ${lastPlayer.name}'s hand (${lastPlayer.hand.length} cards)`);
+                
+                // Add cards back to draw pile and shuffle
+                this.drawPile.push(...lastPlayer.hand);
+                this.drawPile = shuffleDeck(this.drawPile);
+                
+                // Clear the player's hand
+                lastPlayer.hand = [];
+                
+                console.log(`🔄 Added eliminated player's cards to draw pile. Draw pile now has ${this.drawPile.length} cards`);
+            }
+            
             this.eliminatedPlayers.push(lastPlayer);
             this.eliminatedThisRound.push(lastPlayer);
             console.log(`❌ ${lastPlayer.name} eliminated from tournament`);
@@ -1458,6 +1479,8 @@ class Game {
     manualStartNextRound(playerId) {
         console.log(`🔍 manualStartNextRound called with playerId: ${playerId}`);
         console.log(`🔍 Available players in game:`, this.players.map(p => ({ id: p.id, name: p.name, isSafe: p.isSafe })));
+        console.log(`🔍 Round in progress: ${this.roundInProgress}`);
+        console.log(`🔍 Safe players this round: ${this.safePlayersThisRound.map(p => p.name)}`);
         
         // Verify player is in the game
         const player = this.getPlayerById(playerId);
@@ -1468,15 +1491,23 @@ class Game {
 
         console.log(`🔍 Found player: ${player.name}, isSafe: ${player.isSafe}`);
         
-        // Verify player is safe (can start next round)
-        if (!player.isSafe) {
-            console.log(`❌ Player ${player.name} is not safe, cannot start next round`);
+        // Check if player was safe in the previous round (allowing manual start even after auto-start)
+        const wasPlayerSafeLastRound = this.safePlayersThisRound.some(p => p.id === playerId);
+        
+        // Verify player is safe OR was safe in the previous round
+        if (!player.isSafe && !wasPlayerSafeLastRound) {
+            console.log(`❌ Player ${player.name} is not safe and was not safe in previous round, cannot start next round`);
             return { success: false, error: 'Only safe players can start the next round' };
         }
 
-        // Verify we're between rounds
+        // If round is already in progress, just return success (round already started)
         if (this.roundInProgress) {
-            return { success: false, error: 'Round is already in progress' };
+            console.log(`🔍 Round ${this.currentRound} is already in progress, treating manual start as acknowledgment`);
+            return { 
+                success: true, 
+                message: `Round ${this.currentRound} already started`,
+                startedBy: player.name
+            };
         }
 
         // Clear any existing timer
@@ -1773,6 +1804,22 @@ class Game {
         this.eliminatedPlayers = [];
         this.pendingTurnPass = null;
         this.playersWhoHaveDrawn = new Set();
+        
+        // Reset tournament-specific properties
+        this.tournamentActive = true;
+        this.currentRound = 1;
+        this.roundInProgress = true; // Start the tournament immediately
+        this.safePlayersThisRound = [];
+        this.eliminatedThisRound = [];
+        this.tournamentWinner = null;
+        this.tournamentRounds = [];
+        this.tournamentStartTime = Date.now();
+        
+        // Clear any existing tournament timers
+        if (this.nextRoundTimer) {
+            clearTimeout(this.nextRoundTimer);
+            this.nextRoundTimer = null;
+        }
 
         // Clear any existing auto pass timers
         for (const timer of this.autoPassTimers.values()) {

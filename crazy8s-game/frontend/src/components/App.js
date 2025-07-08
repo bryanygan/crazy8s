@@ -1,6 +1,56 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 
+// Confetti function for celebrations
+const fireConfetti = () => {
+  console.log('🎉 fireConfetti called');
+  
+  // Check if confetti is available (loaded from script tag)
+  if (typeof window !== 'undefined' && window.confetti) {
+    console.log('✅ Confetti library detected, firing confetti!');
+    
+    const count = 200;
+
+    // Fire from left corner
+    const leftCornerDefaults = { origin: { x: 0, y: 0.7 } };
+    function fireLeft(particleRatio, opts) {
+      window.confetti({
+        ...leftCornerDefaults,
+        ...opts,
+        particleCount: Math.floor(count * particleRatio)
+      });
+    }
+
+    // Fire from right corner  
+    const rightCornerDefaults = { origin: { x: 1, y: 0.7 } };
+    function fireRight(particleRatio, opts) {
+      window.confetti({
+        ...rightCornerDefaults,
+        ...opts,
+        particleCount: Math.floor(count * particleRatio)
+      });
+    }
+
+    // Fire the sequence from both corners
+    const sequences = [
+      { ratio: 0.25, opts: { spread: 26, startVelocity: 55 } },
+      { ratio: 0.2, opts: { spread: 60 } },
+      { ratio: 0.35, opts: { spread: 100, decay: 0.91, scalar: 0.8 } },
+      { ratio: 0.1, opts: { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 } },
+      { ratio: 0.1, opts: { spread: 120, startVelocity: 45 } }
+    ];
+
+    sequences.forEach(({ ratio, opts }) => {
+      fireLeft(ratio, opts);
+      fireRight(ratio, opts);
+    });
+    
+    console.log('🎉 Confetti sequences fired!');
+  } else {
+    console.warn('❌ Confetti library not loaded. Available:', typeof window !== 'undefined' ? Object.keys(window).filter(k => k.includes('confetti')) : 'window undefined');
+  }
+};
+
 const Card = ({ 
   card, 
   isPlayable, 
@@ -1527,7 +1577,7 @@ const TournamentStatus = ({ gameState }) => {
         alignItems: 'center',
         marginBottom: '10px'
       }}>
-        <h3 style={{ margin: 0, fontSize: '18px' }}>🏆 Tournament Mode</h3>
+        <h3 style={{ margin: 0, fontSize: '18px', color: 'gold' }}>🏆 Tournament Mode</h3>
         <div style={{ fontSize: '14px', opacity: 0.8 }}>
           Round {tournament.currentRound}
         </div>
@@ -1558,6 +1608,14 @@ const TournamentStatus = ({ gameState }) => {
 
 // Safe Player Notification
 const SafePlayerNotification = ({ isPlayerSafe, playerName, gameState, onStartNextRound }) => {
+  // Trigger confetti when player becomes safe
+  useEffect(() => {
+    if (isPlayerSafe) {
+      console.log('🎉 Player became safe, triggering confetti!');
+      fireConfetti();
+    }
+  }, [isPlayerSafe]);
+
   if (!isPlayerSafe) return null;
 
   const showStartButton = gameState?.tournament?.active && !gameState?.tournament?.roundInProgress;
@@ -2408,6 +2466,14 @@ useEffect(() => {
     // Initialize play again voting when game finishes
     if (data.gameState === 'finished' && gameState?.gameState !== 'finished') {
       console.log('🎮 Game finished - initializing play again voting');
+      
+      // Check if current player is the winner and trigger confetti
+      const winner = data.players.find(p => !p.isEliminated);
+      if (winner && winner.id === playerIdRef.current) {
+        console.log('🎉 Current player won the game!');
+        fireConfetti();
+      }
+      
       setPlayAgainVotes({
         votedPlayers: [],
         totalPlayers: data.players.filter(p => p.isConnected).length,
@@ -2573,6 +2639,8 @@ newSocket.on('playerDrewCards', (data) => {
   newSocket.on('playerSafe', (data) => {
     console.log('🏆 Player safe:', data);
     addToast(`🏆 ${data.message}`, 'success');
+    // Trigger confetti when player becomes safe
+    fireConfetti();
   });
 
   newSocket.on('roundEnded', (data) => {
@@ -2599,6 +2667,8 @@ newSocket.on('playerDrewCards', (data) => {
     setTournamentWinnerData(data);
     setShowTournamentWinnerModal(true);
     addToast(`🏆 ${data.message}`, 'success');
+    // Trigger confetti for tournament winner
+    fireConfetti();
   });
 
   newSocket.on('tournamentStatus', (data) => {
@@ -3391,7 +3461,7 @@ const handleStartNewGame = () => {
       <TournamentStatus gameState={gameState} />
       
       <SafePlayerNotification 
-        isPlayerSafe={(gameState?.players?.find(p => p.id === playerId)?.isSafe || false) && gameState?.gameState !== 'finished'}
+        isPlayerSafe={(gameState?.players?.find(p => p.id === playerId)?.isSafe || false) && gameState?.gameState !== 'finished' && gameState?.tournament?.currentRound > 1}
         playerName={playerName}
         gameState={gameState}
         onStartNextRound={handleStartNextRound}
