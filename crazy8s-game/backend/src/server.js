@@ -1072,6 +1072,12 @@ io.on('connection', (socket) => {
                 return;
             }
 
+            // Only the game creator (or in debug mode) may force rounds
+            if (!game.debugMode && player.playerId !== game.gameCreator) {
+                socket.emit('error', 'Only the game creator can force round progression');
+                return;
+            }
+
             console.log(`🔧 Force next round requested by ${player.name} for game ${gameId}`);
 
             // Force end current round if in progress
