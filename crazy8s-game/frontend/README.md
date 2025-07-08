@@ -20,6 +20,10 @@ This is the frontend for the Crazy 8's game, built using React with modern hooks
 - **User Customization**: Persistent settings and preferences
 - **Rich UI/UX**: Advanced animations, notifications, and visual stacking feedback
 - **Comprehensive Stacking Controls**: Full sequential stacking functionality through intuitive interface
+- **Confetti Celebrations**: Animated celebrations for player safety and game wins
+- **Play Again Voting**: Interactive voting system for game continuation
+- **Tournament Progress**: Real-time tournament status and round management displays
+- **Player Safety Notifications**: Visual feedback for tournament advancement
 
 ## Project Structure
 ```
@@ -57,6 +61,9 @@ The central component containing all game functionality with advanced stacking f
 - **Settings**: Configuration modal with stacking preferences
 - **Toast**: Notification system for stacking validation feedback
 - **Chat**: Real-time messaging system
+- **ConfettiCanvas**: Celebration animations for victories and player safety
+- **PlayAgainModal**: Voting interface for game continuation
+- **TournamentStatus**: Tournament progress and round information display
 
 #### Enhanced State Management
 ```javascript
@@ -305,6 +312,24 @@ const getValidCardsForSelection = (playerHand, gameState, selectedCards, topCard
   return valid;
 };
 ```
+
+## Enhanced User Experience Features
+
+### Victory Celebrations
+- **Confetti Animations**: Canvas-based confetti system for celebrating wins
+- **Player Safety Celebrations**: Special animations when players advance to next round
+- **Tournament Winner Effects**: Enhanced celebrations for tournament victors
+
+### Play Again System
+- **Interactive Voting Modal**: Players can vote to continue playing
+- **Real-time Vote Tracking**: Live updates of player votes
+- **Validation Integration**: Ensures proper game conditions before starting new rounds
+
+### Tournament Interface
+- **Progress Indicators**: Visual display of tournament advancement
+- **Round Status Display**: Current round and elimination information
+- **Player Safety Notifications**: Clear indicators for safe players
+- **End-of-Round Modals**: Comprehensive round results and next steps
 
 ## Advanced User Interface Features
 

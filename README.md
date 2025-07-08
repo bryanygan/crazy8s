@@ -15,6 +15,10 @@ Crazy 8's is a strategic card game similar to Uno, played with a standard 52-car
 - **Customizable settings** (experienced mode, visual preferences)
 - **Responsive design** with mobile support
 - **Real-time chat** and game notifications
+- **Confetti celebrations** for player safety and game wins
+- **Play again voting system** for seamless game continuation
+- **Tournament progress tracking** with round management
+- **Player safety notifications** and status displays
 - **Comprehensive test suite** with 95%+ coverage
 
 ## 🚀 Quick Start
@@ -217,6 +221,24 @@ crazy8s-game/
 - **Turn Control Feedback**: Real-time validation with error messages
 - **Bottom Card Highlighting**: Special indicator for stack foundation
 
+## 🎉 Enhanced Game Experience
+
+### Victory Celebrations
+- **Confetti Animations**: Celebrate when players become safe or win the game
+- **Player Safety Notifications**: Visual feedback when players advance to the next round
+- **Tournament Winner Celebrations**: Special animations for tournament victors
+
+### Play Again System
+- **Voting Mechanism**: Players can vote to play another game after completion
+- **Validation Logic**: Ensures proper game start conditions before beginning new rounds
+- **Seamless Continuation**: Quick transition between games without losing player connections
+
+### Tournament Features
+- **Progress Tracking**: Monitor advancement through tournament rounds
+- **Round Management**: Automatic handling of player eliminations and round transitions
+- **Status Displays**: Real-time tournament status and player safety indicators
+- **End-of-Round Modals**: Clear information about round results and next steps
+
 ## ⚙️ Game Settings
 
 Access via the ⚙️ Settings button:
@@ -267,6 +289,10 @@ npm run test:coverage      # Coverage report
 - [x] Penalty card system with counter mechanics
 - [x] Comprehensive test coverage (95%+)
 - [x] Responsive design with mobile support
+- [x] Confetti celebrations for victories and player safety
+- [x] Play again voting system with validation
+- [x] Tournament progress tracking and round management
+- [x] Player safety notifications and status displays
 
 ### Planned Features 🔄
 - [ ] 3+ player specific stacking rules
