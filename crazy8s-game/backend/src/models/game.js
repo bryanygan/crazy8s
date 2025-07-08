@@ -19,13 +19,18 @@ class Game {
         this.activePlayers = [...this.players]; // Players still in the tournament
         this.safeePlayers = []; // Players who finished current round
         this.eliminatedPlayers = []; // Players eliminated from tournament
-        this.pendingTurnPass = null; // Track if player needs to pass turn after drawing
-        this.playersWhoHaveDrawn = new Set(); // Track who has drawn this turn
-        this.debugMode = false; // Enable verbose debug logging
-        this.autoPassTimers = new Map(); // timers for auto pass
-        this.onAutoPass = null; // optional callback when auto pass occurs
-        this.playAgainVotes = new Set(); // Track who voted for play again
-        this.gameCreator = playerIds[0]; // First player is the game creator
+        this.tournamentActive = true;
+        this.tournamentRounds = [];
+        this.currentRound = 1;
+        this.roundInProgress = false;
+        this.gameCreator = creatorId || playerIds[0]; // Use provided creatorId or default to first player
+        this.safePlayerNotifications = new Set();
+        this.playersWhoHaveDrawn = new Set();
+        this.safePlayersThisRound = []; // Initialize to prevent undefined errors
+        this.eliminatedThisRound = []; // Initialize to prevent undefined errors
+        this.autoPassTimers = new Map(); // Initialize auto-pass timers Map
+        this.pendingTurnPass = null; // Initialize pending turn pass state
+        this.playAgainVotes = new Set(); // Initialize play again votes
     }
 
     generateGameId() {
@@ -135,7 +140,18 @@ class Game {
                 isCurrentPlayer: player.id === (currentPlayer ? currentPlayer.id : null)
             })),
             drawPileSize: this.drawPile.length,
-            discardPileSize: this.discardPile.length
+            discardPileSize: this.discardPile.length,
+            tournament: {
+                active: this.tournamentActive,
+                currentRound: this.currentRound,
+                roundInProgress: this.roundInProgress,
+                activePlayers: this.activePlayers?.length || 0,
+                safeThisRound: this.safePlayersThisRound?.length || 0,
+                eliminatedThisRound: this.eliminatedThisRound?.length || 0,
+                winner: this.tournamentWinner ? { id: this.tournamentWinner.id, name: this.tournamentWinner.name } : null,
+                roundHistory: this.tournamentRounds || []
+            },
+            playAgainVoting: this.gameState === 'finished' ? this.getPlayAgainVotingStatus() : null
         };
     }
 
@@ -1629,7 +1645,9 @@ class Game {
     static games = new Map();
 
     static findById(gameId) {
-        return Game.games.get(gameId);
+        const game = Game.games.get(gameId);
+        console.log(`Game.findById: Looking for gameId ${gameId}, found: ${!!game}`);
+        return game;
     }
 
     static addGame(game) {
