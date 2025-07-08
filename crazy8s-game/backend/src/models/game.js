@@ -25,6 +25,9 @@ class Game {
         this.roundInProgress = false;
         this.gameCreator = creatorId || playerIds[0]; // Use provided creatorId or default to first player
         this.safePlayerNotifications = new Set();
+        this.playersWhoHaveDrawn = new Set();
+        this.safePlayersThisRound = []; // Initialize to prevent undefined errors
+        this.eliminatedThisRound = []; // Initialize to prevent undefined errors
 
     }
 
@@ -141,11 +144,11 @@ class Game {
                 active: this.tournamentActive,
                 currentRound: this.currentRound,
                 roundInProgress: this.roundInProgress,
-                activePlayers: this.activePlayers.length,
-                safeThisRound: this.safePlayersThisRound.length,
-                eliminatedThisRound: this.eliminatedThisRound.length,
+                activePlayers: this.activePlayers?.length || 0,
+                safeThisRound: this.safePlayersThisRound?.length || 0,
+                eliminatedThisRound: this.eliminatedThisRound?.length || 0,
                 winner: this.tournamentWinner ? { id: this.tournamentWinner.id, name: this.tournamentWinner.name } : null,
-                roundHistory: this.tournamentRounds
+                roundHistory: this.tournamentRounds || []
             },
             playAgainVoting: this.gameState === 'finished' ? this.getPlayAgainVotingStatus() : null
         };
@@ -2092,7 +2095,9 @@ class Game {
     static games = new Map();
 
     static findById(gameId) {
-        return Game.games.get(gameId);
+        const game = Game.games.get(gameId);
+        console.log(`Game.findById: Looking for gameId ${gameId}, found: ${!!game}`);
+        return game;
     }
 
     static addGame(game) {

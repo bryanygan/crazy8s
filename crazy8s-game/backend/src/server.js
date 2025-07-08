@@ -68,6 +68,7 @@ const getSocketForPlayer = (gameId, playerId) => {
 
 // Helper function to broadcast game state to all players in a game
 const broadcastGameState = (gameId) => {
+    console.log(`broadcastGameState called for gameId: ${gameId}`);
     const game = Game.findById(gameId);
     if (game) {
         const gameState = game.getGameState();
