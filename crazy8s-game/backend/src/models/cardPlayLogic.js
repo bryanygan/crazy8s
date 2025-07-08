@@ -228,17 +228,14 @@ class CardPlayValidator {
 
         switch (card.rank) {
             case 'Jack':
-                // In tournament with 2 players left, Jack should keep turn (like 2-player game)
-                if (this.game.activePlayers.length === 2) {
-                    // In 2-player scenario, Jack keeps turn - don't advance
-                } else {
-                    // In 3+ player games, Jack skips the next player
-                    this.game.nextPlayer();
-                }
+                this.game.nextPlayer();
                 break;
             case 'Queen':
-                // Queens always reverse direction (consistent with game.js)
-                this.game.direction *= -1;
+                if (this.game.activePlayers.length === 2) {
+                    this.game.nextPlayer();
+                } else {
+                    this.game.direction *= -1;
+                }
                 break;
             case 'Ace':
                 effect.drawAmount = 4;
