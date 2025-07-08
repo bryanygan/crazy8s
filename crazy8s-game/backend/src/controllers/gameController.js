@@ -21,7 +21,7 @@ exports.startGame = (req, res) => {
             });
         }
 
-        const newGame = new Game(playerIds, playerNames);
+        const newGame = new Game(playerIds, playerNames, requesterId);
         
         // Check if the requester is the game creator
         if (newGame.gameCreator !== requesterId) {

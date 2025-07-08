@@ -99,9 +99,6 @@ const checkTournamentProgress = (gameId) => {
     game.safePlayersThisRound.forEach(player => {
         const alreadyNotified = game.safePlayerNotifications?.has(player.id);
         if (!alreadyNotified) {
-            if (!game.safePlayerNotifications) {
-                game.safePlayerNotifications = new Set();
-            }
             game.safePlayerNotifications.add(player.id);
             
             io.to(gameId).emit('playerSafe', {

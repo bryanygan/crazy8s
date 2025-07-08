@@ -4,7 +4,7 @@ const Player = require('./Player');
 const { createDeck, shuffleDeck } = require('../utils/deck');
 
 class Game {
-    constructor(playerIds, playerNames) {
+    constructor(playerIds, playerNames, creatorId = null) {
         this.id = this.generateGameId();
         this.players = this.initializePlayers(playerIds, playerNames);
         this.deck = [];
@@ -23,18 +23,9 @@ class Game {
         this.tournamentRounds = [];
         this.currentRound = 1;
         this.roundInProgress = false;
-        this.safePlayersThisRound = [];
-        this.eliminatedThisRound = [];
-        this.tournamentWinner = null;
-        this.tournamentStartTime = Date.now();
-        this.nextRoundTimer = null;
-        this.pendingTurnPass = null; // Track if player needs to pass turn after drawing
-        this.playersWhoHaveDrawn = new Set(); // Track who has drawn this turn
-        this.debugMode = false; // Enable verbose debug logging
-        this.autoPassTimers = new Map(); // timers for auto pass
-        this.onAutoPass = null; // optional callback when auto pass occurs
-        this.playAgainVotes = new Set(); // Track who voted for play again
-        this.gameCreator = playerIds[0]; // First player is the game creator
+        this.gameCreator = creatorId || playerIds[0]; // Use provided creatorId or default to first player
+        this.safePlayerNotifications = new Set();
+
     }
 
     generateGameId() {

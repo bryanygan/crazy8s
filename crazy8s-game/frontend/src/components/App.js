@@ -2489,17 +2489,7 @@ useEffect(() => {
     console.log('🃏 Hand updated:', hand.length, 'cards');
     console.log('🔍 First few cards:', hand.slice(0, 3).map(card => ({ id: card.id, suit: card.suit, rank: card.rank })));
     
-    // Ensure all cards have unique IDs, generate if missing
-    const handWithIds = hand.map((card, index) => {
-      if (!card.id) {
-        // Generate a unique ID using timestamp and index to ensure uniqueness
-        card.id = `frontend_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`;
-        console.log(`🔧 Generated ID for ${card.rank} of ${card.suit}: ${card.id}`);
-      }
-      return card;
-    });
-    
-    setPlayerHand(handWithIds);
+    setPlayerHand(hand);
   });
 
   newSocket.on('error', (errorMsg) => {
