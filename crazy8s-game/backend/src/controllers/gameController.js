@@ -364,11 +364,18 @@ exports.removePlayAgainVote = (req, res) => {
 
         const result = game.removePlayAgainVote(playerId);
         
-        res.status(200).json({ 
-            success: true,
-            message: 'Vote removed successfully', 
-            votingStatus: result
-        });
+        if (result.success) {
+            res.status(200).json({ 
+                success: true,
+                message: 'Vote removed successfully', 
+                votingStatus: result
+            });
+        } else {
+            res.status(400).json({ 
+                success: false,
+                error: result.error 
+            });
+        }
     } catch (error) {
         res.status(500).json({ 
             success: false, 

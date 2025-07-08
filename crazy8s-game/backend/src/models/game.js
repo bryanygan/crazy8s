@@ -1945,7 +1945,8 @@ class Game {
         const disconnectedPlayers = this.players.filter(p => !p.isConnected);
         const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
         const allConnectedVoted = votedPlayers.length === connectedPlayers.length;
-        const creatorVoted = this.playAgainVotes.has(this.gameCreator);
+        const isCreatorDisconnected = disconnectedPlayers.some(p => p.id === this.gameCreator);
+        const creatorVoted = this.playAgainVotes.has(this.gameCreator); // This will be false if creator is disconnected
         
         console.log(`🗳️ Vote status: ${votedPlayers.length}/${connectedPlayers.length} connected players voted`);
         if (disconnectedPlayers.length > 0) {
@@ -1954,18 +1955,40 @@ class Game {
         console.log(`🗳️ Creator voted: ${creatorVoted}`);
         console.log(`🗳️ All connected players voted: ${allConnectedVoted}`);
         
+        // Handle edge case: no connected players
+        if (connectedPlayers.length === 0) {
+            return {
+                success: false,
+                error: 'No connected players to vote. Game cannot proceed.',
+                votedPlayers: [],
+                totalPlayers: 0,
+                disconnectedPlayers: disconnectedPlayers.length,
+                allVoted: false,
+                creatorVoted: false,
+                canStartGame: false,
+                gameCreator: this.gameCreator,
+                isCreatorDisconnected: isCreatorDisconnected,
+                connectedPlayers: [],
+                excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
+            };
+        }
+
         // Can start game if all connected players voted AND creator voted
         const canStartGame = allConnectedVoted && creatorVoted;
         
         return {
             success: true,
+            message: 'Vote added successfully',
             votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
             totalPlayers: connectedPlayers.length,
             disconnectedPlayers: disconnectedPlayers.length,
             allVoted: allConnectedVoted,
             creatorVoted: creatorVoted,
             canStartGame: canStartGame,
-            gameCreator: this.gameCreator
+            gameCreator: this.gameCreator,
+            isCreatorDisconnected: isCreatorDisconnected,
+            connectedPlayers: connectedPlayers.map(p => ({ id: p.id, name: p.name })),
+            excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
         };
     }
 
@@ -1981,11 +2004,79 @@ class Game {
         const disconnectedPlayers = this.players.filter(p => !p.isConnected);
         const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
         const allConnectedVoted = votedPlayers.length === connectedPlayers.length;
+        const isCreatorDisconnected = disconnectedPlayers.some(p => p.id === this.gameCreator);
         const creatorVoted = this.playAgainVotes.has(this.gameCreator);
         
         console.log(`🗳️ Vote removed. Status: ${votedPlayers.length}/${connectedPlayers.length} connected players voted`);
         if (disconnectedPlayers.length > 0) {
             console.log(`🗳️ Excluding ${disconnectedPlayers.length} disconnected players from vote count`);
+        }
+
+        // Handle edge case: no connected players
+        if (connectedPlayers.length === 0) {
+            return {
+                success: false,
+                error: 'No connected players to vote. Game cannot proceed.',
+                votedPlayers: [],
+                totalPlayers: 0,
+                disconnectedPlayers: disconnectedPlayers.length,
+                allVoted: false,
+                creatorVoted: false,
+                canStartGame: false,
+                gameCreator: this.gameCreator,
+                isCreatorDisconnected: isCreatorDisconnected,
+                connectedPlayers: [],
+                excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
+            };
+        }
+        
+        // Can start game if all connected players voted AND creator voted
+        const canStartGame = allConnectedVoted && creatorVoted;
+        
+        return {
+            success: true,
+            message: 'Vote removed successfully',
+            votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
+            totalPlayers: connectedPlayers.length,
+            disconnectedPlayers: disconnectedPlayers.length,
+            allVoted: allConnectedVoted,
+            creatorVoted: creatorVoted,
+            canStartGame: canStartGame,
+            gameCreator: this.gameCreator,
+            isCreatorDisconnected: isCreatorDisconnected,
+            connectedPlayers: connectedPlayers.map(p => ({ id: p.id, name: p.name })),
+            excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
+        };
+    }
+
+    // Get current play again voting status
+    getPlayAgainVotingStatus() {
+        this.initializePlayAgainVoting();
+        
+        // Only count connected players for voting - disconnected players are excluded
+        const connectedPlayers = this.players.filter(p => p.isConnected);
+        const disconnectedPlayers = this.players.filter(p => !p.isConnected);
+        const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
+        const allConnectedVoted = votedPlayers.length === connectedPlayers.length;
+        const isCreatorDisconnected = disconnectedPlayers.some(p => p.id === this.gameCreator);
+        const creatorVoted = this.playAgainVotes.has(this.gameCreator);
+
+        // Handle edge case: no connected players
+        if (connectedPlayers.length === 0) {
+            return {
+                success: false,
+                error: 'No connected players to vote. Game cannot proceed.',
+                votedPlayers: [],
+                totalPlayers: 0,
+                disconnectedPlayers: disconnectedPlayers.length,
+                allVoted: false,
+                creatorVoted: false,
+                canStartGame: false,
+                gameCreator: this.gameCreator,
+                isCreatorDisconnected: isCreatorDisconnected,
+                connectedPlayers: [],
+                excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
+            };
         }
         
         // Can start game if all connected players voted AND creator voted
@@ -1999,32 +2090,8 @@ class Game {
             allVoted: allConnectedVoted,
             creatorVoted: creatorVoted,
             canStartGame: canStartGame,
-            gameCreator: this.gameCreator
-        };
-    }
-
-    // Get current play again voting status
-    getPlayAgainVotingStatus() {
-        this.initializePlayAgainVoting();
-        
-        // Only count connected players for voting - disconnected players are excluded
-        const connectedPlayers = this.players.filter(p => p.isConnected);
-        const disconnectedPlayers = this.players.filter(p => !p.isConnected);
-        const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
-        const allConnectedVoted = votedPlayers.length === connectedPlayers.length;
-        const creatorVoted = this.playAgainVotes.has(this.gameCreator);
-        
-        // Can start game if all connected players voted AND creator voted
-        const canStartGame = allConnectedVoted && creatorVoted;
-        
-        return {
-            votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
-            totalPlayers: connectedPlayers.length,
-            disconnectedPlayers: disconnectedPlayers.length,
-            allVoted: allConnectedVoted,
-            creatorVoted: creatorVoted,
-            canStartGame: canStartGame,
             gameCreator: this.gameCreator,
+            isCreatorDisconnected: isCreatorDisconnected,
             connectedPlayers: connectedPlayers.map(p => ({ id: p.id, name: p.name })),
             excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
         };

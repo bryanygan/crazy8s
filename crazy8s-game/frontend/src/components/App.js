@@ -2,6 +2,16 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 
 // Confetti function for celebrations
+
+// Helper function to check if two cards are the same (using ID if available, fallback to suit/rank)
+const isSameCard = (card1, card2) => {
+  if (card1.id && card2.id) {
+    return card1.id === card2.id;
+  }
+  return card1.suit === card2.suit && card1.rank === card2.rank;
+};
+
+// Confetti function for celebrations
 const fireConfetti = () => {
   console.log('🎉 fireConfetti called');
   
@@ -444,13 +454,6 @@ const canStackCardsFrontend = (existingCards, newCard, activePlayers = 2) => {
 const getValidCardsForSelection = (playerHand, gameState, selectedCards, topCard) => {
   if (!gameState || playerHand.length === 0) return [];
   
-  // Helper function to check if two cards are the same (using ID if available, fallback to suit/rank)
-  const isSameCard = (card1, card2) => {
-    if (card1.id && card2.id) {
-      return card1.id === card2.id;
-    }
-    return card1.suit === card2.suit && card1.rank === card2.rank;
-  };
   
   let valid = [];
   const activePlayers = gameState.players?.length || 2;
@@ -502,13 +505,7 @@ const canCounterDrawFrontend = (card, topCard) => {
 };
 
 const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, settings = {} }) => {
-  // Helper function to check if two cards are the same (using ID if available, fallback to suit/rank)
-  const isSameCard = (card1, card2) => {
-    if (card1.id && card2.id) {
-      return card1.id === card2.id;
-    }
-    return card1.suit === card2.suit && card1.rank === card2.rank;
-  };
+  
 
   // Helper function to get rank value for sorting
   const getRankValue = (rank) => {
@@ -1495,7 +1492,7 @@ const Chat = ({ socket }) => {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
                 placeholder="Type a message..."
                 style={{
                   flex: 1,
@@ -2804,17 +2801,7 @@ useEffect(() => {
     });
   };
 
-  // Helper function to check if two cards are the same (using ID if available, fallback to suit/rank)
-  const isSameCard = (card1, card2) => {
-    if (card1.id && card2.id) {
-      const result = card1.id === card2.id;
-      console.log(`🔍 isSameCard ID comparison: ${card1.rank}${card1.suit[0]} (${card1.id?.slice(-6)}) vs ${card2.rank}${card2.suit[0]} (${card2.id?.slice(-6)}) = ${result}`);
-      return result;
-    }
-    const result = card1.suit === card2.suit && card1.rank === card2.rank;
-    console.log(`🔍 isSameCard suit/rank fallback: ${card1.rank}${card1.suit[0]} vs ${card2.rank}${card2.suit[0]} = ${result}`);
-    return result;
-  };
+  
 
   const handleCardSelect = (card) => {
     console.log(`🎯 Selecting card: ${card.rank} of ${card.suit} (ID: ${card.id})`);
