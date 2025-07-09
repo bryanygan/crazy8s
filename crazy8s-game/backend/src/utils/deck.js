@@ -6,9 +6,15 @@ const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'K
 // Function to create a new deck of cards
 function createDeck() {
     const deck = [];
+    let cardId = 0;
+    const deckId = Date.now() + Math.random().toString(36).substr(2, 9);
     for (const suit of SUITS) {
         for (const rank of RANKS) {
-            deck.push({ suit, rank });
+            deck.push({ 
+                id: `card_${deckId}_${cardId++}`, 
+                suit, 
+                rank 
+            });
         }
     }
     return deck;
