@@ -4,7 +4,7 @@ const Player = require('./Player');
 const { createDeck, shuffleDeck } = require('../utils/deck');
 
 class Game {
-    constructor(playerIds, playerNames) {
+    constructor(playerIds, playerNames, creatorId = null) {
         this.id = this.generateGameId();
         this.players = this.initializePlayers(playerIds, playerNames);
         this.deck = [];
@@ -121,6 +121,7 @@ class Game {
         return {
             gameId: this.id,
             gameState: this.gameState,
+            gameCreator: this.gameCreator,
             currentPlayer: currentPlayer ? currentPlayer.name : null,
             currentPlayerId: currentPlayer ? currentPlayer.id : null,
             topCard: topCard ? this.cardToString(topCard) : null,
@@ -129,7 +130,7 @@ class Game {
             drawStack: this.drawStack,
             roundNumber: this.roundNumber,
             pendingTurnPass: this.pendingTurnPass,
-            playersWhoHaveDrawn: Array.from(this.playersWhoHaveDrawn), // Add draw tracking
+            playersWhoHaveDrawn: Array.from(this.playersWhoHaveDrawn),
             players: this.players.map(player => ({
                 id: player.id,
                 name: player.name,
@@ -166,15 +167,34 @@ class Game {
             return null;
         }
 
-        // Ensure currentPlayerIndex is within bounds
-        if (this.currentPlayerIndex >= this.activePlayers.length) {
-            console.log(`Current player index ${this.currentPlayerIndex} out of bounds, resetting to 0`);
-            this.currentPlayerIndex = 0;
+        // Get non-safe, non-eliminated players
+        const playablePlayers = this.activePlayers.filter(p => !p.isSafe && !p.isEliminated);
+        
+        if (playablePlayers.length === 0) {
+            console.log('No playable players (all safe or eliminated)');
+            return null;
         }
 
-        const currentPlayer = this.activePlayers[this.currentPlayerIndex];
-        console.log(`Current player: ${currentPlayer ? currentPlayer.name : 'null'} at index ${this.currentPlayerIndex}`);
-        return currentPlayer;
+        // Ensure currentPlayerIndex is within bounds and points to a playable player
+        let attempts = 0;
+        while (attempts < this.activePlayers.length) {
+            if (this.currentPlayerIndex >= this.activePlayers.length) {
+                this.currentPlayerIndex = 0;
+            }
+            
+            const currentPlayer = this.activePlayers[this.currentPlayerIndex];
+            if (currentPlayer && !currentPlayer.isSafe && !currentPlayer.isEliminated) {
+                console.log(`Current player: ${currentPlayer.name} at index ${this.currentPlayerIndex}`);
+                return currentPlayer;
+            }
+            
+            // Move to next player
+            this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.activePlayers.length;
+            attempts++;
+        }
+
+        console.log('Could not find a valid current player');
+        return null;
     }
 
     getTopDiscardCard() {
@@ -223,6 +243,14 @@ class Game {
             return { 
                 success: false, 
                 error: 'Game is not currently active' 
+            };
+        }
+
+        // Validate player is not safe (safe players cannot play)
+        if (player.isSafe) {
+            return {
+                success: false,
+                error: 'You are safe and cannot play more cards this round'
             };
         }
 
@@ -289,11 +317,9 @@ class Game {
         // Handle multiple special card effects with proper turn management
         const totalDrawEffect = this.handleMultipleSpecialCards(cardsToPlay, declaredSuit);
 
-        // Check win condition
+        // Check win condition - tournament safety logic
         if (player.hand.length === 0) {
-            player.isSafe = true;
-            this.safeePlayers.push(player);
-            this.checkRoundEnd();
+            this.markPlayerSafe(player);
         }
         // Note: We don't call nextPlayer() here anymore because 
         // handleMultipleSpecialCards now manages turn control properly
@@ -416,10 +442,19 @@ class Game {
 
         switch (card.rank) {
             case 'Jack': // Skip
-                // Always skip the next player
-                this.nextPlayer();
-                // In a 1v1 game, the outer nextPlayer call will rotate
-                // back to the current player, effectively keeping the turn
+                // In tournament with 2 players left, Jack should keep turn (like 2-player game)
+                if (this.activePlayers.length === 2) {
+                    // In 2-player scenario, Jack keeps turn - don't advance
+                    if (this.debugMode) {
+                        console.log(`🃏 [DEBUG] Jack in 2-player tournament: keeping turn`);
+                    }
+                } else {
+                    // In 3+ player games, Jack skips the next player
+                    this.nextPlayer();
+                    if (this.debugMode) {
+                        console.log(`🃏 [DEBUG] Jack in multiplayer: skipping next player`);
+                    }
+                }
                 break;
 
             case 'Queen': // Reverse
@@ -467,9 +502,9 @@ class Game {
             const currentCard = cards[i];
             
             if (this.debugMode) {
-                console.log(`🔍 [DEBUG] Checking transition ${i}: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
+            console.log(`🔍 [DEBUG] Checking transition ${i}: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
             } else {
-                console.log(`  Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
+            console.log(`  Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
             }
             
             // Cards must match by suit or rank
@@ -478,77 +513,90 @@ class Game {
             
             // Special case: Aces and 2s can stack with each other if same suit
             const isAce2Cross = (
-                (prevCard.rank === 'Ace' && currentCard.rank === '2') ||
-                (prevCard.rank === '2' && currentCard.rank === 'Ace')
+            (prevCard.rank === 'Ace' && currentCard.rank === '2') ||
+            (prevCard.rank === '2' && currentCard.rank === 'Ace')
             ) && prevCard.suit === currentCard.suit;
             
+            // NEW: Special case for 8s - if turn control is maintained, 8s can be played regardless of suit
+            const is8WithTurnControl = currentCard.rank === '8' && 
+            this.simulateTurnControl(cards.slice(0, i));
+            
             if (this.debugMode) {
-                console.log(`🔍 [DEBUG]   Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+            console.log(`🔍 [DEBUG]   Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}, 8 with turn control: ${is8WithTurnControl}`);
             } else {
-                console.log(`    Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+            console.log(`    Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}, 8 with turn control: ${is8WithTurnControl}`);
             }
             
-            // Basic matching requirement
-            if (!matchesSuit && !matchesRank && !isAce2Cross) {
+            // Basic matching requirement (now includes 8s with turn control)
+            if (!matchesSuit && !matchesRank && !isAce2Cross && !is8WithTurnControl) {
+            if (this.debugMode) {
+                console.log(`❌ [DEBUG] Invalid transition - no suit/rank match and no 8 flexibility!`);
+            } else {
+                console.log(`    ❌ Invalid transition - no suit/rank match and no 8 flexibility!`);
+            }
+            return {
+                isValid: false,
+                error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank${currentCard.rank === '8' ? ', or 8s can be played if you maintain turn control' : ''}.`
+            };
+            }
+            
+            // If cards match by rank, always allow (this is standard stacking)
+            if (matchesRank || isAce2Cross) {
+            if (this.debugMode) {
+                console.log(`✅ [DEBUG] Valid transition - same rank or Ace/2 cross-stack`);
+            } else {
+                console.log(`    ✅ Valid transition - same rank or Ace/2 cross-stack`);
+            }
+            continue;
+            }
+            
+            // If it's an 8 with turn control, allow it
+            if (is8WithTurnControl) {
+            if (this.debugMode) {
+                console.log(`✅ [DEBUG] Valid transition - 8 played with maintained turn control`);
+            } else {
+                console.log(`    ✅ Valid transition - 8 played with maintained turn control`);
+            }
+            continue;
+            }
+            
+            // If cards only match by suit (different ranks), 
+            // we need to validate the entire turn control chain up to this point
+            if (matchesSuit && !matchesRank) {
+            if (this.debugMode) {
+                console.log(`🔍 [DEBUG] Same suit, different rank - checking turn control logic`);
+            } else {
+                console.log(`    Same suit, different rank - checking turn control logic`);
+            }
+            
+            // For same-suit different-rank transitions, we need to validate that 
+            // the player would maintain turn control after playing all cards UP TO AND INCLUDING the previous card
+            const stackUpToPrevious = cards.slice(0, i);
+            const wouldHaveTurnControl = this.simulateTurnControl(stackUpToPrevious);
+            
+            if (this.debugMode) {
+                console.log(`🔍 [DEBUG] Turn control after ${stackUpToPrevious.map(c => `${c.rank}${c.suit[0]}`).join(', ')}: ${wouldHaveTurnControl}`);
+            } else {
+                console.log(`    Turn control after previous cards: ${wouldHaveTurnControl}`);
+            }
+            
+            if (!wouldHaveTurnControl) {
                 if (this.debugMode) {
-                    console.log(`❌ [DEBUG] Invalid transition - no suit/rank match!`);
+                console.log(`❌ [DEBUG] Invalid transition - no turn control after previous cards!`);
                 } else {
-                    console.log(`    ❌ Invalid transition - no suit/rank match!`);
+                console.log(`    ❌ Invalid transition - no turn control after previous cards!`);
                 }
                 return {
-                    isValid: false,
-                    error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank.`
+                isValid: false,
+                error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. You don't maintain turn control after playing the previous cards in the sequence.`
                 };
             }
             
-            // FIXED LOGIC: If cards match by rank, always allow (this is standard stacking)
-            if (matchesRank || isAce2Cross) {
-                if (this.debugMode) {
-                    console.log(`✅ [DEBUG] Valid transition - same rank or Ace/2 cross-stack`);
-                } else {
-                    console.log(`    ✅ Valid transition - same rank or Ace/2 cross-stack`);
-                }
-                continue;
+            if (this.debugMode) {
+                console.log(`✅ [DEBUG] Valid transition - turn control maintained`);
+            } else {
+                console.log(`    ✅ Valid transition - turn control maintained`);
             }
-            
-            // FIXED LOGIC: If cards only match by suit (different ranks), 
-            // we need to validate the entire turn control chain up to this point
-            if (matchesSuit && !matchesRank) {
-                if (this.debugMode) {
-                    console.log(`🔍 [DEBUG] Same suit, different rank - checking turn control logic`);
-                } else {
-                    console.log(`    Same suit, different rank - checking turn control logic`);
-                }
-                
-                // CRITICAL FIX: For same-suit different-rank transitions, we need to validate that 
-                // the player would maintain turn control after playing all cards UP TO AND INCLUDING the previous card
-                // This simulates: "After playing the previous cards, do I still have the turn to play this card?"
-                const stackUpToPrevious = cards.slice(0, i);
-                const wouldHaveTurnControl = this.simulateTurnControl(stackUpToPrevious);
-                
-                if (this.debugMode) {
-                    console.log(`🔍 [DEBUG] Turn control after ${stackUpToPrevious.map(c => `${c.rank}${c.suit[0]}`).join(', ')}: ${wouldHaveTurnControl}`);
-                } else {
-                    console.log(`    Turn control after previous cards: ${wouldHaveTurnControl}`);
-                }
-                
-                if (!wouldHaveTurnControl) {
-                    if (this.debugMode) {
-                        console.log(`❌ [DEBUG] Invalid transition - no turn control after previous cards!`);
-                    } else {
-                        console.log(`    ❌ Invalid transition - no turn control after previous cards!`);
-                    }
-                    return {
-                        isValid: false,
-                        error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. You don't maintain turn control after playing the previous cards in the sequence.`
-                    };
-                }
-                
-                if (this.debugMode) {
-                    console.log(`✅ [DEBUG] Valid transition - turn control maintained`);
-                } else {
-                    console.log(`    ✅ Valid transition - turn control maintained`);
-                }
             }
         }
         
@@ -558,7 +606,7 @@ class Game {
             console.log('✅ Stack validation passed');
         }
         return { isValid: true };
-    }
+        }
 
     // Simulate turn control for a card sequence
     simulateTurnControl(cardStack) {
@@ -635,9 +683,26 @@ class Game {
                 return true;
             }
         } else {
-            // 3+ player logic (simplified)
+            // 3+ player logic: even Queens = keep turn, odd Queens = pass turn
+            if (queenCount > 0) {
+                const queenKeepsTurn = (queenCount % 2 === 0);
+                if (this.debugMode) {
+                    console.log(`🔍 [DEBUG] 3+ player Queens: ${queenCount} → ${queenKeepsTurn ? 'keep turn' : 'pass turn'}`);
+                }
+                return queenKeepsTurn;
+            }
+            
+            if (jackCount > 0) {
+                // Pure Jack effect keeps turn
+                if (this.debugMode) {
+                    console.log(`🔍 [DEBUG] 3+ player: Stack ends with Jack(s) → keep turn`);
+                }
+                return true;
+            }
+            
+            // No special cards at end of stack
             if (this.debugMode) {
-                console.log(`🔍 [DEBUG] 3+ player: Most combinations pass turn`);
+                console.log(`🔍 [DEBUG] 3+ player: No special cards at end → pass turn`);
             }
             return false;
         }
@@ -806,7 +871,13 @@ class Game {
         // Calculate final turn position
         let finalPlayerIndex = 0; // Start with current player (index 0)
 
-        if (playerCount === 2) {
+        // Count active (non-safe, non-eliminated) players for Jack logic
+        const activePlayers = this.activePlayers.filter(p => !p.isSafe && !p.isEliminated);
+        const activePlayerCount = activePlayers.length;
+
+        console.log(`🎮 Total players: ${playerCount}, Active players: ${activePlayerCount}`);
+
+        if (playerCount === 2 || activePlayerCount === 2) {
             // Corrected 2-player game logic
             let shouldPassTurn;
 
@@ -814,24 +885,29 @@ class Game {
             // Handle normal cards, draw cards, or wilds - these ALWAYS pass turn
             if (endsWithNormalCard || totalDrawEffect > 0 || hasWild) {
                 shouldPassTurn = true;
-                console.log(`🎮 2-player: Stack ends with normal/draw/wild card → pass turn`);
+                console.log(`🎮 2-player/2-active: Stack ends with normal/draw/wild card → pass turn`);
             } else {
                 // Logic for stacks ending in only Jacks and/or Queens
-                // In a 2-player game, an odd number of skips/reverses passes the turn.
-                // An even number keeps the turn. We can XOR the effects.
-                const passFromSkips = (totalSkips % 2 === 1);
+                // In 2-player games:
+                // - Jacks KEEP turn control (don't pass)
+                // - Queens PASS turn (reverses effectively pass in 2-player)
+                
+                // Jacks in 2-player games maintain turn control (they don't "skip" to next player)
+                const jacksKeepTurn = true; // Jacks always keep turn in 2-player games
+                
+                // Queens in 2-player games: odd number passes turn, even number keeps turn
                 const passFromReverses = (totalReverses % 2 === 1);
 
-                console.log(`🎮 2-player Jacks: ${totalSkips} skips → ${passFromSkips ? 'pass turn' : 'keep turn'}`);
-                console.log(`🎮 2-player Queens: ${totalReverses} reverses → ${passFromReverses ? 'pass turn' : 'keep turn'}`);
+                console.log(`🎮 2-player/2-active Jacks: ${totalSkips} jacks → keep turn (2-player rule)`);
+                console.log(`🎮 2-player/2-active Queens: ${totalReverses} reverses → ${passFromReverses ? 'pass turn' : 'keep turn'}`);
 
-                // XOR the two effects. If they are the same (both pass or both keep),
-                // the result is to keep the turn. If they are different, pass the turn.
-                shouldPassTurn = passFromSkips !== passFromReverses;
+                // In 2-player: only Queens matter for turn passing
+                // Jacks maintain turn, so only consider Queen effects
+                shouldPassTurn = passFromReverses;
             }
             
             finalPlayerIndex = shouldPassTurn ? 1 : 0;
-            console.log(`🎮 2-player final result: ${shouldPassTurn ? 'pass turn' : 'keep turn'} (index ${finalPlayerIndex})`);
+            console.log(`🎮 2-player/2-active final result: ${shouldPassTurn ? 'pass turn' : 'keep turn'} (index ${finalPlayerIndex})`);
             
         } else {
             // Multiplayer game logic (3+ players)
@@ -876,9 +952,29 @@ class Game {
         const lastCard = cards[cards.length - 1];
         const endsWithPenaltyCard = (lastCard.rank === 'Ace' || lastCard.rank === '2');
         
-        // Set the final player - KEY FIX FOR PENALTY CARD LOGIC
-        if (finalPlayerIndex === 0 && !endsWithPenaltyCard) {
-            console.log('🎮 Turn control maintained - staying with current player (no penalty cards at end)');
+        // Set the final player - KEY FIX FOR NORMAL CARD LOGIC
+        if (endsWithNormalCard) {
+            // If stack ends with normal cards, always pass turn regardless of special card effects
+            console.log('🎮 Stack ends with normal cards → turn passes to next player');
+            const currentIndex = this.currentPlayerIndex;
+            const targetIndex = (currentIndex + this.direction + playerCount) % playerCount;
+            this.currentPlayerIndex = targetIndex;
+            
+            // Ensure we advance to a valid player (skip safe/eliminated players)
+            let attempts = 0;
+            while (attempts < this.activePlayers.length) {
+                const targetPlayer = this.activePlayers[this.currentPlayerIndex];
+                if (targetPlayer && !targetPlayer.isSafe && !targetPlayer.isEliminated) {
+                    console.log(`🎮 Turn advanced to index ${this.currentPlayerIndex}: ${targetPlayer.name} (valid player)`);
+                    break;
+                }
+                
+                // Move to next player in current direction
+                this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + playerCount) % playerCount;
+                attempts++;
+            }
+        } else if (finalPlayerIndex === 0 && !endsWithPenaltyCard) {
+            console.log('🎮 Turn control maintained - staying with current player (stack ends with special cards)');
             // Don't change currentPlayerIndex - player keeps the turn
         } else {
             // Either normal advancement OR stack ends with penalty cards
@@ -897,8 +993,23 @@ class Game {
                 console.log(`🎮 Normal turn advancement based on special card effects`);
             }
             
+            // Set the target index and then find the next valid (non-safe, non-eliminated) player
             this.currentPlayerIndex = targetIndex;
-            console.log(`🎮 Turn advanced to index ${targetIndex}: ${this.activePlayers[targetIndex]?.name}`);
+            
+            // Ensure we advance to a valid player (skip safe/eliminated players)
+            let attempts = 0;
+            while (attempts < this.activePlayers.length) {
+                const targetPlayer = this.activePlayers[this.currentPlayerIndex];
+                if (targetPlayer && !targetPlayer.isSafe && !targetPlayer.isEliminated) {
+                    console.log(`🎮 Turn advanced to index ${this.currentPlayerIndex}: ${targetPlayer.name} (valid player)`);
+                    break;
+                }
+                
+                // Move to next player in current direction
+                this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+                attempts++;
+                console.log(`🎮 Skipping safe/eliminated player, trying index ${this.currentPlayerIndex}`);
+            }
         }
 
         console.log(`🎮 Final game state: Player ${this.currentPlayerIndex} (${this.getCurrentPlayer()?.name}) has the turn`);
@@ -1143,11 +1254,9 @@ class Game {
         // Clear pending turn pass
         this.pendingTurnPass = null;
 
-        // Check win condition
+        // Check win condition - tournament safety logic
         if (player.hand.length === 0) {
-            player.isSafe = true;
-            this.safeePlayers.push(player);
-            this.checkRoundEnd();
+            this.markPlayerSafe(player);
         } else {
             this.nextPlayer();
         }
@@ -1250,7 +1359,21 @@ class Game {
         if (this.activePlayers.length === 0) return;
 
         const oldIndex = this.currentPlayerIndex;
-        this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+        
+        // Skip safe and eliminated players
+        let attempts = 0;
+        do {
+            this.currentPlayerIndex = (this.currentPlayerIndex + this.direction + this.activePlayers.length) % this.activePlayers.length;
+            attempts++;
+            
+            const currentPlayer = this.activePlayers[this.currentPlayerIndex];
+            if (this.debugMode) {
+                console.log(`🐛 [DEBUG] nextPlayer attempt ${attempts}: index ${this.currentPlayerIndex}, player: ${currentPlayer?.name}, safe: ${currentPlayer?.isSafe}, eliminated: ${currentPlayer?.isEliminated}`);
+            }
+            
+        } while (attempts < this.activePlayers.length && 
+                 this.activePlayers[this.currentPlayerIndex] && 
+                 (this.activePlayers[this.currentPlayerIndex].isSafe || this.activePlayers[this.currentPlayerIndex].isEliminated));
 
         this.playersWhoHaveDrawn.clear();
         if (this.debugMode) {
@@ -1261,23 +1384,240 @@ class Game {
                 direction: this.direction
             });
         } else {
-            console.log(`Next player: ${oldIndex} -> ${this.currentPlayerIndex} (${this.activePlayers[this.currentPlayerIndex]?.name})`);
+            console.log(`🎮 Next player: ${oldIndex} -> ${this.currentPlayerIndex} (${this.activePlayers[this.currentPlayerIndex]?.name})`);
         }
+    }
+
+    markPlayerSafe(player) {
+        if (player.isSafe) return; // Already safe
+        
+        player.isSafe = true;
+        this.safeePlayers.push(player);
+        this.safePlayersThisRound.push(player);
+        
+        console.log(`🏆 ${player.name} is now safe and advances to next round!`);
+        this.checkRoundEnd();
     }
 
     checkRoundEnd() {
         const playersStillPlaying = this.activePlayers.filter(p => !p.isSafe && !p.isEliminated);
         
         if (playersStillPlaying.length <= 1) {
-            // Round ends, eliminate last player
-            if (playersStillPlaying.length === 1) {
-                const lastPlayer = playersStillPlaying[0];
-                lastPlayer.isEliminated = true;
-                this.eliminatedPlayers.push(lastPlayer);
-            }
-
-            this.endRound();
+            this.endCurrentRound();
         }
+    }
+
+    endCurrentRound() {
+        console.log(`🏁 Round ${this.currentRound} ending...`);
+        
+        // Eliminate remaining players
+        const playersStillPlaying = this.activePlayers.filter(p => !p.isSafe && !p.isEliminated);
+        if (playersStillPlaying.length === 1) {
+            const lastPlayer = playersStillPlaying[0];
+            lastPlayer.isEliminated = true;
+            
+            // Clear eliminated player's hand and optionally return cards to draw pile
+            if (lastPlayer.hand.length > 0) {
+                console.log(`🗑️ Clearing ${lastPlayer.name}'s hand (${lastPlayer.hand.length} cards)`);
+                
+                // Add cards back to draw pile and shuffle
+                this.drawPile.push(...lastPlayer.hand);
+                this.drawPile = shuffleDeck(this.drawPile);
+                
+                // Clear the player's hand
+                lastPlayer.hand = [];
+                
+                console.log(`🔄 Added eliminated player's cards to draw pile. Draw pile now has ${this.drawPile.length} cards`);
+            }
+            
+            this.eliminatedPlayers.push(lastPlayer);
+            this.eliminatedThisRound.push(lastPlayer);
+            console.log(`❌ ${lastPlayer.name} eliminated from tournament`);
+        }
+        
+        // Record round data
+        this.tournamentRounds.push({
+            round: this.currentRound,
+            startingPlayers: this.activePlayers.length,
+            safeePlayers: this.safePlayersThisRound.length,
+            eliminatedPlayers: this.eliminatedThisRound.length,
+            completed: true
+        });
+        
+        // Update active players
+        this.activePlayers = this.activePlayers.filter(p => !p.isEliminated);
+        
+        if (this.activePlayers.length <= 1) {
+            this.endTournament();
+        } else {
+            this.prepareNextRound();
+        }
+    }
+
+    prepareNextRound() {
+        console.log(`🔄 Preparing round ${this.currentRound + 1}...`);
+        
+        this.currentRound++;
+        this.roundInProgress = false;
+        
+        // Clear timers
+        if (this.nextRoundTimer) {
+            clearTimeout(this.nextRoundTimer);
+        }
+        
+        // 10-second delay before auto-starting next round (gives time for manual start)
+        this.nextRoundTimer = setTimeout(() => {
+            this.startNextRound();
+        }, 10000);
+    }
+
+    // Manual start next round (can be called by safe players)
+    manualStartNextRound(playerId) {
+        console.log(`🔍 manualStartNextRound called with playerId: ${playerId}`);
+        console.log(`🔍 Available players in game:`, this.players.map(p => ({ id: p.id, name: p.name, isSafe: p.isSafe })));
+        console.log(`🔍 Round in progress: ${this.roundInProgress}`);
+        console.log(`🔍 Safe players this round: ${this.safePlayersThisRound.map(p => p.name)}`);
+        
+        // Verify player is in the game
+        const player = this.getPlayerById(playerId);
+        if (!player) {
+            console.log(`❌ Player not found for ID: ${playerId}`);
+            return { success: false, error: 'Player not found' };
+        }
+
+        console.log(`🔍 Found player: ${player.name}, isSafe: ${player.isSafe}`);
+        
+        // Check if player was safe in the previous round (allowing manual start even after auto-start)
+        const wasPlayerSafeLastRound = this.safePlayersThisRound.some(p => p.id === playerId);
+        
+        // Verify player is safe OR was safe in the previous round
+        if (!player.isSafe && !wasPlayerSafeLastRound) {
+            console.log(`❌ Player ${player.name} is not safe and was not safe in previous round, cannot start next round`);
+            return { success: false, error: 'Only safe players can start the next round' };
+        }
+
+        // If round is already in progress, just return success (round already started)
+        if (this.roundInProgress) {
+            console.log(`🔍 Round ${this.currentRound} is already in progress, treating manual start as acknowledgment`);
+            return { 
+                success: true, 
+                message: `Round ${this.currentRound} already started`,
+                startedBy: player.name
+            };
+        }
+
+        // Clear any existing timer
+        if (this.nextRoundTimer) {
+            clearTimeout(this.nextRoundTimer);
+            this.nextRoundTimer = null;
+        }
+
+        console.log(`🚀 ${player.name} manually started round ${this.currentRound}`);
+        this.startNextRound();
+        
+        return { 
+            success: true, 
+            message: `Round ${this.currentRound} started by ${player.name}`,
+            startedBy: player.name
+        };
+    }
+
+    startNextRound() {
+        console.log(`🚀 Starting round ${this.currentRound}...`);
+        
+        // Reset round-specific data
+        this.safePlayersThisRound = [];
+        this.eliminatedThisRound = [];
+        this.roundInProgress = true;
+        
+        // Reset player states for active players only - but preserve safety status
+        this.activePlayers.forEach(player => {
+            // Only reset isSafe for players who were NOT safe in previous round
+            // Safe players keep their isSafe = true status
+            if (!player.isSafe) {
+                player.isSafe = false; // This is redundant but kept for clarity
+            }
+            player.hand = [];
+        });
+        
+        // Keep safe players in the safeePlayers array - don't reset it
+        // this.safeePlayers = []; // ❌ Don't reset this - safe players should persist
+        this.drawStack = 0;
+        this.declaredSuit = null;
+        this.direction = 1;
+        this.currentPlayerIndex = 0;
+        this.pendingTurnPass = null;
+        this.playersWhoHaveDrawn.clear();
+        
+        // Create new deck and deal cards
+        this.deck = createDeck();
+        this.deck = shuffleDeck(this.deck);
+        this.drawPile = [...this.deck];
+        this.discardPile = [];
+        
+        // Deal cards only to active players
+        this.dealCardsToActivePlayers();
+        
+        // Start discard pile
+        if (this.drawPile.length > 0) {
+            const firstCard = this.drawPile.pop();
+            this.discardPile.push(firstCard);
+        }
+        
+        this.gameState = 'playing';
+    }
+
+    endTournament() {
+        console.log(`🏆 Tournament complete!`);
+        
+        if (this.activePlayers.length === 1) {
+            this.tournamentWinner = this.activePlayers[0];
+            console.log(`🥇 Tournament winner: ${this.tournamentWinner.name}`);
+        }
+        
+        this.tournamentActive = false;
+        this.gameState = 'finished';
+        this.roundInProgress = false;
+        
+        // Initialize play again voting for all players in the tournament
+        console.log(`🗳️ Initializing play again voting after tournament completion`);
+        this.initializePlayAgainVoting();
+        
+        // Clear any existing votes to start fresh
+        this.playAgainVotes.clear();
+        
+        console.log(`🗳️ Tournament finished! All players can now vote to play again.`);
+        console.log(`🗳️ Connected players eligible to vote: ${this.players.filter(p => p.isConnected).map(p => p.name).join(', ')}`);
+    }
+
+    getTournamentStatus() {
+        return {
+            active: this.tournamentActive,
+            currentRound: this.currentRound,
+            roundInProgress: this.roundInProgress,
+            activePlayers: this.activePlayers.length,
+            safeThisRound: this.safePlayersThisRound.length,
+            eliminatedThisRound: this.eliminatedThisRound.length,
+            winner: this.tournamentWinner ? { id: this.tournamentWinner.id, name: this.tournamentWinner.name } : null,
+            roundHistory: this.tournamentRounds
+        };
+    }
+
+    calculateTournamentStats() {
+        const totalTime = Date.now() - this.tournamentStartTime;
+        const totalRounds = this.tournamentRounds.length;
+        const totalPlayers = this.players.length;
+        
+        return {
+            totalTime,
+            totalRounds,
+            totalPlayers,
+            eliminationOrder: this.eliminatedPlayers.map((p, i) => ({
+                position: totalPlayers - i,
+                player: { id: p.id, name: p.name }
+            })),
+            winner: this.tournamentWinner ? { id: this.tournamentWinner.id, name: this.tournamentWinner.name } : null
+        };
     }
 
     endRound() {
@@ -1397,6 +1737,13 @@ class Game {
     }
 
     findCardInHand(hand, targetCard) {
+        // First try to find by unique ID if available
+        if (targetCard.id) {
+            const index = hand.findIndex(card => card.id === targetCard.id);
+            if (index !== -1) return index;
+        }
+        
+        // Fallback to suit/rank matching for backward compatibility
         return hand.findIndex(card => 
             card.suit === targetCard.suit && card.rank === targetCard.rank
         );
@@ -1458,6 +1805,22 @@ class Game {
         this.eliminatedPlayers = [];
         this.pendingTurnPass = null;
         this.playersWhoHaveDrawn = new Set();
+        
+        // Reset tournament-specific properties
+        this.tournamentActive = true;
+        this.currentRound = 1;
+        this.roundInProgress = true; // Start the tournament immediately
+        this.safePlayersThisRound = [];
+        this.eliminatedThisRound = [];
+        this.tournamentWinner = null;
+        this.tournamentRounds = [];
+        this.tournamentStartTime = Date.now();
+        
+        // Clear any existing tournament timers
+        if (this.nextRoundTimer) {
+            clearTimeout(this.nextRoundTimer);
+            this.nextRoundTimer = null;
+        }
 
         // Clear any existing auto pass timers
         for (const timer of this.autoPassTimers.values()) {
@@ -1578,23 +1941,55 @@ class Game {
         // Add the vote
         this.playAgainVotes.add(playerId);
         
+        // Only count connected players for voting - disconnected players are excluded
         const connectedPlayers = this.players.filter(p => p.isConnected);
+        const disconnectedPlayers = this.players.filter(p => !p.isConnected);
         const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
-        const allVoted = votedPlayers.length === connectedPlayers.length;
-        const creatorVoted = this.playAgainVotes.has(this.gameCreator);
+        const allConnectedVoted = votedPlayers.length === connectedPlayers.length;
+        const isCreatorDisconnected = disconnectedPlayers.some(p => p.id === this.gameCreator);
+        const creatorVoted = this.playAgainVotes.has(this.gameCreator); // This will be false if creator is disconnected
         
-        console.log(`🗳️ Vote status: ${votedPlayers.length}/${connectedPlayers.length} players voted`);
+        console.log(`🗳️ Vote status: ${votedPlayers.length}/${connectedPlayers.length} connected players voted`);
+        if (disconnectedPlayers.length > 0) {
+            console.log(`🗳️ Excluding ${disconnectedPlayers.length} disconnected players: ${disconnectedPlayers.map(p => p.name).join(', ')}`);
+        }
         console.log(`🗳️ Creator voted: ${creatorVoted}`);
-        console.log(`🗳️ All voted: ${allVoted}`);
+        console.log(`🗳️ All connected players voted: ${allConnectedVoted}`);
+        
+        // Handle edge case: no connected players
+        if (connectedPlayers.length === 0) {
+            return {
+                success: false,
+                error: 'No connected players to vote. Game cannot proceed.',
+                votedPlayers: [],
+                totalPlayers: 0,
+                disconnectedPlayers: disconnectedPlayers.length,
+                allVoted: false,
+                creatorVoted: false,
+                canStartGame: false,
+                gameCreator: this.gameCreator,
+                isCreatorDisconnected: isCreatorDisconnected,
+                connectedPlayers: [],
+                excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
+            };
+        }
+
+        // Can start game if all connected players voted AND creator voted
+        const canStartGame = allConnectedVoted && creatorVoted;
         
         return {
             success: true,
+            message: 'Vote added successfully',
             votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
             totalPlayers: connectedPlayers.length,
-            allVoted: allVoted,
+            disconnectedPlayers: disconnectedPlayers.length,
+            allVoted: allConnectedVoted,
             creatorVoted: creatorVoted,
-            canStartGame: allVoted && creatorVoted,
-            gameCreator: this.gameCreator
+            canStartGame: canStartGame,
+            gameCreator: this.gameCreator,
+            isCreatorDisconnected: isCreatorDisconnected,
+            connectedPlayers: connectedPlayers.map(p => ({ id: p.id, name: p.name })),
+            excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
         };
     }
 
@@ -1605,19 +2000,53 @@ class Game {
         this.initializePlayAgainVoting();
         this.playAgainVotes.delete(playerId);
         
+        // Only count connected players for voting - disconnected players are excluded
         const connectedPlayers = this.players.filter(p => p.isConnected);
+        const disconnectedPlayers = this.players.filter(p => !p.isConnected);
         const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
-        const allVoted = votedPlayers.length === connectedPlayers.length;
+        const allConnectedVoted = votedPlayers.length === connectedPlayers.length;
+        const isCreatorDisconnected = disconnectedPlayers.some(p => p.id === this.gameCreator);
         const creatorVoted = this.playAgainVotes.has(this.gameCreator);
+        
+        console.log(`🗳️ Vote removed. Status: ${votedPlayers.length}/${connectedPlayers.length} connected players voted`);
+        if (disconnectedPlayers.length > 0) {
+            console.log(`🗳️ Excluding ${disconnectedPlayers.length} disconnected players from vote count`);
+        }
+
+        // Handle edge case: no connected players
+        if (connectedPlayers.length === 0) {
+            return {
+                success: false,
+                error: 'No connected players to vote. Game cannot proceed.',
+                votedPlayers: [],
+                totalPlayers: 0,
+                disconnectedPlayers: disconnectedPlayers.length,
+                allVoted: false,
+                creatorVoted: false,
+                canStartGame: false,
+                gameCreator: this.gameCreator,
+                isCreatorDisconnected: isCreatorDisconnected,
+                connectedPlayers: [],
+                excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
+            };
+        }
+        
+        // Can start game if all connected players voted AND creator voted
+        const canStartGame = allConnectedVoted && creatorVoted;
         
         return {
             success: true,
+            message: 'Vote removed successfully',
             votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
             totalPlayers: connectedPlayers.length,
-            allVoted: allVoted,
+            disconnectedPlayers: disconnectedPlayers.length,
+            allVoted: allConnectedVoted,
             creatorVoted: creatorVoted,
-            canStartGame: allVoted && creatorVoted,
-            gameCreator: this.gameCreator
+            canStartGame: canStartGame,
+            gameCreator: this.gameCreator,
+            isCreatorDisconnected: isCreatorDisconnected,
+            connectedPlayers: connectedPlayers.map(p => ({ id: p.id, name: p.name })),
+            excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
         };
     }
 
@@ -1625,19 +2054,47 @@ class Game {
     getPlayAgainVotingStatus() {
         this.initializePlayAgainVoting();
         
+        // Only count connected players for voting - disconnected players are excluded
         const connectedPlayers = this.players.filter(p => p.isConnected);
+        const disconnectedPlayers = this.players.filter(p => !p.isConnected);
         const votedPlayers = connectedPlayers.filter(p => this.playAgainVotes.has(p.id));
-        const allVoted = votedPlayers.length === connectedPlayers.length;
+        const allConnectedVoted = votedPlayers.length === connectedPlayers.length;
+        const isCreatorDisconnected = disconnectedPlayers.some(p => p.id === this.gameCreator);
         const creatorVoted = this.playAgainVotes.has(this.gameCreator);
+
+        // Handle edge case: no connected players
+        if (connectedPlayers.length === 0) {
+            return {
+                success: false,
+                error: 'No connected players to vote. Game cannot proceed.',
+                votedPlayers: [],
+                totalPlayers: 0,
+                disconnectedPlayers: disconnectedPlayers.length,
+                allVoted: false,
+                creatorVoted: false,
+                canStartGame: false,
+                gameCreator: this.gameCreator,
+                isCreatorDisconnected: isCreatorDisconnected,
+                connectedPlayers: [],
+                excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
+            };
+        }
+        
+        // Can start game if all connected players voted AND creator voted
+        const canStartGame = allConnectedVoted && creatorVoted;
         
         return {
+            success: true,
             votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
             totalPlayers: connectedPlayers.length,
-            allVoted: allVoted,
+            disconnectedPlayers: disconnectedPlayers.length,
+            allVoted: allConnectedVoted,
             creatorVoted: creatorVoted,
-            canStartGame: allVoted && creatorVoted,
+            canStartGame: canStartGame,
             gameCreator: this.gameCreator,
-            connectedPlayers: connectedPlayers.map(p => ({ id: p.id, name: p.name }))
+            isCreatorDisconnected: isCreatorDisconnected,
+            connectedPlayers: connectedPlayers.map(p => ({ id: p.id, name: p.name })),
+            excludedPlayers: disconnectedPlayers.map(p => ({ id: p.id, name: p.name, reason: 'disconnected' }))
         };
     }
 

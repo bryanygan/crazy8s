@@ -5,7 +5,7 @@ const Game = require('../models/game');
 // Start a new game
 exports.startGame = (req, res) => {
     try {
-        const { playerIds, playerNames } = req.body;
+        const { playerIds, playerNames, requesterId } = req.body;
         
         if (!playerIds || !playerNames || playerIds.length < 2) {
             return res.status(400).json({ 
@@ -14,7 +14,23 @@ exports.startGame = (req, res) => {
             });
         }
 
-        const newGame = new Game(playerIds, playerNames);
+        if (!requesterId) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Requester ID is required' 
+            });
+        }
+
+        const newGame = new Game(playerIds, playerNames, requesterId);
+        
+        // Check if the requester is the game creator
+        if (newGame.gameCreator !== requesterId) {
+            return res.status(403).json({
+                success: false,
+                error: 'Only the lobby creator can start the game'
+            });
+        }
+        
         Game.addGame(newGame);
         
         const startResult = newGame.startGame();
@@ -278,6 +294,127 @@ exports.passTurnAfterDraw = (req, res) => {
         res.status(500).json({ 
             success: false, 
             error: 'Failed to pass turn: ' + error.message 
+        });
+    }
+};
+
+// Add play again vote
+exports.addPlayAgainVote = (req, res) => {
+    try {
+        const { gameId, playerId } = req.body;
+        
+        if (!gameId || !playerId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Game ID and player ID are required'
+            });
+        }
+
+        const game = Game.findById(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Game not found' 
+            });
+        }
+
+        const result = game.addPlayAgainVote(playerId);
+        
+        if (result.success) {
+            res.status(200).json({ 
+                success: true,
+                message: 'Vote added successfully', 
+                votingStatus: result
+            });
+        } else {
+            res.status(400).json({ 
+                success: false,
+                error: result.error 
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to add play again vote: ' + error.message 
+        });
+    }
+};
+
+// Remove play again vote
+exports.removePlayAgainVote = (req, res) => {
+    try {
+        const { gameId, playerId } = req.body;
+        
+        if (!gameId || !playerId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Game ID and player ID are required'
+            });
+        }
+
+        const game = Game.findById(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Game not found' 
+            });
+        }
+
+        const result = game.removePlayAgainVote(playerId);
+        
+        if (result.success) {
+            res.status(200).json({ 
+                success: true,
+                message: 'Vote removed successfully', 
+                votingStatus: result
+            });
+        } else {
+            res.status(400).json({ 
+                success: false,
+                error: result.error 
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to remove play again vote: ' + error.message 
+        });
+    }
+};
+
+// Get play again voting status
+exports.getPlayAgainVotingStatus = (req, res) => {
+    try {
+        const { gameId } = req.params;
+        
+        if (!gameId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Game ID is required'
+            });
+        }
+
+        const game = Game.findById(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Game not found' 
+            });
+        }
+
+        const status = game.getPlayAgainVotingStatus();
+        
+        res.status(200).json({ 
+            success: true,
+            votingStatus: status
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to get voting status: ' + error.message 
         });
     }
 };
