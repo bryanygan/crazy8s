@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 import CardSortingPreferences from './CardSortingPreferences';
+import ToastContainer from './ToastContainer';
+import useToast from '../hooks/useToast';
 import {
   validateCardStackFrontend,
   canStackCardsFrontend
@@ -736,7 +738,7 @@ const SuitSelector = ({ onSuitSelect, onCancel }) => {
   );
 };
 
-const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) => {
+const Settings = ({ isOpen, onClose, settings, onSettingsChange, onAddToast }) => {
   if (!isOpen) return null;
 
   const handleSettingChange = (key, value) => {
@@ -872,13 +874,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
                 boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
               }}
               onShowToast={(message, type) => {
-                const toast = {
-                  id: Date.now(),
-                  message,
-                  type: type || 'info',
-                  timestamp: Date.now()
-                };
-                setToasts(prev => [...prev, toast]);
+                onAddToast(message, type);
               }}
             />
           )}
@@ -1107,152 +1103,6 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
           </button>
         </div>
       </div>
-    </div>
-  );
-};
-
-const ToastContainer = ({ toasts, onRemoveToast }) => {
-  return (
-    <div style={{
-      position: 'fixed',
-      top: '20px',
-      right: '20px',
-      zIndex: 2500,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '10px',
-      maxWidth: '300px'
-    }}>
-      {toasts.map((toast, index) => (
-        <Toast
-          key={toast.id}
-          toast={toast}
-          index={index}
-          onClose={() => onRemoveToast(toast.id)}
-        />
-      ))}
-    </div>
-  );
-};
-
-const Toast = ({ toast, index, onClose }) => {
-  const [isExiting, setIsExiting] = useState(false);
-  const timerRef = useRef(null);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    // Create a stable reference to onClose to prevent timer resets
-    const stableOnClose = () => {
-      console.log(`🍞 Auto-closing toast: ${toast.message}`);
-      setIsExiting(true);
-      setTimeout(() => {
-        onClose();
-      }, 300);
-    };
-
-    // Auto-close timer with stable reference
-    timerRef.current = setTimeout(stableOnClose, 4000);
-    
-    console.log(`🍞 Toast timer started for: ${toast.message}`);
-
-    return () => {
-      if (timerRef.current) {
-        console.log(`🍞 Toast timer cleared for: ${toast.message}`);
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast.id]); // ONLY depend on toast.id, NOT onClose
-
-  const handleManualClose = () => {
-    console.log(`🍞 Manual close toast: ${toast.message}`);
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setIsExiting(true);
-    setTimeout(() => {
-      onClose();
-    }, 300);
-  };
-
-  const getBackgroundColor = () => {
-    switch (toast.type) {
-      case 'success': return '#27ae60';
-      case 'error': return '#e74c3c';
-      case 'info': return '#3498db';
-      default: return '#95a5a6';
-    }
-  };
-
-  const getTransform = () => {
-    if (isExiting) {
-      return 'translateX(100%) scale(0.8)';
-    }
-    return `translateY(${index * 5}px) scale(${1 - index * 0.05})`;
-  };
-
-  const getOpacity = () => {
-    if (isExiting) return 0;
-    return Math.max(0.3, 1 - index * 0.15);
-  };
-
-  const getZIndex = () => {
-    return 2500 - index;
-  };
-
-  return (
-    <div 
-      style={{
-        padding: '15px 20px',
-        backgroundColor: getBackgroundColor(),
-        color: '#fff',
-        borderRadius: '8px',
-        boxShadow: `0 ${4 + index * 2}px ${8 + index * 4}px rgba(0,0,0,${0.2 + index * 0.1})`,
-        fontSize: '14px',
-        cursor: 'pointer',
-        transform: getTransform(),
-        opacity: getOpacity(),
-        zIndex: getZIndex(),
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        transformOrigin: 'top right',
-        position: 'relative',
-        overflow: 'hidden',
-        border: index === 0 ? '2px solid rgba(255,255,255,0.3)' : 'none'
-      }}
-      onClick={handleManualClose}
-    >
-      {/* Progress bar for the newest notification */}
-      {index === 0 && !isExiting && (
-        <div style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          height: '3px',
-          backgroundColor: 'rgba(255,255,255,0.5)',
-          animation: 'progressBar 4s linear forwards',
-          borderRadius: '0 0 6px 6px'
-        }} />
-      )}
-      
-      {/* Stack indicator for older notifications */}
-      {index > 0 && (
-        <div style={{
-          position: 'absolute',
-          top: '8px',
-          right: '8px',
-          fontSize: '10px',
-          backgroundColor: 'rgba(0,0,0,0.3)',
-          padding: '2px 6px',
-          borderRadius: '10px',
-          fontWeight: 'bold'
-        }}>
-          +{index}
-        </div>
-      )}
-      
-      {toast.message}
     </div>
   );
 };
@@ -1889,7 +1739,7 @@ const App = () => {
   const [selectedCards, setSelectedCards] = useState([]);
   const [showSuitSelector, setShowSuitSelector] = useState(false);
   const [validCards, setValidCards] = useState([]);
-  const [toasts, setToasts] = useState([]);
+  const { toasts, addToast, removeToast, clearToasts } = useToast();
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState({
     sortByRank: false,
@@ -2025,30 +1875,7 @@ const App = () => {
   const lastSkipTimeRef = useRef(0);
   const [isSkipping, setIsSkipping] = useState(false);
 
-  const addToast = (message, type = 'info') => {
-    const newToast = {
-      id: Date.now() + Math.random(),
-      message,
-      type,
-      timestamp: Date.now()
-    };
-
-    setToasts(prevToasts => {
-      const newToasts = [newToast, ...prevToasts];
-      
-      // If we have more than 3 toasts, remove the oldest ones
-      if (newToasts.length > 3) {
-        return newToasts.slice(0, 3);
-      }
-      
-      return newToasts;
-    });
-  };
-
-  const removeToast = useCallback((toastId) => {
-  console.log(`🗑️ Removing toast with ID: ${toastId}`);
-  setToasts(prevToasts => prevToasts.filter(toast => toast.id !== toastId));
-}, []);
+  // Toast helpers provided by useToast hook
 
     // Play again voting
   const [playAgainVotes, setPlayAgainVotes] = useState({
@@ -2278,7 +2105,7 @@ useEffect(() => {
     console.log('🔌 Connected to server with ID:', newSocket.id);
     // Set playerId to the socket ID
     setPlayerId(newSocket.id);
-    removeToast();
+    clearToasts();
   });
 
   newSocket.on('connect_success', (data) => {
@@ -3768,12 +3595,12 @@ const handleStartNewGame = () => {
       />
 
       {/* Settings Modal */}
-      <Settings 
+      <Settings
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
         settings={settings}
         onSettingsChange={handleSettingsChange}
-        setToasts={setToasts}
+        onAddToast={addToast}
       />
 
       {/* Tournament Modals */}
