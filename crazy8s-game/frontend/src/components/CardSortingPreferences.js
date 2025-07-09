@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 
 const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast }) => {
@@ -20,41 +20,15 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
         return settings.cardSortingPreferences?.groupNormalNumbers || false;
     });
 
+    // Include 8 in group option state (default to false)
+    const [includeEightInGroup, setIncludeEightInGroup] = useState(() => {
+        return settings.cardSortingPreferences?.includeEightInGroup || false;
+    });
+
+    // Force re-render key for drag-drop context
+    const [dndKey, setDndKey] = useState(0);
+
     const ITEMS_PER_ROW = 13; // All cards in one row
-
-    // Normal numbers that can be grouped (excluding 8 which is wild)
-    const normalNumbers = ['3', '4', '5', '6', '7', '9', '10'];
-
-    // Create grouped or individual items based on setting
-    const getDisplayItems = () => {
-        if (!groupNormalNumbers) {
-            return rankOrder.map(rank => ({ type: 'individual', rank, id: rank }));
-        }
-
-        const items = [];
-        let i = 0;
-        while (i < rankOrder.length) {
-            const currentRank = rankOrder[i];
-            
-            if (normalNumbers.includes(currentRank)) {
-                // Find all consecutive normal numbers
-                const group = [];
-                while (i < rankOrder.length && normalNumbers.includes(rankOrder[i])) {
-                    group.push(rankOrder[i]);
-                    i++;
-                }
-                items.push({ 
-                    type: 'group', 
-                    ranks: group, 
-                    id: `group-${group.join('-')}` // Remove timestamp for stability
-                });
-            } else {
-                items.push({ type: 'individual', rank: currentRank, id: currentRank });
-                i++;
-            }
-        }
-        return items;
-    };
 
     // Convert display items back to rank order
     const getRankOrderFromItems = (items) => {
@@ -78,7 +52,6 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
             return;
         }
 
-        const displayItems = getDisplayItems();
         const newDisplayItems = [...displayItems];
         const [moved] = newDisplayItems.splice(source.index, 1);
         newDisplayItems.splice(destination.index, 0, moved);
@@ -97,7 +70,8 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
             ...settings,
             cardSortingPreferences: {
                 customRankOrder: newRankOrder,
-                groupNormalNumbers: groupNormalNumbers
+                groupNormalNumbers: groupNormalNumbers,
+                includeEightInGroup: includeEightInGroup
             }
         };
         onSettingsChange(updatedSettings);
@@ -107,6 +81,7 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
     const resetToDefaults = () => {
         setRankOrder(defaultRankOrder);
         setGroupNormalNumbers(false);
+        setIncludeEightInGroup(false);
         updateSettings(defaultRankOrder);
         onShowToast('Card order reset to defaults', 'info');
     };
@@ -121,19 +96,38 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
             ...settings,
             cardSortingPreferences: {
                 customRankOrder: rankOrder,
-                groupNormalNumbers: newGrouping
+                groupNormalNumbers: newGrouping,
+                includeEightInGroup: includeEightInGroup
             }
         };
         onSettingsChange(updatedSettings);
         onShowToast(newGrouping ? 'Normal numbers grouped together' : 'Normal numbers ungrouped', 'success');
+        
+        // Force re-render of drag-drop context after state update
+        setTimeout(() => setDndKey(prev => prev + 1), 0);
     };
 
-    // Force re-render when grouping changes to prevent duplicates
-    useEffect(() => {
-        // This effect ensures the display items are recalculated when grouping changes
-        // The key is to force a re-render by updating the state
-        setRankOrder(prev => [...prev]);
-    }, [groupNormalNumbers]);
+    // Handle include 8 toggle
+    const handleIncludeEightToggle = () => {
+        const newIncludeEight = !includeEightInGroup;
+        setIncludeEightInGroup(newIncludeEight);
+        
+        // Update settings with new include 8 preference
+        const updatedSettings = {
+            ...settings,
+            cardSortingPreferences: {
+                customRankOrder: rankOrder,
+                groupNormalNumbers: groupNormalNumbers,
+                includeEightInGroup: newIncludeEight
+            }
+        };
+        onSettingsChange(updatedSettings);
+        onShowToast(newIncludeEight ? '8 included in group' : '8 excluded from group', 'success');
+        
+        // Force re-render of drag-drop context after state update
+        setTimeout(() => setDndKey(prev => prev + 1), 0);
+    };
+
 
     // Get card display properties
     const getCardDisplayInfo = (rank) => {
@@ -155,7 +149,42 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
         return cardInfo[rank] || { display: rank, description: rank, color: '#95a5a6' };
     };
 
-    const displayItems = getDisplayItems();
+    const displayItems = useMemo(() => {
+        // Normal numbers that can be grouped (dynamically includes/excludes 8)
+        const normalNumbers = includeEightInGroup ? ['3', '4', '5', '6', '7', '8', '9', '10'] : ['3', '4', '5', '6', '7', '9', '10'];
+        
+        if (!groupNormalNumbers) {
+            return rankOrder.map(rank => ({ type: 'individual', rank, id: rank }));
+        }
+
+        const items = [];
+        let groupCreated = false;
+        let i = 0;
+        
+        while (i < rankOrder.length) {
+            const currentRank = rankOrder[i];
+            
+            if (normalNumbers.includes(currentRank)) {
+                if (!groupCreated) {
+                    // Create the group with ALL normal numbers from rankOrder
+                    const allNormalNumbersInOrder = rankOrder.filter(rank => normalNumbers.includes(rank));
+                    items.push({ 
+                        type: 'group', 
+                        ranks: allNormalNumbersInOrder, 
+                        id: `group-normal-numbers`,
+                        includesEight: includeEightInGroup
+                    });
+                    groupCreated = true;
+                }
+                // Skip this rank since it's already in the group
+                i++;
+            } else {
+                items.push({ type: 'individual', rank: currentRank, id: currentRank });
+                i++;
+            }
+        }
+        return items;
+    }, [rankOrder, groupNormalNumbers, includeEightInGroup]);
 
     return (
         <div style={{
@@ -226,6 +255,38 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
                         </label>
                     </div>
 
+                    {/* Include 8 in Group Toggle - only show when grouping is enabled */}
+                    {groupNormalNumbers && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: theme.spacing.small,
+                            backgroundColor: 'rgba(155, 89, 182, 0.05)',
+                            border: '1px solid rgba(155, 89, 182, 0.2)',
+                            borderRadius: theme.borderRadius,
+                            marginBottom: theme.spacing.medium,
+                            marginLeft: theme.spacing.medium
+                        }}>
+                            <div>
+                                <div style={{ fontWeight: 'bold', fontSize: '14px', color: theme.colors.text }}>
+                                    Include 8 in Group
+                                </div>
+                                <div style={{ fontSize: '12px', color: theme.colors.secondary }}>
+                                    Include the wild 8 card in the 3-10 group
+                                </div>
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={includeEightInGroup}
+                                    onChange={handleIncludeEightToggle}
+                                    style={{ marginRight: '8px', transform: 'scale(1.2)' }}
+                                />
+                            </label>
+                        </div>
+                    )}
+
                     {/* Instructions */}
                     <div style={{
                         backgroundColor: 'rgba(245, 166, 35, 0.1)',
@@ -242,7 +303,7 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
                             <li>Cards will appear in your hand in the order you set here</li>
                             <li>Changes apply instantly when sorting by rank is enabled</li>
                             {groupNormalNumbers && (
-                                <li><strong>Grouping enabled:</strong> Numbers 3-10 are grouped together</li>
+                                <li><strong>Grouping enabled:</strong> Numbers 3-10 are grouped together{includeEightInGroup ? ' (including 8)' : ' (excluding 8)'}</li>
                             )}
                         </ul>
                     </div>
@@ -261,13 +322,12 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
                         </div>
 
                         {/* Card Grid */}
-                        <DragDropContext onDragEnd={onDragEnd}>
+                        <DragDropContext onDragEnd={onDragEnd} key={`dnd-${dndKey}`}>
                             <Droppable droppableId="rankOrder" direction="horizontal">
                                 {(provided) => (
                                     <div
                                         {...provided.droppableProps}
                                         ref={provided.innerRef}
-                                        key={`droppable-${groupNormalNumbers}`} // Force re-render when grouping changes
                                         style={{ 
                                             display: groupNormalNumbers ? 'flex' : 'grid',
                                             flexWrap: groupNormalNumbers ? 'nowrap' : 'nowrap',
