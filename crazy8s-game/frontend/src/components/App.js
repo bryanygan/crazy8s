@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 import CardSortingPreferences from './CardSortingPreferences';
 import {
-  simulateTurnControlFrontend,
   validateCardStackFrontend,
   canStackCardsFrontend
 } from '../utils/cardValidation';
