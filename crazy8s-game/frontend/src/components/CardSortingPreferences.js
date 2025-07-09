@@ -46,7 +46,7 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
                 items.push({ 
                     type: 'group', 
                     ranks: group, 
-                    id: `group-${group.join('-')}-${Date.now()}` // Add timestamp for uniqueness
+                    id: `group-${group.join('-')}` // Remove timestamp for stability
                 });
             } else {
                 items.push({ type: 'individual', rank: currentRank, id: currentRank });
@@ -267,6 +267,7 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
                                     <div
                                         {...provided.droppableProps}
                                         ref={provided.innerRef}
+                                        key={`droppable-${groupNormalNumbers}`} // Force re-render when grouping changes
                                         style={{ 
                                             display: groupNormalNumbers ? 'flex' : 'grid',
                                             flexWrap: groupNormalNumbers ? 'nowrap' : 'nowrap',
@@ -314,10 +315,10 @@ const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast
                                                                 {/* Drag Handle */}
                                                                 <div style={{
                                                                     position: 'absolute',
-                                                                    top: '4px',
-                                                                    right: '4px',
+                                                                    top: '2px',
+                                                                    right: '2px',
                                                                     color: theme.colors.secondary,
-                                                                    fontSize: '12px',
+                                                                    fontSize: '10px',
                                                                     cursor: 'grab'
                                                                 }}>
                                                                     ⋮⋮

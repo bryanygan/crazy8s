@@ -155,7 +155,7 @@ io.on('connection', (socket) => {
             }
 
             // Create new game with this player
-            const game = new Game([socket.id], [playerName]);
+            const game = new Game([socket.id], [playerName], socket.id);
             Game.addGame(game);
             game.onAutoPass = (playerId) => {
                 const player = game.getPlayerById(playerId);
@@ -194,7 +194,7 @@ io.on('connection', (socket) => {
                 startingCard: `${startingCard.rank} of ${startingCard.suit}`
             });
 
-            const game = new Game(playerIds, playerNames);
+            const game = new Game(playerIds, playerNames, playerIds[0]);
             game.debugMode = debugMode;
             Game.addGame(game);
             game.onAutoPass = (playerId) => {
