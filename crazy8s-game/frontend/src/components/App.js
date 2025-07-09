@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
+import CardSortingPreferences from './CardSortingPreferences';
 
 // Confetti function for celebrations
 
@@ -505,12 +506,14 @@ const canCounterDrawFrontend = (card, topCard) => {
 };
 
 const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, settings = {} }) => {
-  
 
   // Helper function to get rank value for sorting
   const getRankValue = (rank) => {
-    const rankOrder = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace'];
-    return rankOrder.indexOf(rank);
+    // Use custom rank order from settings if available
+    const rankOrder = settings.cardSortingPreferences?.customRankOrder || 
+                      ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace'];
+    const index = rankOrder.indexOf(rank);
+    return index === -1 ? rankOrder.length : index; // Place unknown cards at the end
   };
 
   // Helper function to get suit order
@@ -519,33 +522,40 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
     return suitOrder.indexOf(suit);
   };
 
-  // Sort and group cards based on settings
+  // Updated card organizing function
   const organizeCards = () => {
     let organizedCards = [...cards];
-
+    
+    // Sort by rank if enabled
     if (settings.sortByRank) {
       organizedCards.sort((a, b) => {
         const rankA = getRankValue(a.rank);
         const rankB = getRankValue(b.rank);
-        if (rankA !== rankB) return rankA - rankB;
-        // If same rank, sort by suit
+        
+        if (rankA !== rankB) {
+          return rankA - rankB;
+        }
+        
+        // If ranks are the same, sort by suit as a tiebreaker
         return getSuitValue(a.suit) - getSuitValue(b.suit);
       });
     }
-
+    
+    // Group by suit if enabled (applied after rank sorting)
     if (settings.groupBySuit) {
       organizedCards.sort((a, b) => {
         const suitA = getSuitValue(a.suit);
         const suitB = getSuitValue(b.suit);
-        if (suitA !== suitB) return suitA - suitB;
-        // If same suit, sort by rank if enabled
-        if (settings.sortByRank) {
-          return getRankValue(a.rank) - getRankValue(b.rank);
+        
+        if (suitA !== suitB) {
+          return suitA - suitB;
         }
-        return 0;
+        
+        // If suits are the same, maintain the rank order established above
+        return getRankValue(a.rank) - getRankValue(b.rank);
       });
     }
-
+    
     return organizedCards;
   };
 
@@ -912,7 +922,7 @@ const SuitSelector = ({ onSuitSelect, onCancel }) => {
   );
 };
 
-const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
+const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) => {
   if (!isOpen) return null;
 
   const handleSettingChange = (key, value) => {
@@ -1023,6 +1033,41 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange }) => {
               />
             </label>
           </div>
+          
+          {/* Card Sorting Preferences - Only show when Sort by Rank is enabled */}
+          {settings.sortByRank && (
+            <CardSortingPreferences
+              settings={settings}
+              onSettingsChange={onSettingsChange}
+              theme={{
+                colors: {
+                  background: '#fff',
+                  text: '#2c3e50',
+                  secondary: '#6c757d',
+                  border: '#dee2e6',
+                  success: '#27ae60',
+                  error: '#e74c3c',
+                  info: '#3498db'
+                },
+                spacing: {
+                  small: '8px',
+                  medium: '16px',
+                  large: '24px'
+                },
+                borderRadius: '8px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              }}
+              onShowToast={(message, type) => {
+                const toast = {
+                  id: Date.now(),
+                  message,
+                  type: type || 'info',
+                  timestamp: Date.now()
+                };
+                setToasts(prev => [...prev, toast]);
+              }}
+            />
+          )}
         </div>
 
         {/* Gameplay Settings */}
@@ -3914,6 +3959,7 @@ const handleStartNewGame = () => {
         onClose={() => setShowSettings(false)}
         settings={settings}
         onSettingsChange={handleSettingsChange}
+        setToasts={setToasts}
       />
 
       {/* Tournament Modals */}
