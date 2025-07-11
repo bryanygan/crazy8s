@@ -1,0 +1,127 @@
+name: Socket Reconnection Tests
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'crazy8s-game/backend/src/socket.js'
+      - 'crazy8s-game/backend/src/stores/SessionStore.js'
+      - 'crazy8s-game/backend/src/utils/connectionHandler.js'
+      - 'crazy8s-game/backend/src/utils/socketValidator.js'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crazy8s-game/backend/src/socket.js'
+      - 'crazy8s-game/backend/src/stores/SessionStore.js'
+      - 'crazy8s-game/backend/src/utils/connectionHandler.js'
+      - 'crazy8s-game/backend/src/utils/socketValidator.js'
+
+jobs:
+  socket-reconnection-tests:
+    runs-on: ubuntu-latest
+    
+    services:
+      # Start backend server for testing
+      backend:
+        image: node:18
+        ports:
+          - 5001:5001
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-secret-key-for-ci
+          
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: crazy8s-game/backend/package-lock.json
+        
+    - name: Install backend dependencies
+      working-directory: crazy8s-game/backend
+      run: npm ci
+      
+    - name: Start backend server in background
+      working-directory: crazy8s-game/backend
+      run: |
+        npm start &
+        sleep 10 # Wait for server to start
+        
+    - name: Wait for server to be ready
+      run: |
+        timeout 30 bash -c 'until curl -f http://localhost:5001/health; do sleep 1; done'
+        
+    - name: Run basic reconnection tests
+      working-directory: crazy8s-game/backend
+      run: node test-reconnection.js
+      timeout-minutes: 5
+      
+    - name: Run socket stress tests
+      working-directory: crazy8s-game/backend
+      run: node src/tests/socketStressTest.js
+      timeout-minutes: 10
+      
+    - name: Run extended reconnection scenarios
+      working-directory: crazy8s-game/backend
+      run: |
+        # Test rapid reconnection cycles
+        for i in {1..5}; do
+          echo "Running reconnection cycle $i"
+          node -e "
+            const StressTest = require('./src/tests/socketStressTest');
+            const test = new StressTest();
+            test.testRapidConnectionChurn().then(() => process.exit(0)).catch(() => process.exit(1));
+          "
+        done
+      timeout-minutes: 15
+      
+    - name: Generate test report
+      if: always()
+      working-directory: crazy8s-game/backend
+      run: |
+        echo "## Socket Reconnection Test Results" > test-report.md
+        echo "$(date): Test run completed" >> test-report.md
+        echo "" >> test-report.md
+        
+        # Check for common error patterns in logs
+        if grep -q "undefined.*socket" *.log 2>/dev/null; then
+          echo "❌ **Critical**: Undefined socket errors detected" >> test-report.md
+          grep "undefined.*socket" *.log >> test-report.md
+        else
+          echo "✅ No undefined socket errors detected" >> test-report.md
+        fi
+        
+        if grep -q "race.*condition" *.log 2>/dev/null; then
+          echo "❌ **Critical**: Race condition warnings detected" >> test-report.md
+          grep "race.*condition" *.log >> test-report.md
+        else
+          echo "✅ No race condition warnings detected" >> test-report.md
+        fi
+        
+    - name: Upload test report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: socket-test-report
+        path: crazy8s-game/backend/test-report.md
+        
+    - name: Comment on PR
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const reportPath = 'crazy8s-game/backend/test-report.md';
+          if (fs.existsSync(reportPath)) {
+            const report = fs.readFileSync(reportPath, 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Socket Reconnection Test Results\n\n${report}`
+            });
+          }

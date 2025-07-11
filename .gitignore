@@ -202,3 +202,161 @@ screenshots/
 # Performance monitoring
 *.heapsnapshot
 *.cpuprofile
+
+# Claude AI workspace and development files (NEVER commit these)
+claude-workspace/
+.claude/
+*.claude-*
+.claude-*
+claude-*
+**/claude-workspace/
+**/.claude/
+.anthropic/
+anthropic-*
+
+# AI Development artifacts
+ai-workspace/
+llm-workspace/
+ai-dev/
+.ai-*
+
+# Session and authentication related files
+sessions/
+auth-sessions/
+*.session
+
+# Log files (additional patterns)
+*.log.*
+backend.log
+frontend.log
+server.log
+auth.log
+socket.log
+
+# Test and development files
+*.test.js
+*.spec.js
+test-*.http
+*.test.json
+__tests__/
+test-results/
+
+# IDE and editor specific files
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+.vscode/extensions.json
+*.sublime-project
+*.sublime-workspace
+
+# Runtime and temporary files
+*.tmp
+*.temp
+.cache/
+.temp/
+temp/
+tmp/
+
+# Authentication development files
+.env.test
+.env.dev
+.env.backup
+
+# Socket.io and session storage
+socket-sessions/
+.socket-cache/
+
+# Development databases and storage
+dev.db
+test.db
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Monitoring and analytics
+analytics/
+metrics/
+monitoring/
+
+# Security and audit files
+security-audit.json
+vulnerability-report.json
+audit-results.json
+
+# Additional cache directories
+.eslintcache
+.stylelintcache
+.next/
+.nuxt/
+.vuepress/dist
+
+# Error dumps and core files
+core.*
+crash-*.log
+error-*.log
+
+# Development utilities
+dev-utils/
+debug-*
+*.debug
+
+# Archive and backup files from development
+*.backup.*
+*.bak.*
+backup-*/
+archives/
+
+# Development and testing artifacts that should NEVER be committed
+test-output/
+debug-output/
+*.debug.log
+debug-*/
+test-data/
+mock-data/
+fixtures/
+samples/
+
+# Package manager artifacts
+package-lock.json.bak
+yarn.lock.bak
+pnpm-lock.yaml
+
+# Development databases and local storage
+*.db-journal
+*.db-wal
+local-storage/
+user-data/
+
+# Runtime and process files
+*.pid
+*.lock
+pids/
+run/
+
+# Editor and IDE workspace files (additional)
+*.code-workspace
+.history/
+.vscode-test/
+
+# OS and system files (comprehensive)
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Development tools output
+eslint-report.html
+jest-report.html
+coverage-report/
+
+# Test files and execution reports
+test-execution-report-*.json
+test-execution-results.js
+test-reconnection*.js
+test-validation-report-*.json
+test-connection-fix.js
+
+# Local database directory
+database/

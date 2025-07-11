@@ -1,7 +1,70 @@
-# Crazy 8's Game Backend
+# Crazy 8's Backend
+
+🎮 **Node.js/Express backend for the Crazy 8's multiplayer card game with Socket.IO, MongoDB/PostgreSQL support, and comprehensive user management.**
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js 16+ and npm 8+
+- MongoDB 4.4+ OR PostgreSQL 12+
+- Git
+
+### Installation
+
+1. **Clone and navigate to backend**:
+   ```bash
+   git clone https://github.com/bryanygan/crazy8s.git
+   cd crazy8s/crazy8s-game/backend
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+3. **Configure environment**:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your database settings
+   ```
+
+4. **Set up database** (choose one):
+   
+   **For MongoDB:**
+   ```bash
+   export DB_TYPE=mongodb
+   export MONGODB_URI=mongodb://localhost:27017/crazy8s
+   npm run db:setup:mongodb
+   ```
+   
+   **For PostgreSQL:**
+   ```bash
+   export DB_TYPE=postgresql
+   export DB_HOST=localhost
+   export DB_NAME=crazy8s
+   export DB_USER=postgres
+   export DB_PASSWORD=your_password
+   npm run db:setup:postgresql
+   ```
+
+5. **Start the server**:
+   ```bash
+   npm run dev  # Development with auto-reload
+   npm start    # Production
+   ```
+
+## 🏗️ Architecture
+
+### Core Technologies
+- **Express.js** - Web framework with security middleware
+- **Socket.IO** - Real-time multiplayer communication
+- **MongoDB + Mongoose** OR **PostgreSQL + Sequelize** - Database layer
+- **Winston** - Structured logging
+- **bcrypt** - Password hashing (12 rounds)
+- **JWT** - Authentication tokens
 
 ## Overview
-This is the backend for the Crazy 8's game, built using Node.js, Express, and Socket.IO. The backend handles **advanced sequential card stacking logic**, sophisticated turn control simulation, multi-stage validation, player interactions, and real-time communication between players.
+This is the backend for the Crazy 8's game, built using Node.js, Express, and Socket.IO. The backend now includes **database integration**, **user management**, **persistent game history**, and **advanced sequential card stacking logic** with sophisticated turn control simulation and multi-stage validation.
 
 ## Architecture Overview
 

@@ -788,8 +788,15 @@ class Game {
             
             // Apply draw effects if any
             if (totalDrawEffect > 0) {
-                this.drawStack += totalDrawEffect;
-                console.log(`🎮 Added ${totalDrawEffect} to draw stack, total: ${this.drawStack}`);
+                const MAX_DRAW_STACK = 200; // Cap to prevent extreme scenarios
+                const previousStack = this.drawStack;
+                this.drawStack = Math.min(this.drawStack + totalDrawEffect, MAX_DRAW_STACK);
+                
+                if (this.drawStack === MAX_DRAW_STACK && previousStack + totalDrawEffect > MAX_DRAW_STACK) {
+                    console.log(`🎮 Draw stack capped at maximum ${MAX_DRAW_STACK} cards (would have been ${previousStack + totalDrawEffect})`);
+                } else {
+                    console.log(`🎮 Added ${totalDrawEffect} to draw stack, total: ${this.drawStack}`);
+                }
             }
             
             // Handle wild card suit declaration
@@ -934,8 +941,15 @@ class Game {
 
         // Apply draw effects
         if (totalDrawEffect > 0) {
-            this.drawStack += totalDrawEffect;
-            console.log(`🎮 Added ${totalDrawEffect} to draw stack, total: ${this.drawStack}`);
+            const MAX_DRAW_STACK = 200; // Cap to prevent extreme scenarios
+            const previousStack = this.drawStack;
+            this.drawStack = Math.min(this.drawStack + totalDrawEffect, MAX_DRAW_STACK);
+            
+            if (this.drawStack === MAX_DRAW_STACK && previousStack + totalDrawEffect > MAX_DRAW_STACK) {
+                console.log(`🎮 Draw stack capped at maximum ${MAX_DRAW_STACK} cards (would have been ${previousStack + totalDrawEffect})`);
+            } else {
+                console.log(`🎮 Added ${totalDrawEffect} to draw stack, total: ${this.drawStack}`);
+            }
         }
 
         // Handle wild card suit declaration
@@ -1102,30 +1116,44 @@ class Game {
             }
         }
 
-        // If we STILL need cards, add a new deck
-        if (cardsStillNeeded > 0) {
-            console.log(`  🆕 Adding new deck - still need ${cardsStillNeeded} cards`);
+        // If we STILL need cards, add new decks until we have enough
+        const maxDecksToAdd = 10; // Safety limit to prevent infinite loops
+        let decksAdded = 0;
+        
+        while (cardsStillNeeded > 0 && decksAdded < maxDecksToAdd) {
+            console.log(`  🆕 Adding new deck #${decksAdded + 1} - still need ${cardsStillNeeded} cards`);
             const newCardsAdded = this.addNewDeck();
-            newDeckMessage = `A new deck has been shuffled in due to high card demand! (+${newCardsAdded} cards)`;
+            decksAdded++;
             
-            // Draw the remaining needed cards from the new deck
-            while (cardsStillNeeded > 0 && this.drawPile.length > 0) {
+            if (decksAdded === 1) {
+                newDeckMessage = `A new deck has been shuffled in due to high card demand! (+${newCardsAdded} cards)`;
+            } else {
+                newDeckMessage = `${decksAdded} new decks have been shuffled in due to extreme card demand! (+${newCardsAdded * decksAdded} cards total)`;
+            }
+            
+            // Draw as many cards as we can from the new deck
+            const cardsToDrawFromNewDeck = Math.min(cardsStillNeeded, this.drawPile.length);
+            for (let i = 0; i < cardsToDrawFromNewDeck; i++) {
                 const card = this.drawPile.pop();
                 player.hand.push(card);
                 drawnCards.push(card);
                 cardsStillNeeded--;
             }
             
-            console.log(`  Drew final ${actualDrawCount - cardsStillNeeded} cards from new deck`);
+            console.log(`  Drew ${cardsToDrawFromNewDeck} cards from new deck #${decksAdded}, still need ${cardsStillNeeded}`);
         }
 
-        // Final verification
+        // Final verification with better handling
         if (cardsStillNeeded > 0) {
-            console.error(`  ❌ CRITICAL ERROR: Still need ${cardsStillNeeded} cards but no more available!`);
-            return {
-                success: false,
-                error: `Could not draw enough cards - missing ${cardsStillNeeded} cards`
-            };
+            console.error(`  ⚠️ WARNING: Extreme draw request - reducing to maximum available cards`);
+            console.log(`  Player ${player.name} will draw ${drawnCards.length} cards instead of ${actualDrawCount}`);
+            
+            // Instead of failing, we'll give them all available cards and clear the draw stack
+            // This prevents the game from getting stuck
+            this.drawStack = 0;
+            
+            // Log this extreme event
+            console.warn(`🎮 EXTREME DRAW EVENT: Player ${player.name} attempted to draw ${actualDrawCount} cards but only ${drawnCards.length} were available (${decksAdded} decks added)`);
         }
 
         console.log(`  ✅ Successfully drew ${drawnCards.length} cards total`);
@@ -1248,7 +1276,13 @@ class Game {
         // Handle special card effects
         const drawEffect = this.handleSpecialCard(card, declaredSuit);
         if (drawEffect > 0) {
-            this.drawStack += drawEffect;
+            const MAX_DRAW_STACK = 200; // Cap to prevent extreme scenarios
+            const previousStack = this.drawStack;
+            this.drawStack = Math.min(this.drawStack + drawEffect, MAX_DRAW_STACK);
+            
+            if (this.drawStack === MAX_DRAW_STACK && previousStack + drawEffect > MAX_DRAW_STACK) {
+                console.log(`🎮 Draw stack capped at maximum ${MAX_DRAW_STACK} cards (would have been ${previousStack + drawEffect})`);
+            }
         }
 
         // Clear pending turn pass
