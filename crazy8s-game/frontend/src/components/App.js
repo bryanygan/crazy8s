@@ -1581,7 +1581,8 @@ const GameApp = () => {
   useEffect(() => {
     timerDurationRef.current = settings.timerDuration;
     timerWarningTimeRef.current = settings.timerWarningTime;
-  }, [settings.timerDuration, settings.timerWarningTime, timerDurationRef, timerWarningTimeRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.timerDuration, settings.timerWarningTime]);
 
   useEffect(() => {
   if (playerId) {
@@ -2132,7 +2133,7 @@ const GameApp = () => {
       socket.off('tournamentStatus', handleTournamentStatus);
       socket.off('roundStarted', handleRoundStarted);
     };
-  }, [socket, gameState, playerId, isAuthenticated, addToast, isDrawing, playerIdRef, setHasDrawnThisTurn, setIsDrawing, setIsSkipping, setSelectedCards, setGameState, setPlayerHand, hasDrawnThisTurnRef, setPlayAgainVotes, setRoundEndData, setShowRoundEndModal, setNextRoundTimer, setTournamentWinnerData, setShowTournamentWinnerModal, setShowAuthModal, setTournamentStatus]); // Dependencies for game event handlers
+  }, [socket, gameState, playerId, isAuthenticated, addToast, isDrawing, playerIdRef, setHasDrawnThisTurn, setIsDrawing, setIsSkipping, setSelectedCards, setGameState, setPlayerHand, hasDrawnThisTurnRef, setPlayAgainVotes, setRoundEndData, setShowRoundEndModal, setNextRoundTimer, setTournamentWinnerData, setShowTournamentWinnerModal, setShowAuthModal, setTournamentStatus, setGlobalTimer]); // Dependencies for game event handlers
 
   // Set playerId when socket is available and connected
   useEffect(() => {

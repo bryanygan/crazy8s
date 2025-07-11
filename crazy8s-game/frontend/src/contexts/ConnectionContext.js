@@ -55,13 +55,8 @@ export const ConnectionProvider = ({ children }) => {
     
     pingInterval.current = setInterval(() => {
       if (socketInstance && socketInstance.connected) {
-        try {
-          lastPingTime.current = Date.now();
-          socketInstance.emit('ping');
-        } catch (error) {
-          console.error('❌ Ping failed:', error);
-          handleSocketError(error, 'ping_failed');
-        }
+        lastPingTime.current = Date.now();
+        socketInstance.emit('ping');
       }
     }, 10000); // Ping every 10 seconds
     

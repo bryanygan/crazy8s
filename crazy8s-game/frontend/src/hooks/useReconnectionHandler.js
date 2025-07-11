@@ -184,12 +184,14 @@ export const useReconnectionHandler = ({
       unsubscribe();
       
       // Clean up timeouts
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       const currentTimeout = reconnectTimeoutRef.current;
       if (currentTimeout) {
         clearTimeout(currentTimeout);
       }
-      if (sessionValidationTimeoutRef.current) {
-        clearTimeout(sessionValidationTimeoutRef.current);
+      const currentSessionTimeout = sessionValidationTimeoutRef.current;
+      if (currentSessionTimeout) {
+        clearTimeout(currentSessionTimeout);
       }
     };
   }, [
