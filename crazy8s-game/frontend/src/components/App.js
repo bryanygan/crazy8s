@@ -3,9 +3,9 @@ import CardSortingPreferences from './CardSortingPreferences';
 import { AuthModal, UserDashboard } from './auth';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ConnectionProvider, useConnection } from '../contexts/ConnectionContext';
-import ConnectionStatus from './ConnectionStatus';
 import ConnectionNotifications from './ConnectionNotifications';
 import useReconnectionHandler from '../hooks/useReconnectionHandler';
+import MainMenu from './MainMenu';
 import {
   validateCardStackFrontend,
   canStackCardsFrontend
@@ -17,6 +17,14 @@ import { fireConfetti } from '../utils/animationUtils';
 
 // Import extracted hooks
 import { useToasts } from '../hooks/useToasts';
+
+// Import React Icons
+import { 
+  FaBullseye, FaBook, FaSync, FaCog, FaTimes, FaGamepad, 
+  FaComments, FaTrophy, FaRocket, FaFlag, FaChartBar, FaHome, 
+  FaExclamationTriangle
+} from 'react-icons/fa';
+import { GiSpadeSkull } from 'react-icons/gi';
 import { useSettings } from '../hooks/useSettings';
 import { useModals } from '../hooks/useModals';
 import { useGameState } from '../hooks/useGameState';
@@ -324,7 +332,7 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
             fontWeight: 'bold',
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
           }}>
-            🎯 Current Suit: {gameState.declaredSuit}
+            <FaBullseye style={{ marginRight: '8px' }} />Current Suit: {gameState.declaredSuit}
           </div>
         )}
 
@@ -339,7 +347,7 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
             animation: 'pulse 2s infinite'
           }}>
-            📚 Draw Stack: +{gameState.drawStack}
+            <FaBook style={{ marginRight: '8px' }} />Draw Stack: +{gameState.drawStack}
           </div>
         )}
 
@@ -353,7 +361,7 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
             fontWeight: 'bold',
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
           }}>
-            🔄 Reversed
+            <FaSync style={{ marginRight: '8px' }} />Reversed
           </div>
         )}
       </div>
@@ -493,7 +501,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
           alignItems: 'center',
           marginBottom: '25px'
         }}>
-          <h2 style={{ margin: 0, color: '#2c3e50' }}>⚙️ Game Settings</h2>
+          <h2 style={{ margin: 0, color: '#2c3e50' }}><FaCog style={{ marginRight: '8px' }} />Game Settings</h2>
           <button
             onClick={onClose}
             style={{
@@ -504,13 +512,13 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
               color: '#95a5a6'
             }}
           >
-            ×
+            <FaTimes />
           </button>
         </div>
 
         {/* Card Display Settings */}
         <div style={{ marginBottom: '25px' }}>
-          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>🃏 Card Display</h3>
+          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}><GiSpadeSkull style={{ marginRight: '8px' }} />Card Display</h3>
           
           {/* Sort by Rank */}
           <div style={{
@@ -602,7 +610,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
 
         {/* Gameplay Settings */}
         <div style={{ marginBottom: '25px' }}>
-          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>🎮 Gameplay</h3>
+          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}><FaGamepad style={{ marginRight: '8px' }} />Gameplay</h3>
           
           {/* Experienced Mode */}
           <div style={{
@@ -771,7 +779,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
                 border: '1px solid #ffeaa7'
               }}>
                 <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#856404' }}>
-                  ⚠️ Warning Threshold:
+                  <FaExclamationTriangle style={{ marginRight: '8px' }} />Warning Threshold:
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                   <span style={{ fontSize: '14px', minWidth: 'fit-content' }}>Show warning at:</span>
@@ -845,11 +853,11 @@ const Chat = ({ socket }) => {
     });
 
     socket.on('cardPlayed', (data) => {
-      setMessages(prev => [...prev.slice(-50), `🃏 ${data.playerName}: ${data.message}`]);
+      setMessages(prev => [...prev.slice(-50), `${data.playerName}: ${data.message}`]);
     });
 
     socket.on('playerDrewCards', (data) => {
-      setMessages(prev => [...prev.slice(-50), `📚 ${data.playerName} drew ${data.cardCount} card(s)`]);
+      setMessages(prev => [...prev.slice(-50), `${data.playerName} drew ${data.cardCount} card(s)`]);
     });
 
     return () => {
@@ -880,19 +888,21 @@ const Chat = ({ socket }) => {
     }}>
       <div 
         style={{
-          padding: '10px',
+          padding: '8px 10px',
           borderBottom: '1px solid #ddd',
           fontWeight: 'bold',
           backgroundColor: '#f8f9fa',
           cursor: 'pointer',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          color: '#000',
+          minHeight: '40px'
         }}
         onClick={() => setIsMinimized(!isMinimized)}
       >
-        <span>💬 Game Chat</span>
-        <span style={{ fontSize: '12px' }}>{isMinimized ? '▲' : '▼'}</span>
+        <span style={{ display: 'flex', alignItems: 'center' }}><FaComments style={{ marginRight: '8px' }} />Game Chat</span>
+        <span style={{ fontSize: '12px', display: 'flex', alignItems: 'center' }}>{isMinimized ? '▲' : '▼'}</span>
       </div>
       
       {!isMinimized && (
@@ -982,7 +992,7 @@ const TournamentStatus = ({ gameState }) => {
         alignItems: 'center',
         marginBottom: '10px'
       }}>
-        <h3 style={{ margin: 0, fontSize: '18px', color: 'gold' }}>🏆 Tournament Mode</h3>
+        <h3 style={{ margin: 0, fontSize: '18px', color: 'gold' }}><FaTrophy style={{ marginRight: '8px' }} />Tournament Mode</h3>
         <div style={{ fontSize: '14px', opacity: 0.8 }}>
           Round {tournament.currentRound}
         </div>
@@ -1036,7 +1046,7 @@ const SafePlayerNotification = ({ isPlayerSafe, playerName, gameState, onStartNe
       boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
       animation: 'pulse 1s infinite'
     }}>
-      <div style={{ fontSize: '24px', marginBottom: '8px' }}>🏆</div>
+      <div style={{ fontSize: '24px', marginBottom: '8px' }}><FaTrophy /></div>
       <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '4px' }}>
         You're Safe!
       </div>
@@ -1062,7 +1072,7 @@ const SafePlayerNotification = ({ isPlayerSafe, playerName, gameState, onStartNe
           onMouseEnter={(e) => e.target.style.backgroundColor = '#34495e'}
           onMouseLeave={(e) => e.target.style.backgroundColor = '#2c3e50'}
         >
-          🚀 Start Next Round
+          <FaRocket style={{ marginRight: '8px' }} />Start Next Round
         </button>
       )}
     </div>
@@ -1096,7 +1106,7 @@ const RoundEndModal = ({ isOpen, roundData, nextRoundTimer, onClose, onStartNext
         boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
       }}>
         <h2 style={{ color: '#2c3e50', marginBottom: '20px' }}>
-          🏁 Round {roundData.round} Complete!
+          <FaFlag style={{ marginRight: '8px' }} />Round {roundData.round} Complete!
         </h2>
         
         <div style={{
@@ -1148,7 +1158,7 @@ const RoundEndModal = ({ isOpen, roundData, nextRoundTimer, onClose, onStartNext
               onMouseEnter={(e) => e.target.style.backgroundColor = '#2ecc71'}
               onMouseLeave={(e) => e.target.style.backgroundColor = '#27ae60'}
             >
-              🚀 Start Next Round Now
+              <FaRocket style={{ marginRight: '8px' }} />Start Next Round Now
             </button>
           )}
         </div>
@@ -1209,7 +1219,7 @@ const TournamentWinnerModal = ({ isOpen, winnerData, onClose }) => {
         textAlign: 'center',
         boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
       }}>
-        <div style={{ fontSize: '64px', marginBottom: '20px' }}>🏆</div>
+        <div style={{ fontSize: '64px', marginBottom: '20px' }}><FaTrophy /></div>
         
         <h1 style={{ 
           color: '#f39c12', 
@@ -1238,7 +1248,7 @@ const TournamentWinnerModal = ({ isOpen, winnerData, onClose }) => {
             textAlign: 'left'
           }}>
             <h3 style={{ color: '#2c3e50', marginBottom: '15px', textAlign: 'center' }}>
-              📊 Tournament Statistics
+              <FaChartBar style={{ marginRight: '8px' }} />Tournament Statistics
             </h3>
             
             <div style={{ 
@@ -1300,7 +1310,7 @@ const TournamentWinnerModal = ({ isOpen, winnerData, onClose }) => {
           onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
           onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
         >
-          🏠 Return to Lobby
+          <FaHome style={{ marginRight: '8px' }} />Return to Lobby
         </button>
       </div>
     </div>
@@ -1334,7 +1344,7 @@ const TournamentPlayerDisplay = ({ players, gameState }) => {
         {playingPlayers.length > 0 && (
           <div>
             <div style={{ fontWeight: 'bold', color: '#2c3e50', marginBottom: '8px' }}>
-              🎮 Still Playing ({playingPlayers.length})
+              <FaGamepad style={{ marginRight: '8px' }} />Still Playing ({playingPlayers.length})
             </div>
             {playingPlayers.map(player => (
               <div key={player.id} style={{
@@ -1346,7 +1356,7 @@ const TournamentPlayerDisplay = ({ players, gameState }) => {
                 fontSize: '12px'
               }}>
                 {player.name} ({player.handSize} cards)
-                {player.isCurrentPlayer && ' 🎯'}
+                {player.isCurrentPlayer && <FaBullseye style={{ marginLeft: '8px' }} />}
               </div>
             ))}
           </div>
@@ -1355,7 +1365,7 @@ const TournamentPlayerDisplay = ({ players, gameState }) => {
         {safePlayers.length > 0 && (
           <div>
             <div style={{ fontWeight: 'bold', color: '#27ae60', marginBottom: '8px' }}>
-              🏆 Safe ({safePlayers.length})
+              <FaTrophy style={{ marginRight: '8px' }} />Safe ({safePlayers.length})
             </div>
             {safePlayers.map(player => (
               <div key={player.id} style={{
@@ -1909,7 +1919,7 @@ const GameApp = () => {
     }
     
     if (data.newDeckAdded) {
-      message += ' 🆕';
+      message += ' NEW';
     }
     
       addToast(message, 'info');
@@ -1994,7 +2004,7 @@ const GameApp = () => {
     });
     
     // Show success notification
-    addToast(`🎮 ${data.message} Started by ${data.startedBy}`, 'success');
+    addToast(`${data.message} Started by ${data.startedBy}`, 'success');
     
     // Log the new game start
     console.log(`🎮 New game started with ${data.playerCount} players`);
@@ -2003,7 +2013,7 @@ const GameApp = () => {
     // Tournament-specific socket listeners
     const handlePlayerSafe = (data) => {
     console.log('🏆 Player safe:', data);
-    addToast(`🏆 ${data.message}`, 'success');
+    addToast(`${data.message}`, 'success');
     // Trigger confetti only for the player who became safe
     if (data.playerId === playerIdRef.current) {
       fireConfetti();
@@ -2033,7 +2043,7 @@ const GameApp = () => {
     console.log('🏆 Tournament finished:', data);
     setTournamentWinnerData(data);
     setShowTournamentWinnerModal(true);
-    addToast(`🏆 ${data.message}`, 'success');
+    addToast(`${data.message}`, 'success');
     
     // Trigger confetti only for the tournament winner
     if (data.winnerId === playerIdRef.current) {
@@ -2044,7 +2054,7 @@ const GameApp = () => {
         setTimeout(() => {
           const shouldCreateAccount = window.confirm(
             '🎉 Congratulations on winning!\n\n' +
-            '🏆 Want to save this victory?\n' +
+            'Want to save this victory?\n' +
             'Create an account to:\n' +
             '• Track your wins and achievements\n' +
             '• Build your gaming statistics\n' +
@@ -2062,8 +2072,8 @@ const GameApp = () => {
       if (!isAuthenticated) {
         setTimeout(() => {
           const shouldCreateAccount = window.confirm(
-            '🎮 Great game!\n\n' +
-            '📊 Want to track your gaming progress?\n' +
+            'Great game!\n\n' +
+            'Want to track your gaming progress?\n' +
             'Create an account to:\n' +
             '• Save your game statistics\n' +
             '• Track improvements over time\n' +
@@ -2086,7 +2096,7 @@ const GameApp = () => {
 
     const handleRoundStarted = (data) => {
     console.log('🚀 Round started:', data);
-    addToast(`🚀 ${data.message}`, 'success');
+    addToast(`${data.message}`, 'success');
     setShowRoundEndModal(false);
       setNextRoundTimer(0);
     };
@@ -2296,30 +2306,6 @@ useEffect(() => {
     setShowDebugPanel(false);
   };
 
-  const joinGame = () => {
-    if (!playerName.trim() || !gameId.trim()) {
-      addToast('Please enter both name and game ID', 'error');
-      return;
-    }
-
-    console.log('🚪 Joining game:', gameId, 'as', playerName);
-    socket.emit('joinGame', {
-      gameId: gameId.trim(),
-      playerName: playerName.trim()
-    });
-  };
-
-  const createGame = () => {
-    if (!playerName.trim()) {
-      addToast('Please enter your name', 'error');
-      return;
-    }
-
-    console.log('🎮 Creating game as:', playerName);
-    socket.emit('createGame', {
-      playerName: playerName.trim()
-    });
-  };
 
   
 
@@ -2733,123 +2719,40 @@ const handleLogout = async () => {
 
   if (!gameState) {
     return (
-      <div style={{ 
-        padding: '20px', 
-        maxWidth: '400px', 
-        margin: '50px auto',
-        backgroundColor: '#ecf0f1',
-        minHeight: '100vh'
-      }}>
-        <div style={{
-          backgroundColor: '#fff',
-          borderRadius: '10px',
-          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-          padding: '30px'
-        }}>
-          <h1 style={{ textAlign: 'center', color: '#2c3e50', margin: '0 0 30px 0' }}>
-            🎴 Crazy 8's
-          </h1>
-          
-          {/* Debug Info */}
-          <div style={{
-            backgroundColor: '#f8f9fa',
-            padding: '10px',
-            borderRadius: '5px',
-            marginBottom: '20px',
-            fontSize: '12px',
-            color: '#6c757d'
-          }}>
-            🆔 Your Socket ID: {playerId}
-          </div>
-          
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#2c3e50' }}>
-              Your Name:
-            </label>
-            <input
-              type="text"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '2px solid #ddd',
-                borderRadius: '8px',
-                fontSize: '16px',
-                boxSizing: 'border-box'
-              }}
-              placeholder="Enter your name"
-            />
-          </div>
-
-          <div style={{ marginBottom: '25px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#2c3e50' }}>
-              Game ID (to join existing game):
-            </label>
-            <input
-              type="text"
-              value={gameId}
-              onChange={(e) => setGameId(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '2px solid #ddd',
-                borderRadius: '8px',
-                fontSize: '16px',
-                boxSizing: 'border-box'
-              }}
-              placeholder="Enter game ID"
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              onClick={createGame}
-              style={{
-                flex: 1,
-                padding: '15px',
-                backgroundColor: '#27ae60',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                transition: 'background-color 0.2s ease'
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#229954'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = '#27ae60'}
-            >
-              🎮 Create Game
-            </button>
-            <button
-              onClick={joinGame}
-              style={{
-                flex: 1,
-                padding: '15px',
-                backgroundColor: '#3498db',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                transition: 'background-color 0.2s ease'
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
-            >
-              🚪 Join Game
-            </button>
-          </div>
-        </div>
+      <>
+        <MainMenu 
+          onGameCreated={({ playerName }) => {
+            setPlayerName(playerName);
+            if (!playerName.trim()) {
+              addToast('Please enter your name', 'error');
+              return;
+            }
+            console.log('🎮 Creating game as:', playerName);
+            socket.emit('createGame', {
+              playerName: playerName.trim()
+            });
+          }}
+          onGameJoined={({ gameId, playerName }) => {
+            setPlayerName(playerName);
+            setGameId(gameId);
+            if (!playerName.trim() || !gameId.trim()) {
+              addToast('Please enter both name and game ID', 'error');
+              return;
+            }
+            console.log('🚪 Joining game:', gameId, 'as', playerName);
+            socket.emit('joinGame', {
+              gameId: gameId.trim(),
+              playerName: playerName.trim()
+            });
+          }}
+        />
         
         {/* Toast Notifications */}
         <ToastContainer 
           toasts={toasts}
           onRemoveToast={removeToast}
         />
-      </div>
+      </>
     );
   }
 
@@ -3717,7 +3620,7 @@ const handleLogout = async () => {
               onMouseEnter={(e) => e.target.style.backgroundColor = '#5a6268'}
               onMouseLeave={(e) => e.target.style.backgroundColor = '#6c757d'}
             >
-              🏠 Return to Lobby
+              <FaHome style={{ marginRight: '8px' }} />Return to Lobby
             </button>
           </div>
 
@@ -3901,7 +3804,6 @@ const App = () => {
     <AuthProvider>
       <ConnectionProvider>
         <GameApp />
-        <ConnectionStatus position="top-right" />
         <ConnectionNotifications />
       </ConnectionProvider>
     </AuthProvider>

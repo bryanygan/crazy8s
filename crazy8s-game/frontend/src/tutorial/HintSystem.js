@@ -3,6 +3,8 @@
  * Delivers progressive hints based on player progress and context
  */
 
+import { FaLightbulb, FaCheck, FaSync, FaBook, FaBullseye, FaTrash, FaSearch, FaExclamationTriangle, FaExclamationCircle, FaDice, FaBookOpen, FaMagic } from 'react-icons/fa';
+
 /**
  * Provides contextual hints and guidance for tutorial lessons
  */
@@ -25,7 +27,7 @@ class HintSystem {
      */
     initialize() {
         this.setupContextualHints();
-        console.log('💡 Hint System initialized');
+        console.log('Hint System initialized');
     }
 
     /**
@@ -88,7 +90,7 @@ class HintSystem {
      */
     setLessonHints(hints) {
         this.currentLessonHints = hints || [];
-        console.log('📝 Set lesson hints:', this.currentLessonHints.length);
+        console.log('Set lesson hints:', this.currentLessonHints.length);
     }
 
     /**
@@ -140,12 +142,12 @@ class HintSystem {
                 this.onHintRequested(hintData);
             }
             
-            console.log('💡 Generated hint:', hintData);
+            console.log('Generated hint:', hintData);
             
             return hintData;
             
         } catch (error) {
-            console.error('❌ Error generating hint:', error);
+            console.error('Error generating hint:', error);
             
             return {
                 ...hintData,
@@ -181,7 +183,7 @@ class HintSystem {
         // Record in history
         this.hintHistory.push(feedbackData);
         
-        console.log('🔍 Generated action feedback:', feedbackData);
+        console.log('Generated action feedback:', feedbackData);
         
         return feedbackData;
     }
@@ -205,7 +207,7 @@ class HintSystem {
         // Record in history
         this.hintHistory.push(hintData);
         
-        console.log('✅ Generated validation hint:', hintData);
+        console.log('Generated validation hint:', hintData);
         
         return hintData;
     }
@@ -220,7 +222,7 @@ class HintSystem {
         // based on game state changes, preparing for future hint requests
         
         const context = this.detectContext(lesson, gameState);
-        console.log('🔄 Updated hint context:', context);
+        console.log('Updated hint context:', context);
     }
 
     /**
@@ -229,12 +231,12 @@ class HintSystem {
      */
     getAvailableHints() {
         return [
-            { type: 'card_selection', title: 'Card Selection Help', icon: '🃏' },
-            { type: 'card_playing', title: 'How to Play Cards', icon: '🎯' },
-            { type: 'stacking', title: 'Card Stacking Rules', icon: '📚' },
-            { type: 'special_cards', title: 'Special Card Effects', icon: '✨' },
-            { type: 'drawing', title: 'Drawing Cards', icon: '🎲' },
-            { type: 'lesson_objectives', title: 'Lesson Help', icon: '📖' }
+            { type: 'card_selection', title: 'Card Selection Help', icon: 'FaSearch' },
+            { type: 'card_playing', title: 'How to Play Cards', icon: 'FaBullseye' },
+            { type: 'stacking', title: 'Card Stacking Rules', icon: 'FaBook' },
+            { type: 'special_cards', title: 'Special Card Effects', icon: 'FaMagic' },
+            { type: 'drawing', title: 'Drawing Cards', icon: 'FaDice' },
+            { type: 'lesson_objectives', title: 'Lesson Help', icon: 'FaBookOpen' }
         ];
     }
 
@@ -551,18 +553,18 @@ class HintSystem {
      */
     getHintIcon(hintType) {
         const icons = {
-            card_selection: '🃏',
-            card_playing: '🎯',
-            stacking: '📚',
-            special_cards: '✨',
-            drawing: '🎲',
-            validation: '⚠️',
-            error_feedback: '❌',
-            lesson: '📖',
-            general: '💡'
+            card_selection: 'FaSearch',
+            card_playing: 'FaBullseye',
+            stacking: 'FaBook',
+            special_cards: 'FaMagic',
+            drawing: 'FaDice',
+            validation: 'FaExclamationTriangle',
+            error_feedback: 'FaExclamationCircle',
+            lesson: 'FaBookOpen',
+            general: 'FaLightbulb'
         };
         
-        return icons[hintType] || '💡';
+        return icons[hintType] || 'FaLightbulb';
     }
 
     /**
@@ -600,7 +602,7 @@ class HintSystem {
      * Clear hint history
      */
     clearHintHistory() {
-        console.log('🗑️ Clearing hint history');
+        console.log('Clearing hint history');
         this.hintHistory = [];
     }
 
@@ -633,7 +635,7 @@ class HintSystem {
      * Reset hint system
      */
     reset() {
-        console.log('🔄 Resetting hint system');
+        console.log('Resetting hint system');
         this.currentLessonHints = [];
         this.clearHintHistory();
     }
@@ -642,7 +644,7 @@ class HintSystem {
      * Clean up resources
      */
     destroy() {
-        console.log('🗑️ Destroying hint system');
+        console.log('Destroying hint system');
         this.reset();
         this.contextualHints.clear();
         this.onHintRequested = null;

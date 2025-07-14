@@ -3,6 +3,8 @@
  * Integrates with existing game logic to ensure tutorial actions are valid
  */
 
+import { FaCheck, FaExclamationCircle, FaSync, FaTrash, FaSearch, FaClipboardList } from 'react-icons/fa';
+
 /**
  * Validates player actions within the tutorial context
  */
@@ -26,7 +28,7 @@ class ValidationSystem {
      */
     initialize() {
         this.setupValidationRules();
-        console.log('✅ Validation System initialized');
+        console.log('Validation System initialized');
     }
 
     /**
@@ -71,7 +73,7 @@ class ValidationSystem {
      */
     setLessonRequirements(requirements) {
         this.lessonRequirements = requirements || [];
-        console.log('📋 Set lesson requirements:', this.lessonRequirements.length);
+        console.log('Set lesson requirements:', this.lessonRequirements.length);
     }
 
     /**
@@ -82,7 +84,7 @@ class ValidationSystem {
      * @returns {Promise<Object>} Validation result
      */
     async validateAction(actionType, actionData, currentGameState) {
-        console.log(`🔍 Validating action: ${actionType}`, actionData);
+        console.log(`Validating action: ${actionType}`, actionData);
         
         try {
             const validationResult = {
@@ -131,12 +133,12 @@ class ValidationSystem {
                 this.onValidation(validationResult);
             }
             
-            console.log(`${validationResult.isValid ? '✅' : '❌'} Validation result:`, validationResult);
+            console.log(`${validationResult.isValid ? 'Valid' : 'Invalid'} Validation result:`, validationResult);
             
             return validationResult;
             
         } catch (error) {
-            console.error('❌ Validation error:', error);
+            console.error('Validation error:', error);
             
             return {
                 actionType,
@@ -701,7 +703,7 @@ class ValidationSystem {
      * Reset validation system
      */
     reset() {
-        console.log('🔄 Resetting validation system');
+        console.log('Resetting validation system');
         this.lessonRequirements = [];
     }
 
@@ -721,7 +723,7 @@ class ValidationSystem {
      * Clean up resources
      */
     destroy() {
-        console.log('🗑️ Destroying validation system');
+        console.log('Destroying validation system');
         this.reset();
         this.validationRules.clear();
         this.onValidation = null;

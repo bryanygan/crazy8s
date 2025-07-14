@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { FaCheck, FaLightbulb, FaExclamationTriangle, FaExclamationCircle } from 'react-icons/fa';
 
 /**
  * Feedback toast component for tutorial notifications
@@ -152,7 +153,7 @@ const FeedbackToast = ({
     const getToastConfig = () => {
         const configs = {
             success: {
-                icon: '✅',
+                icon: <FaCheck />,
                 color: theme.colors.success,
                 backgroundColor: 'rgba(39, 174, 96, 0.1)',
                 borderColor: theme.colors.success,
@@ -173,7 +174,7 @@ const FeedbackToast = ({
                 progressColor: '#f39c12'
             },
             info: {
-                icon: '💡',
+                icon: <FaLightbulb />,
                 color: theme.colors.info,
                 backgroundColor: 'rgba(52, 152, 219, 0.1)',
                 borderColor: theme.colors.info,

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useConnection } from '../contexts/ConnectionContext';
+import { 
+  FaCircle, FaUnlock, FaTimes, FaSpinner, FaWifi 
+} from 'react-icons/fa';
 
 const ConnectionStatus = ({ position = 'top-right' }) => {
   const {
@@ -54,31 +57,31 @@ const ConnectionStatus = ({ position = 'top-right' }) => {
   const getStatusIcon = () => {
     // Factor in stability and session validity
     if (connectionStatus === 'connected') {
-      if (!sessionValid) return '🔐'; // Unlocked (session invalid)
+      if (!sessionValid) return <FaUnlock />; // Unlocked (session invalid)
       
       switch (connectionStability) {
         case 'stable':
-          return '🟢'; // Green
+          return <FaCircle style={{ color: '#27ae60' }} />; // Green
         case 'unstable':
-          return '🟡'; // Yellow
+          return <FaCircle style={{ color: '#f39c12' }} />; // Yellow
         case 'critical':
-          return '🟠'; // Orange
+          return <FaCircle style={{ color: '#e67e22' }} />; // Orange
         default:
-          return '🟢';
+          return <FaCircle style={{ color: '#27ae60' }} />;
       }
     }
     
     switch (connectionStatus) {
       case 'connecting':
-        return '🟡';
+        return <FaSpinner className="spin" />;
       case 'reconnecting':
-        return '🟠';
+        return <FaSpinner className="spin" />;
       case 'disconnected':
-        return '🔴';
+        return <FaWifi style={{ opacity: 0.5 }} />;
       case 'failed':
-        return '❌';
+        return <FaTimes />;
       default:
-        return '⚪';
+        return <FaCircle style={{ color: '#95a5a6' }} />;
     }
   };
 
@@ -326,6 +329,9 @@ const ConnectionStatus = ({ position = 'top-right' }) => {
         @keyframes spin {
           0% { transform: translate(-50%, -50%) rotate(0deg); }
           100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        .spin {
+          animation: spin 1s linear infinite;
         }
       `}</style>
     </div>

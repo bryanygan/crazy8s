@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { FaSync, FaLightbulb, FaGamepad, FaBook } from 'react-icons/fa';
 
 /**
  * Tutorial controls component for navigation and tutorial management
@@ -151,7 +152,7 @@ const TutorialControls = ({
                 disabled: !isActionAvailable('next')
             },
             restart: {
-                icon: '🔄',
+                icon: <FaSync />,
                 label: confirmingAction === 'restart' ? 'Confirm Restart' : 'Restart',
                 shortcut: 'Ctrl+R',
                 disabled: !isActionAvailable('restart'),
@@ -165,7 +166,7 @@ const TutorialControls = ({
                 warning: confirmingAction === 'skip'
             },
             hint: {
-                icon: '💡',
+                icon: <FaLightbulb />,
                 label: 'Hint',
                 shortcut: 'Ctrl+H',
                 disabled: !isActionAvailable('hint')
@@ -488,7 +489,7 @@ const TutorialControls = ({
                         justifyContent: 'center',
                         fontSize: '24px'
                     }}>
-                        🎮
+                        <FaGamepad />
                     </div>
                 )}
                 
@@ -566,7 +567,7 @@ const TutorialControls = ({
                                 title="Toggle instructions (Ctrl+I)"
                                 aria-label="Toggle tutorial instructions"
                             >
-                                <span>📚</span>
+                                <span><FaBook /></span>
                                 {isExpanded && <span>Instructions</span>}
                             </button>
                             

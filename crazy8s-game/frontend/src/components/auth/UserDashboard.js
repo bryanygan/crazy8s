@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, shadows, borderRadius, transitions } from '../../utils/theme';
+import { 
+  FaUser, FaUsers, FaTrophy, FaGamepad, FaChartLine, FaFire, 
+  FaChartBar, FaMedal, FaBullseye
+} from 'react-icons/fa';
 
 const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
   const { user, isAuthenticated } = useAuth();
@@ -31,10 +35,10 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
   }, [user, isAuthenticated]);
 
   const tabs = [
-    { id: 'overview', label: '📊 Overview', icon: '📊' },
-    { id: 'games', label: '🎮 Games', icon: '🎮' },
-    { id: 'achievements', label: '🏆 Achievements', icon: '🏆' },
-    { id: 'friends', label: '👥 Friends', icon: '👥' }
+    { id: 'overview', label: 'Overview', icon: <FaChartBar /> },
+    { id: 'games', label: 'Games', icon: <FaGamepad /> },
+    { id: 'achievements', label: 'Achievements', icon: <FaTrophy /> },
+    { id: 'friends', label: 'Friends', icon: <FaUsers /> }
   ];
 
   return (
@@ -109,7 +113,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
               justifyContent: 'center',
               fontSize: '24px'
             }}>
-              👤
+              <FaUser />
             </div>
             <div>
               <h2 style={{
@@ -150,7 +154,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                 color: colors.secondary,
                 marginBottom: '2px'
               }}>
-                🎮 Current Game
+                <FaGamepad style={{ marginRight: '8px' }} />Current Game
               </div>
               <div style={{
                 fontSize: '12px',
@@ -218,7 +222,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                 color: colors.dark,
                 fontSize: '18px'
               }}>
-                📊 Quick Overview
+                <FaChartBar style={{ marginRight: '8px' }} />Quick Overview
               </h3>
 
               {/* Stats Grid */}
@@ -229,25 +233,25 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                 marginBottom: '25px'
               }}>
                 <StatCard
-                  icon="🎮"
+                  icon={<FaGamepad />}
                   title="Games Played"
                   value={quickStats.gamesPlayed}
                   color={colors.primary}
                 />
                 <StatCard
-                  icon="🏆"
+                  icon={<FaTrophy />}
                   title="Games Won"
                   value={quickStats.wins}
                   color={colors.secondary}
                 />
                 <StatCard
-                  icon="📈"
+                  icon={<FaChartLine />}
                   title="Win Rate"
                   value={`${quickStats.winRate}%`}
                   color={colors.warning}
                 />
                 <StatCard
-                  icon="🔥"
+                  icon={<FaFire />}
                   title="Current Streak"
                   value={quickStats.currentStreak}
                   color={colors.error}
@@ -273,7 +277,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                   fontSize: '14px',
                   padding: '40px 20px'
                 }}>
-                  🎮 Start playing games to see your activity here!
+                  <FaGamepad style={{ marginRight: '8px' }} />Start playing games to see your activity here!
                   <div style={{
                     marginTop: '15px',
                     fontSize: '12px'
@@ -293,7 +297,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                 color: colors.dark,
                 fontSize: '18px'
               }}>
-                🎮 Game History
+                <FaGamepad style={{ marginRight: '8px' }} />Game History
               </h3>
               <div style={{
                 textAlign: 'center',
@@ -303,7 +307,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                 backgroundColor: colors.background,
                 borderRadius: borderRadius.medium
               }}>
-                🎯 No games played yet!
+                <FaBullseye style={{ marginRight: '8px' }} />No games played yet!
                 <div style={{
                   marginTop: '10px',
                   fontSize: '12px'
@@ -322,7 +326,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                 color: colors.dark,
                 fontSize: '18px'
               }}>
-                🏆 Achievements
+                <FaTrophy style={{ marginRight: '8px' }} />Achievements
               </h3>
               <div style={{
                 display: 'grid',
@@ -330,7 +334,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                 gap: '15px'
               }}>
                 <AchievementCard
-                  icon="🎮"
+                  icon={<FaGamepad />}
                   title="First Game"
                   description="Play your first game"
                   unlocked={quickStats.gamesPlayed > 0}
@@ -338,7 +342,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                   total={1}
                 />
                 <AchievementCard
-                  icon="🏆"
+                  icon={<FaTrophy />}
                   title="First Win"
                   description="Win your first game"
                   unlocked={quickStats.wins > 0}
@@ -346,7 +350,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                   total={1}
                 />
                 <AchievementCard
-                  icon="🔟"
+                  icon={<FaMedal />}
                   title="Veteran Player"
                   description="Play 10 games"
                   unlocked={quickStats.gamesPlayed >= 10}
@@ -354,7 +358,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                   total={10}
                 />
                 <AchievementCard
-                  icon="🎯"
+                  icon={<FaBullseye />}
                   title="Win Streak"
                   description="Win 5 games in a row"
                   unlocked={quickStats.currentStreak >= 5}
@@ -373,7 +377,7 @@ const UserDashboard = ({ onClose, onJoinGame, currentGameState }) => {
                 color: colors.dark,
                 fontSize: '18px'
               }}>
-                👥 Friends & Social
+                <FaUsers style={{ marginRight: '8px' }} />Friends & Social
               </h3>
               <div style={{
                 textAlign: 'center',

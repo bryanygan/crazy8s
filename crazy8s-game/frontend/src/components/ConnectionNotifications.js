@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useConnection } from '../contexts/ConnectionContext';
+import { FaTimes } from 'react-icons/fa';
 
 const ConnectionNotifications = () => {
   const { addConnectionListener } = useConnection();
@@ -197,7 +198,7 @@ const ConnectionNotifications = () => {
               onMouseEnter={(e) => e.target.style.opacity = '1'}
               onMouseLeave={(e) => e.target.style.opacity = '0.7'}
             >
-              ✕
+              <FaTimes />
             </button>
           </div>
         ))}

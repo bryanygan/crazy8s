@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { FaCheck, FaBullseye, FaCircle, FaLightbulb, FaBook } from 'react-icons/fa';
 
 /**
  * Instruction modal component for displaying lesson information
@@ -112,11 +113,11 @@ const InstructionModal = ({
      */
     const getObjectiveIcon = (objective) => {
         if (isObjectiveCompleted(objective.id)) {
-            return '✅';
+            return <FaCheck style={{ color: '#4CAF50' }} />;
         } else if (getCurrentObjective()?.id === objective.id) {
-            return '🎯';
+            return <FaBullseye style={{ color: '#2196F3' }} />;
         } else {
-            return '⭕';
+            return <FaCircle style={{ color: '#9E9E9E' }} />;
         }
     };
 
@@ -308,7 +309,8 @@ const InstructionModal = ({
                     alignItems: 'center',
                     gap: theme.spacing.small
                 }}>
-                    💡 {hint.title}
+                    <FaLightbulb style={{ marginRight: '8px', color: '#FF9800' }} />
+                    {hint.title}
                 </div>
                 <div style={{
                     color: theme.colors.text,
@@ -536,7 +538,8 @@ const InstructionModal = ({
                                         whiteSpace: 'nowrap'
                                     }}
                                 >
-                                    📚 {lesson.title}
+                                    <FaBook style={{ marginRight: '8px', color: '#2196F3' }} />
+                                    {lesson.title}
                                 </h2>
                                 <div style={{
                                     fontSize: '12px',
@@ -554,7 +557,7 @@ const InstructionModal = ({
                                     title="Toggle hints (Ctrl+H)"
                                     aria-label="Toggle hints"
                                 >
-                                    💡
+                                    <FaLightbulb />
                                 </button>
                                 
                                 <button
@@ -590,7 +593,7 @@ const InstructionModal = ({
                                 fontSize: '20px' 
                             }}
                         >
-                            📚
+                            <FaBook />
                         </button>
                     )}
                 </div>
@@ -615,7 +618,7 @@ const InstructionModal = ({
 
                         {/* Objectives Section */}
                         <div>
-                            {renderSectionHeader('Objectives', 'objectives', '🎯')}
+                            {renderSectionHeader('Objectives', 'objectives', <FaBullseye />)}
                             
                             {expandedSections.has('objectives') && (
                                 <div
@@ -633,7 +636,7 @@ const InstructionModal = ({
                         {/* Hints Section */}
                         {showHints && (
                             <div>
-                                {renderSectionHeader('Hints', 'hints', '💡')}
+                                {renderSectionHeader('Hints', 'hints', <FaLightbulb />)}
                                 
                                 {expandedSections.has('hints') && (
                                     <div

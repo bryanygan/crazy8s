@@ -4,6 +4,7 @@
  */
 
 import { tutorialLessons } from './lessons/index.js';
+import { FaBook, FaCheck, FaSync, FaTrash } from 'react-icons/fa';
 
 /**
  * Manages individual lesson state and progression
@@ -29,7 +30,7 @@ class LessonManager {
      */
     initialize() {
         this.loadLessonDefinitions();
-        console.log('📚 Lesson Manager initialized');
+        console.log('Lesson Manager initialized');
     }
 
     /**
@@ -56,10 +57,10 @@ class LessonManager {
                 }
             }
             
-            console.log('📖 Loaded lesson definitions:', this.lessonData.size, 'modules');
+            console.log('Loaded lesson definitions:', this.lessonData.size, 'modules');
             
         } catch (error) {
-            console.error('❌ Failed to load lesson definitions:', error);
+            console.error('Failed to load lesson definitions:', error);
         }
     }
 
@@ -74,7 +75,7 @@ class LessonManager {
             this.lessonState = 'loading';
             this.notifyStateChange();
             
-            console.log(`📚 Loading lesson: ${moduleId}/${lessonId || 'first'}`);
+            console.log(`Loading lesson: ${moduleId}/${lessonId || 'first'}`);
             
             // Get module data
             const moduleData = this.lessonData.get(moduleId);
@@ -108,7 +109,7 @@ class LessonManager {
             this.currentLesson = this.prepareLesson(lessonData);
             this.lessonState = 'active';
             
-            console.log('✅ Lesson loaded successfully:', this.currentLesson.title);
+            console.log('Lesson loaded successfully:', this.currentLesson.title);
             
             this.notifyStateChange();
             
@@ -118,7 +119,7 @@ class LessonManager {
             };
             
         } catch (error) {
-            console.error('❌ Failed to load lesson:', error);
+            console.error('Failed to load lesson:', error);
             this.lessonState = 'failed';
             this.notifyStateChange();
             
@@ -449,7 +450,7 @@ class LessonManager {
         this.currentLesson.completedTime = Date.now();
         this.currentLesson.duration = this.currentLesson.completedTime - this.currentLesson.startTime;
         
-        console.log('✅ Lesson marked as completed:', this.currentLesson.title);
+        console.log('Lesson marked as completed:', this.currentLesson.title);
         
         this.notifyStateChange();
         
@@ -465,7 +466,7 @@ class LessonManager {
             return { success: false, error: 'No current lesson to reset' };
         }
         
-        console.log('🔄 Resetting lesson:', this.currentLesson.title);
+        console.log('Resetting lesson:', this.currentLesson.title);
         
         // Reset lesson state
         this.currentLesson.attempts += 1;
@@ -578,7 +579,7 @@ class LessonManager {
      * Clean up resources
      */
     destroy() {
-        console.log('🗑️ Destroying lesson manager');
+        console.log('Destroying lesson manager');
         this.currentLesson = null;
         this.lessonState = 'inactive';
         this.lessonData.clear();
