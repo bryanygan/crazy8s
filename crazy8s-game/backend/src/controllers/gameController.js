@@ -36,12 +36,26 @@ exports.startGame = (req, res) => {
         const startResult = newGame.startGame();
         
         if (startResult.success) {
+            // Get updated game state which now includes preparation phase
+            const gameState = newGame.getGameState();
+            
             res.status(200).json({ 
                 success: true,
-                message: 'Game started', 
+                message: 'Game started in preparation phase', 
                 gameId: newGame.id,
-                gameState: newGame.getGameState()
+                gameState: gameState
             });
+            
+            // Emit preparation phase started event to all players
+            const io = require('../socket').getIO();
+            if (io) {
+                io.to(newGame.id).emit('preparationPhaseStarted', {
+                    gameId: newGame.id,
+                    gameState: gameState,
+                    preparation: gameState.preparation,
+                    message: 'Game has started! Preparation phase is active for 30 seconds.'
+                });
+            }
         } else {
             res.status(400).json({
                 success: false,
@@ -415,6 +429,175 @@ exports.getPlayAgainVotingStatus = (req, res) => {
         res.status(500).json({ 
             success: false, 
             error: 'Failed to get voting status: ' + error.message 
+        });
+    }
+};
+
+// Vote to skip preparation phase
+exports.voteSkipPreparation = (req, res) => {
+    try {
+        const { gameId, playerId } = req.body;
+        
+        if (!gameId || !playerId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Game ID and player ID are required'
+            });
+        }
+
+        const game = Game.findById(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Game not found' 
+            });
+        }
+
+        const result = game.voteSkipPreparation(playerId);
+        
+        if (result.success) {
+            // Emit preparation phase update to all players
+            const io = require('../socket').getIO();
+            if (io) {
+                const gameState = game.getGameState();
+                
+                if (result.transitioned) {
+                    // Emit preparation phase ended if transition occurred
+                    io.to(gameId).emit('preparationPhaseEnded', {
+                        gameId: gameId,
+                        gameState: gameState,
+                        message: 'All players voted to skip preparation. Game is starting!',
+                        reason: 'vote_skip'
+                    });
+                } else {
+                    // Emit preparation phase update with current vote status
+                    io.to(gameId).emit('preparationPhaseUpdated', {
+                        gameId: gameId,
+                        preparation: gameState.preparation,
+                        votes: result.votes || gameState.preparation?.votes,
+                        totalPlayers: result.totalPlayers || gameState.preparation?.totalPlayers,
+                        votesNeeded: result.votesNeeded,
+                        message: `${result.votes || 0} of ${result.totalPlayers || 0} players voted to skip preparation`
+                    });
+                }
+            }
+            
+            res.status(200).json({ 
+                success: true,
+                message: result.message,
+                voteResult: {
+                    votes: result.votes,
+                    totalPlayers: result.totalPlayers,
+                    votesNeeded: result.votesNeeded,
+                    transitioned: result.transitioned
+                },
+                gameState: result.transitioned ? result.gameState : undefined
+            });
+        } else {
+            res.status(400).json({ 
+                success: false,
+                error: result.message 
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to vote skip preparation: ' + error.message 
+        });
+    }
+};
+
+// Remove skip preparation vote
+exports.removeSkipPreparationVote = (req, res) => {
+    try {
+        const { gameId, playerId } = req.body;
+        
+        if (!gameId || !playerId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Game ID and player ID are required'
+            });
+        }
+
+        const game = Game.findById(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Game not found' 
+            });
+        }
+
+        const result = game.removeSkipPreparationVote(playerId);
+        
+        if (result.success) {
+            // Emit preparation phase update to all players
+            const io = require('../socket').getIO();
+            if (io) {
+                const gameState = game.getGameState();
+                io.to(gameId).emit('preparationPhaseUpdated', {
+                    gameId: gameId,
+                    preparation: gameState.preparation,
+                    votes: result.votes || gameState.preparation?.votes,
+                    totalPlayers: result.totalPlayers || gameState.preparation?.totalPlayers,
+                    message: `${result.votes || 0} of ${result.totalPlayers || 0} players voted to skip preparation`
+                });
+            }
+            
+            res.status(200).json({ 
+                success: true,
+                message: result.message,
+                voteResult: {
+                    votes: result.votes,
+                    totalPlayers: result.totalPlayers
+                }
+            });
+        } else {
+            res.status(400).json({ 
+                success: false,
+                error: result.message 
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to remove skip vote: ' + error.message 
+        });
+    }
+};
+
+// Get preparation phase status
+exports.getPreparationStatus = (req, res) => {
+    try {
+        const { gameId } = req.params;
+        
+        if (!gameId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Game ID is required'
+            });
+        }
+
+        const game = Game.findById(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Game not found' 
+            });
+        }
+
+        const status = game.getPreparationStatus();
+        
+        res.status(200).json({ 
+            success: true,
+            preparationStatus: status
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to get preparation status: ' + error.message 
         });
     }
 };

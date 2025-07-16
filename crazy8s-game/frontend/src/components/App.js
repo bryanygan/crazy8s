@@ -1436,6 +1436,179 @@ const DebugPanel = ({ isOpen, logs, onClose, onStart, players, currentId, onSwit
   );
 };
 
+// Preparation Phase Component
+const PreparationPhaseDisplay = ({ gameState, playerId, onVoteSkip, onRemoveVote }) => {
+  const [timeLeft, setTimeLeft] = useState(30);
+  
+  useEffect(() => {
+    if (gameState?.gameState !== 'preparation') return;
+    
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        const newTime = Math.max(0, prev - 1);
+        if (newTime === 0) {
+          clearInterval(timer);
+        }
+        return newTime;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [gameState?.gameState]);
+
+  if (gameState?.gameState !== 'preparation') return null;
+
+  const preparation = gameState.preparation || {};
+  const { votes = 0, totalPlayers = 0, votedPlayers = [] } = preparation;
+  
+  const hasVoted = (votedPlayers || []).some(vp => vp.id === playerId);
+  
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.8)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: '#fff',
+        padding: '40px',
+        borderRadius: '20px',
+        textAlign: 'center',
+        maxWidth: '500px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+        border: '2px solid #3498db'
+      }}>
+        {/* Title */}
+        <h2 style={{
+          color: '#2c3e50',
+          margin: '0 0 20px 0',
+          fontSize: '28px',
+          fontWeight: 'bold'
+        }}>
+          🕒 Preparation Phase
+        </h2>
+        
+        {/* Countdown Timer */}
+        <div style={{
+          fontSize: '48px',
+          fontWeight: 'bold',
+          color: timeLeft <= 10 ? '#e74c3c' : '#3498db',
+          margin: '20px 0',
+          textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          animation: timeLeft <= 10 ? 'pulse 1s infinite' : 'none'
+        }}>
+          {timeLeft}s
+        </div>
+        
+        {/* Instructions */}
+        <p style={{
+          color: '#7f8c8d',
+          fontSize: '16px',
+          margin: '20px 0',
+          lineHeight: '1.5'
+        }}>
+          Take a moment to review your cards and plan your strategy.
+          <br />
+          The game will start automatically, or you can vote to skip this phase.
+        </p>
+        
+        {/* Vote Status */}
+        <div style={{
+          backgroundColor: '#ecf0f1',
+          padding: '15px',
+          borderRadius: '10px',
+          margin: '20px 0'
+        }}>
+          <p style={{
+            color: '#2c3e50',
+            margin: '0 0 10px 0',
+            fontWeight: 'bold'
+          }}>
+            Skip Votes: {votes} of {totalPlayers}
+          </p>
+          
+          {/* Voted Players Display */}
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '8px',
+            justifyContent: 'center',
+            marginTop: '10px'
+          }}>
+            {gameState.players?.filter(p => p.isConnected).map(player => {
+              const playerHasVoted = (votedPlayers || []).some(vp => vp.id === player.id);
+              return (
+                <div key={player.id} style={{
+                  padding: '6px 12px',
+                  borderRadius: '15px',
+                  backgroundColor: playerHasVoted ? '#27ae60' : '#bdc3c7',
+                  color: '#fff',
+                  fontSize: '12px',
+                  fontWeight: 'bold'
+                }}>
+                  {player.name} {playerHasVoted ? '✓' : '○'}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        
+        {/* Vote Button */}
+        <div style={{ marginTop: '25px' }}>
+          {hasVoted ? (
+            <button
+              onClick={onRemoveVote}
+              style={{
+                backgroundColor: '#e74c3c',
+                color: '#fff',
+                border: 'none',
+                padding: '12px 30px',
+                borderRadius: '25px',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseOver={(e) => e.target.style.backgroundColor = '#c0392b'}
+              onMouseOut={(e) => e.target.style.backgroundColor = '#e74c3c'}
+            >
+              Remove Skip Vote
+            </button>
+          ) : (
+            <button
+              onClick={onVoteSkip}
+              style={{
+                backgroundColor: '#3498db',
+                color: '#fff',
+                border: 'none',
+                padding: '12px 30px',
+                borderRadius: '25px',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseOver={(e) => e.target.style.backgroundColor = '#2980b9'}
+              onMouseOut={(e) => e.target.style.backgroundColor = '#3498db'}
+            >
+              Vote to Skip
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main App component (wrapped with authentication)
 const GameApp = () => {
   const { user, token, isAuthenticated, updateSettings, migrateLocalSettings: authMigrateSettings, logout } = useAuth();
@@ -2121,6 +2294,34 @@ const GameApp = () => {
     socket.on('tournamentStatus', handleTournamentStatus);
     socket.on('roundStarted', handleRoundStarted);
 
+    // Preparation phase event handlers
+    const handlePreparationPhaseStarted = (data) => {
+      console.log('🕒 Preparation phase started:', data);
+      setGameState(data.gameState);
+      addToast(data.message || 'Preparation phase started! Get ready!', 'info');
+    };
+
+    const handlePreparationPhaseUpdated = (data) => {
+      console.log('📊 Preparation phase updated:', data);
+      setGameState(prevState => ({
+        ...prevState,
+        preparation: data.preparation
+      }));
+      if (data.message) {
+        addToast(data.message, 'info');
+      }
+    };
+
+    const handlePreparationPhaseEnded = (data) => {
+      console.log('✅ Preparation phase ended:', data);
+      setGameState(data.gameState);
+      addToast(data.message || 'Game starting now!', 'success');
+    };
+
+    socket.on('preparationPhaseStarted', handlePreparationPhaseStarted);
+    socket.on('preparationPhaseUpdated', handlePreparationPhaseUpdated);
+    socket.on('preparationPhaseEnded', handlePreparationPhaseEnded);
+
     // Cleanup function
     return () => {
       console.log('🔌 Cleaning up game socket event listeners');
@@ -2142,6 +2343,9 @@ const GameApp = () => {
       socket.off('tournamentFinished', handleTournamentFinished);
       socket.off('tournamentStatus', handleTournamentStatus);
       socket.off('roundStarted', handleRoundStarted);
+      socket.off('preparationPhaseStarted', handlePreparationPhaseStarted);
+      socket.off('preparationPhaseUpdated', handlePreparationPhaseUpdated);
+      socket.off('preparationPhaseEnded', handlePreparationPhaseEnded);
     };
   }, [socket, gameState, playerId, isAuthenticated, addToast, isDrawing, playerIdRef, setHasDrawnThisTurn, setIsDrawing, setIsSkipping, setSelectedCards, setGameState, setPlayerHand, hasDrawnThisTurnRef, setPlayAgainVotes, setRoundEndData, setShowRoundEndModal, setNextRoundTimer, setTournamentWinnerData, setShowTournamentWinnerModal, setShowAuthModal, setTournamentStatus, setGlobalTimer]); // Dependencies for game event handlers
 
@@ -2462,6 +2666,25 @@ useEffect(() => {
         timerDuration: settings.timerDuration,
         timerWarningTime: settings.timerWarningTime
       }
+    });
+  };
+
+  // Preparation phase functions
+  const voteSkipPreparation = () => {
+    if (!socket || !gameState?.gameId) return;
+    
+    console.log('🗳️ Voting to skip preparation');
+    socket.emit('skipPreparation', {
+      gameId: gameState.gameId
+    });
+  };
+
+  const removeSkipVote = () => {
+    if (!socket || !gameState?.gameId) return;
+    
+    console.log('🗳️ Removing skip vote');
+    socket.emit('removeSkipVote', {
+      gameId: gameState.gameId
     });
   };
 
@@ -3651,6 +3874,14 @@ const handleLogout = async () => {
         settings={settings}
         onSettingsChange={handleSettingsChange}
         setToasts={setToasts}
+      />
+
+      {/* Preparation Phase Display */}
+      <PreparationPhaseDisplay 
+        gameState={gameState}
+        playerId={playerId}
+        onVoteSkip={voteSkipPreparation}
+        onRemoveVote={removeSkipVote}
       />
 
       {/* Authentication Modal */}

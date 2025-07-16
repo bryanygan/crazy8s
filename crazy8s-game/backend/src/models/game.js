@@ -11,7 +11,7 @@ class Game {
         this.drawPile = [];
         this.discardPile = [];
         this.currentPlayerIndex = 0;
-        this.gameState = 'waiting'; // 'waiting', 'playing', 'finished'
+        this.gameState = 'waiting'; // 'waiting', 'preparation', 'playing', 'finished'
         this.direction = 1; // 1 for clockwise, -1 for counterclockwise
         this.declaredSuit = null; // For wild cards (8s)
         this.drawStack = 0; // Accumulated draw cards from Aces/2s
@@ -31,6 +31,8 @@ class Game {
         this.autoPassTimers = new Map(); // Initialize auto-pass timers Map
         this.pendingTurnPass = null; // Initialize pending turn pass state
         this.playAgainVotes = new Set(); // Initialize play again votes
+        this.preparationTimer = null; // Timer for 30-second preparation phase
+        this.preparationSkipVotes = new Set(); // Players who voted to skip preparation
     }
 
     generateGameId() {
@@ -75,14 +77,18 @@ class Game {
             };
         }
 
-        // Set game state to playing and reset current player
-        this.gameState = 'playing';
+        // Set game state to preparation phase and start timer
+        this.gameState = 'preparation';
         this.currentPlayerIndex = 0;
+        this.preparationSkipVotes.clear();
         
         // Make sure activePlayers is properly set
         this.activePlayers = this.players.filter(p => !p.isEliminated);
 
-        console.log(`Game ${this.id} started. Current player index: ${this.currentPlayerIndex}, Active players: ${this.activePlayers.length}`);
+        // Start 30-second preparation timer
+        this.startPreparationTimer();
+
+        console.log(`Game ${this.id} started in preparation phase. Active players: ${this.activePlayers.length}`);
         console.log('Active players:', this.activePlayers.map(p => p.name));
 
         return {
@@ -110,6 +116,162 @@ class Game {
                 }
             }
         }
+    }
+
+    startPreparationTimer() {
+        console.log(`Starting 30-second preparation timer for game ${this.id}`);
+        
+        // Clear any existing timer
+        if (this.preparationTimer) {
+            clearTimeout(this.preparationTimer);
+        }
+        
+        this.preparationTimer = setTimeout(() => {
+            this.transitionToPlaying();
+        }, 30000); // 30 seconds
+    }
+
+    transitionToPlaying() {
+        if (this.gameState !== 'preparation') {
+            return; // Already transitioned or game ended
+        }
+        
+        console.log(`Game ${this.id} transitioning from preparation to playing phase`);
+        this.gameState = 'playing';
+        
+        // Clear preparation-specific data
+        this.preparationSkipVotes.clear();
+        if (this.preparationTimer) {
+            clearTimeout(this.preparationTimer);
+            this.preparationTimer = null;
+        }
+        
+        console.log(`Game ${this.id} is now in playing phase. Current player: ${this.getCurrentPlayer()?.name}`);
+        
+        // Emit preparation phase ended event to all players
+        try {
+            const { getIO } = require('../socket');
+            const io = getIO();
+            if (io) {
+                io.to(this.id).emit('preparationPhaseEnded', {
+                    gameId: this.id,
+                    gameState: this.getGameState(),
+                    message: 'Preparation phase ended. Game is starting!',
+                    reason: 'timer_expired'
+                });
+            }
+        } catch (error) {
+            console.warn(`Failed to emit preparationPhaseEnded event for game ${this.id}:`, error.message);
+        }
+    }
+
+    voteSkipPreparation(playerId) {
+        // Validate player exists and is connected
+        const player = this.getPlayerById(playerId);
+        if (!player) {
+            return { 
+                success: false, 
+                error: 'Player not found' 
+            };
+        }
+        
+        if (!player.isConnected) {
+            return { 
+                success: false, 
+                error: 'Disconnected players cannot vote' 
+            };
+        }
+        
+        // Check if game is in preparation phase
+        if (this.gameState !== 'preparation') {
+            return { 
+                success: false, 
+                error: 'Game is not in preparation phase' 
+            };
+        }
+        
+        // Add the vote
+        this.preparationSkipVotes.add(playerId);
+        
+        console.log(`Player ${player.name} voted to skip preparation. Votes: ${this.preparationSkipVotes.size}/${this.players.filter(p => p.isConnected).length}`);
+        
+        // Check if all connected players have voted
+        const connectedPlayers = this.players.filter(p => p.isConnected);
+        const allVoted = connectedPlayers.every(p => this.preparationSkipVotes.has(p.id));
+        
+        if (allVoted) {
+            console.log(`All connected players voted to skip preparation. Transitioning to playing phase.`);
+            this.transitionToPlaying();
+            
+            return {
+                success: true,
+                message: 'All players voted to skip preparation. Game starting now!',
+                transitioned: true,
+                gameState: this.getGameState()
+            };
+        }
+        
+        return {
+            success: true,
+            message: `Vote recorded. ${this.preparationSkipVotes.size}/${connectedPlayers.length} players want to skip preparation.`,
+            votesNeeded: connectedPlayers.length - this.preparationSkipVotes.size,
+            transitioned: false
+        };
+    }
+
+    removeSkipPreparationVote(playerId) {
+        // Validate player exists
+        const player = this.getPlayerById(playerId);
+        if (!player) {
+            return { 
+                success: false, 
+                error: 'Player not found' 
+            };
+        }
+        
+        // Check if game is in preparation phase
+        if (this.gameState !== 'preparation') {
+            return { 
+                success: false, 
+                error: 'Game is not in preparation phase' 
+            };
+        }
+        
+        // Remove the vote
+        this.preparationSkipVotes.delete(playerId);
+        
+        console.log(`Player ${player.name} removed vote to skip preparation. Votes: ${this.preparationSkipVotes.size}/${this.players.filter(p => p.isConnected).length}`);
+        
+        const connectedPlayers = this.players.filter(p => p.isConnected);
+        
+        return {
+            success: true,
+            message: `Vote removed. ${this.preparationSkipVotes.size}/${connectedPlayers.length} players want to skip preparation.`,
+            votesNeeded: connectedPlayers.length - this.preparationSkipVotes.size
+        };
+    }
+
+    getPreparationStatus() {
+        if (this.gameState !== 'preparation') {
+            return {
+                inPreparation: false,
+                timeRemaining: 0,
+                votes: 0,
+                totalPlayers: 0,
+                canSkip: false
+            };
+        }
+        
+        const connectedPlayers = this.players.filter(p => p.isConnected);
+        const votedPlayers = connectedPlayers.filter(p => this.preparationSkipVotes.has(p.id));
+        
+        return {
+            inPreparation: true,
+            votes: this.preparationSkipVotes.size,
+            totalPlayers: connectedPlayers.length,
+            votedPlayers: votedPlayers.map(p => ({ id: p.id, name: p.name })),
+            canSkip: votedPlayers.length === connectedPlayers.length
+        };
     }
 
     getGameState() {
@@ -152,7 +314,8 @@ class Game {
                 winner: this.tournamentWinner ? { id: this.tournamentWinner.id, name: this.tournamentWinner.name } : null,
                 roundHistory: this.tournamentRounds || []
             },
-            playAgainVoting: this.gameState === 'finished' ? this.getPlayAgainVotingStatus() : null
+            playAgainVoting: this.gameState === 'finished' ? this.getPlayAgainVotingStatus() : null,
+            preparation: this.gameState === 'preparation' ? this.getPreparationStatus() : null
         };
     }
 
@@ -1854,6 +2017,12 @@ class Game {
         if (this.nextRoundTimer) {
             clearTimeout(this.nextRoundTimer);
             this.nextRoundTimer = null;
+        }
+        
+        // Clear any existing preparation timer
+        if (this.preparationTimer) {
+            clearTimeout(this.preparationTimer);
+            this.preparationTimer = null;
         }
 
         // Clear any existing auto pass timers

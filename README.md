@@ -8,6 +8,7 @@ Crazy 8's is a strategic card game similar to Uno, played with a standard 52-car
 
 ### Key Features
 - **Real-time multiplayer** (2-4 players)
+- **30-second preparation phase** with optional skip voting system
 - **Advanced sequential stacking** with sophisticated turn control simulation
 - **Tournament elimination** format across multiple rounds
 - **Complex special card interactions** with turn control logic (Jack, Queen, Ace, 2, 8)
@@ -68,10 +69,13 @@ Crazy 8's is a strategic card game similar to Uno, played with a standard 52-car
 ### Basic Gameplay
 
 1. **Starting**: Each player receives 8 cards, with one card face-up as the discard pile
-2. **Playing**: On your turn, play a card that matches the top card's **suit** or **rank**
-3. **Drawing**: If you can't play, draw a card from the deck
-4. **Winning**: First player to empty their hand is "safe" and advances to the next round
-5. **Elimination**: Last player with cards is eliminated from the tournament
+2. **Preparation Phase**: 30-second period to review your cards and plan strategy
+   - Players can vote to skip this phase if all agree
+   - Use this time to sort your cards and identify key plays
+3. **Playing**: On your turn, play a card that matches the top card's **suit** or **rank**
+4. **Drawing**: If you can't play, draw a card from the deck
+5. **Winning**: First player to empty their hand is "safe" and advances to the next round
+6. **Elimination**: Last player with cards is eliminated from the tournament
 
 ### Special Cards
 
@@ -148,6 +152,51 @@ When you draw penalty cards (from Aces/2s):
 **Counter Cards:**
 - **Aces counter**: Other Aces or same-suit 2s
 - **2s counter**: Other 2s or same-suit Aces
+
+## ⏰ Preparation Phase
+
+The preparation phase is a 30-second strategic planning period that occurs at the start of each new game (not between tournament rounds). This feature helps players review their cards and plan their opening strategy.
+
+### How It Works
+
+1. **Automatic Start**: When a new game begins, players enter the preparation phase
+2. **30-Second Timer**: A countdown timer shows the remaining preparation time
+3. **Card Review**: Use this time to:
+   - Sort and organize your hand
+   - Identify potential stacking combinations
+   - Plan your opening moves
+   - Review the starting discard card
+
+### Skip Voting System
+
+Players can vote to skip the preparation phase if everyone agrees:
+
+- **Unanimous Required**: All connected players must vote to skip
+- **Real-time Updates**: Vote counts update instantly as players vote
+- **Immediate Transition**: Game starts as soon as all players vote
+- **Visual Feedback**: Progress indicator shows current vote status
+
+### Player Connection Handling
+
+- **Connected Players Only**: Only connected players can vote
+- **Dynamic Recalculation**: Vote requirements adjust if players disconnect/reconnect
+- **Session Preservation**: Previous votes are preserved if a player reconnects
+- **Graceful Handling**: Disconnected players don't block the voting process
+
+### User Interface
+
+The preparation phase features a modal overlay with:
+- **Large countdown timer** with color-coded urgency (blue → red)
+- **Vote status display** showing current progress
+- **Player badges** indicating who has voted
+- **Skip/Remove vote buttons** for easy interaction
+- **Smooth animations** and visual feedback
+
+### When It Activates
+
+- ✅ **New game start**: Fresh tournament or single game
+- ❌ **Between rounds**: Tournament rounds transition directly to playing
+- ❌ **Reconnection**: Players rejoining skip preparation phase
 
 ## 🔌 Disconnection/Reconnection System
 
