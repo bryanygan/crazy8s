@@ -2944,13 +2944,36 @@ const handleLogout = async () => {
     return (
       <>
         <MainMenu 
-          onGameCreated={({ playerName }) => {
+          onGameCreated={({ playerName, resetLoading }) => {
             setPlayerName(playerName);
             if (!playerName.trim()) {
               addToast('Please enter your name', 'error');
+              if (resetLoading) resetLoading();
               return;
             }
             console.log('🎮 Creating game as:', playerName);
+            
+            // Store resetLoading callback to call it when we get a response
+            const resetLoadingRef = { current: resetLoading };
+            
+            // Set up one-time listeners for the response
+            const handleGameCreatedSuccess = (data) => {
+              console.log('✅ Game created successfully:', data);
+              if (resetLoadingRef.current) resetLoadingRef.current();
+              socket.off('gameUpdate', handleGameCreatedSuccess);
+              socket.off('error', handleGameCreatedError);
+            };
+            
+            const handleGameCreatedError = (error) => {
+              console.log('❌ Game creation failed:', error);
+              if (resetLoadingRef.current) resetLoadingRef.current();
+              socket.off('gameUpdate', handleGameCreatedSuccess);
+              socket.off('error', handleGameCreatedError);
+            };
+            
+            socket.once('gameUpdate', handleGameCreatedSuccess);
+            socket.once('error', handleGameCreatedError);
+            
             socket.emit('createGame', {
               playerName: playerName.trim()
             });

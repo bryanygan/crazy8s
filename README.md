@@ -18,6 +18,7 @@ Crazy 8's is a strategic card game similar to Uno, played with a standard 52-car
 - **Real-time chat** and game notifications
 - **Robust disconnection/reconnection system** with session preservation
 - **Comprehensive test suite** with 95%+ coverage
+- **Duplicate game creation prevention** (frontend protection implemented)
 
 ## 🚀 Quick Start
 
@@ -484,6 +485,23 @@ This project is licensed under the MIT License.
 - React community for excellent documentation
 - Jest testing framework for comprehensive testing
 - Contributors and beta testers who helped refine the stacking logic
+
+## 🔧 Known Issues & Limitations
+
+### Duplicate Game Creation
+**Status**: Partially Fixed (Frontend Protection Only)
+
+- **Issue**: Multiple rapid clicks on "Create Game" can create duplicate games
+- **Current Fix**: Frontend prevents duplicate button clicks with loading state protection
+- **Limitation**: Backend duplicate prevention mechanism is not functioning correctly
+- **Impact**: Users who bypass frontend protection may still create duplicate games
+- **Recommendation**: Always wait for game creation to complete before clicking again
+
+### Best Practices for Game Creation
+- Click "Create Game" once and wait for response
+- Don't refresh the page during game creation
+- If game creation appears stuck, wait 5 seconds before trying again
+- Report persistent issues through GitHub
 
 ## 📞 Support
 

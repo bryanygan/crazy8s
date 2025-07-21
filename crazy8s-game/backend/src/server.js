@@ -182,6 +182,10 @@ app.use((req, res, next) => {
 // Map of socketId -> { name, gameId, playerId, user, isAuthenticated }
 const connectedPlayers = new Map();
 
+// Track recent game creation requests to prevent duplicates
+// Map of socketId -> timestamp
+const recentGameCreationRequests = new Map();
+
 // Helper to get display name for a player
 const getPlayerDisplayName = (socket, providedName = null) => {
     if (socket.isAuthenticated && socket.user) {
@@ -329,12 +333,39 @@ io.on('connection', (socket) => {
     // Handle creating a new game
     socket.on('createGame', (data) => {
         try {
+            // Check for duplicate requests within last 2 seconds
+            const now = Date.now();
+            const lastRequest = recentGameCreationRequests.get(socket.id);
+            if (lastRequest && (now - lastRequest) < 2000) {
+                console.log(`Duplicate game creation request blocked for ${socket.id} (${now - lastRequest}ms ago)`);
+                socket.emit('error', 'Game creation request too frequent. Please wait.');
+                return;
+            }
+            
+            // Check if player is already in a game
+            const existingPlayerInfo = connectedPlayers.get(socket.id);
+            if (existingPlayerInfo && existingPlayerInfo.gameId) {
+                console.log(`Player ${socket.id} tried to create game while already in game ${existingPlayerInfo.gameId}`);
+                socket.emit('error', 'You are already in a game. Leave current game first.');
+                return;
+            }
+
             const { playerName } = data;
             const displayName = getPlayerDisplayName(socket, playerName);
             
             if (!displayName) {
                 socket.emit('error', 'Player name is required');
                 return;
+            }
+
+            // Track this request
+            recentGameCreationRequests.set(socket.id, now);
+            
+            // Clean up old requests (older than 5 minutes)
+            for (const [sockId, timestamp] of recentGameCreationRequests.entries()) {
+                if (now - timestamp > 300000) { // 5 minutes
+                    recentGameCreationRequests.delete(sockId);
+                }
             }
 
             // Create new game with this player
@@ -885,6 +916,9 @@ io.on('connection', (socket) => {
                 
                 // Remove from connected players but keep session for reconnection
                 connectedPlayers.delete(socket.id);
+                
+                // Clean up game creation request tracking
+                recentGameCreationRequests.delete(socket.id);
             }
         } catch (error) {
             console.error('Error handling disconnect:', error);

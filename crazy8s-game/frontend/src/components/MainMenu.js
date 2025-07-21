@@ -87,19 +87,22 @@ const MainMenu = ({ onGameCreated, onGameJoined }) => {
   const handleStartGame = async () => {
     if (!validateForm()) return;
     
+    // Prevent double-clicks by checking if already loading
+    if (isLoading) return;
+    
     setIsLoading(true);
     try {
       console.log('🎮 Creating game as:', formData.name);
-      socket.emit('createGame', {
-        playerName: formData.name.trim()
-      });
-      
+      // Remove duplicate socket emission - only call the callback which will handle emission
       if (onGameCreated) {
-        onGameCreated({ playerName: formData.name.trim() });
+        onGameCreated({ 
+          playerName: formData.name.trim(),
+          // Pass callback to reset loading state
+          resetLoading: () => setIsLoading(false)
+        });
       }
     } catch (error) {
       setErrors({ general: 'Failed to create game' });
-    } finally {
       setIsLoading(false);
     }
   };
