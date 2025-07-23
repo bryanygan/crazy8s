@@ -182,9 +182,52 @@ app.use((req, res, next) => {
 // Map of socketId -> { name, gameId, playerId, user, isAuthenticated }
 const connectedPlayers = new Map();
 
-// Track recent game creation requests to prevent duplicates
-// Map of socketId -> timestamp
-const recentGameCreationRequests = new Map();
+// Enhanced duplicate game creation prevention system
+// Track recent game creation requests by multiple identifiers
+const recentGameCreationRequests = new Map(); // socketId -> { timestamp, userId, requestHash }
+const gameCreationStates = new Map(); // userId/socketId -> "creating" | "completed"
+const userGameCreationLocks = new Map(); // userId -> { socketId, timestamp, gameId }
+
+// Helper function to generate request hash for content-based deduplication
+const generateRequestHash = (playerName, userId = null) => {
+    const content = `${playerName.trim().toLowerCase()}_${userId || 'guest'}`;
+    return Buffer.from(content).toString('base64');
+};
+
+// Helper function to get unique identifier for user (userId or socketId for guests)
+const getUserIdentifier = (socket) => {
+    return socket.isAuthenticated && socket.userId ? socket.userId : socket.id;
+};
+
+// Enhanced cleanup function for game creation tracking
+const cleanupGameCreationTracking = () => {
+    const now = Date.now();
+    const cleanupAge = 5 * 60 * 1000; // 5 minutes
+    
+    // Clean up old requests
+    for (const [key, data] of recentGameCreationRequests.entries()) {
+        if (now - data.timestamp > cleanupAge) {
+            recentGameCreationRequests.delete(key);
+        }
+    }
+    
+    // Clean up old creation states
+    for (const [key, state] of gameCreationStates.entries()) {
+        if (state.timestamp && now - state.timestamp > cleanupAge) {
+            gameCreationStates.delete(key);
+        }
+    }
+    
+    // Clean up old user locks
+    for (const [userId, lock] of userGameCreationLocks.entries()) {
+        if (now - lock.timestamp > cleanupAge) {
+            userGameCreationLocks.delete(userId);
+        }
+    }
+};
+
+// Run cleanup every minute
+setInterval(cleanupGameCreationTracking, 60 * 1000);
 
 // Helper to get display name for a player
 const getPlayerDisplayName = (socket, providedName = null) => {
@@ -330,26 +373,10 @@ io.on('connection', (socket) => {
         user: socket.isAuthenticated ? socket.user.toPublicJSON() : null
     });
 
-    // Handle creating a new game
+    // Handle creating a new game with enhanced duplicate prevention
     socket.on('createGame', (data) => {
         try {
-            // Check for duplicate requests within last 2 seconds
             const now = Date.now();
-            const lastRequest = recentGameCreationRequests.get(socket.id);
-            if (lastRequest && (now - lastRequest) < 2000) {
-                console.log(`Duplicate game creation request blocked for ${socket.id} (${now - lastRequest}ms ago)`);
-                socket.emit('error', 'Game creation request too frequent. Please wait.');
-                return;
-            }
-            
-            // Check if player is already in a game
-            const existingPlayerInfo = connectedPlayers.get(socket.id);
-            if (existingPlayerInfo && existingPlayerInfo.gameId) {
-                console.log(`Player ${socket.id} tried to create game while already in game ${existingPlayerInfo.gameId}`);
-                socket.emit('error', 'You are already in a game. Leave current game first.');
-                return;
-            }
-
             const { playerName } = data;
             const displayName = getPlayerDisplayName(socket, playerName);
             
@@ -358,41 +385,124 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Track this request
-            recentGameCreationRequests.set(socket.id, now);
-            
-            // Clean up old requests (older than 5 minutes)
-            for (const [sockId, timestamp] of recentGameCreationRequests.entries()) {
-                if (now - timestamp > 300000) { // 5 minutes
-                    recentGameCreationRequests.delete(sockId);
+            // Get unique identifier for this user/session
+            const userIdentifier = getUserIdentifier(socket);
+            const requestHash = generateRequestHash(displayName, socket.userId);
+
+            // LAYER 1: Check for recent duplicate requests from same socket
+            const lastSocketRequest = recentGameCreationRequests.get(socket.id);
+            if (lastSocketRequest && (now - lastSocketRequest.timestamp) < 2000) {
+                console.log(`🛡️ Duplicate request blocked: Socket ${socket.id} (${now - lastSocketRequest.timestamp}ms ago)`);
+                socket.emit('error', 'Game creation request too frequent. Please wait.');
+                return;
+            }
+
+            // LAYER 2: Check for duplicate requests from same user (across multiple connections)
+            if (socket.isAuthenticated) {
+                const existingUserRequests = Array.from(recentGameCreationRequests.entries())
+                    .filter(([_, reqData]) => reqData.userId === socket.userId && (now - reqData.timestamp) < 2000);
+                
+                if (existingUserRequests.length > 0) {
+                    console.log(`🛡️ Duplicate user request blocked: User ${socket.userId} has recent request from different socket`);
+                    socket.emit('error', 'You have a recent game creation request. Please wait.');
+                    return;
                 }
             }
 
-            // Create new game with this player
-            const game = new Game([socket.id], [displayName], socket.id);
-            Game.addGame(game);
-            game.onAutoPass = (playerId) => {
-                const player = game.getPlayerById(playerId);
-                broadcastGameState(game.id);
-                io.to(game.id).emit('playerAutoPassed', { playerName: player?.name });
-            };
+            // LAYER 3: Check if user is currently creating a game
+            const currentCreationState = gameCreationStates.get(userIdentifier);
+            if (currentCreationState === "creating") {
+                console.log(`🛡️ Creation in progress blocked: ${userIdentifier} is already creating a game`);
+                socket.emit('error', 'Game creation already in progress. Please wait.');
+                return;
+            }
+
+            // LAYER 4: Check for content-based duplicate (same player name + user)
+            const duplicateRequest = Array.from(recentGameCreationRequests.entries())
+                .find(([_, reqData]) => reqData.requestHash === requestHash && (now - reqData.timestamp) < 5000);
             
-            // Store player info
-            connectedPlayers.set(socket.id, {
-                name: displayName,
-                gameId: game.id,
-                playerId: socket.id,
-                user: socket.user,
-                userId: socket.userId,
-                isAuthenticated: socket.isAuthenticated
-            });
+            if (duplicateRequest) {
+                console.log(`🛡️ Content duplicate blocked: Same request content from ${userIdentifier}`);
+                socket.emit('error', 'Duplicate game creation request detected. Please wait.');
+                return;
+            }
 
-            // Join socket room for this game
-            socket.join(game.id);
+            // LAYER 5: Check if user already has an active game creation lock
+            const existingLock = userGameCreationLocks.get(userIdentifier);
+            if (existingLock && (now - existingLock.timestamp) < 10000) { // 10 second lock
+                console.log(`🛡️ User lock blocked: ${userIdentifier} has active game creation lock`);
+                socket.emit('error', 'You recently created a game. Please wait before creating another.');
+                return;
+            }
 
-            console.log(`Game ${game.id} created by ${displayName} (${socket.id}) - ${socket.isAuthenticated ? 'Authenticated' : 'Guest'}`);
-            socket.emit('success', `Game created! Game ID: ${game.id}`);
-            broadcastGameState(game.id);
+            // LAYER 6: Check if player is already in a game
+            const existingPlayerInfo = connectedPlayers.get(socket.id);
+            if (existingPlayerInfo && existingPlayerInfo.gameId) {
+                console.log(`🛡️ Already in game blocked: ${socket.id} is in game ${existingPlayerInfo.gameId}`);
+                socket.emit('error', 'You are already in a game. Leave current game first.');
+                return;
+            }
+
+            // Set creation state to prevent concurrent requests
+            gameCreationStates.set(userIdentifier, "creating");
+            
+            console.log(`🎮 Starting game creation for ${displayName} (${userIdentifier})`);
+            
+            try {
+                // Create new game with this player
+                const game = new Game([socket.id], [displayName], socket.id);
+                Game.addGame(game);
+                game.onAutoPass = (playerId) => {
+                    const player = game.getPlayerById(playerId);
+                    broadcastGameState(game.id);
+                    io.to(game.id).emit('playerAutoPassed', { playerName: player?.name });
+                };
+                
+                // Store player info
+                connectedPlayers.set(socket.id, {
+                    name: displayName,
+                    gameId: game.id,
+                    playerId: socket.id,
+                    user: socket.user,
+                    userId: socket.userId,
+                    isAuthenticated: socket.isAuthenticated
+                });
+
+                // Join socket room for this game
+                socket.join(game.id);
+
+                // Track successful game creation
+                recentGameCreationRequests.set(socket.id, {
+                    timestamp: now,
+                    userId: socket.userId,
+                    requestHash: requestHash,
+                    gameId: game.id
+                });
+                
+                // Set user lock to prevent rapid subsequent creations
+                userGameCreationLocks.set(userIdentifier, {
+                    socketId: socket.id,
+                    timestamp: now,
+                    gameId: game.id
+                });
+                
+                // Mark creation as completed
+                gameCreationStates.set(userIdentifier, "completed");
+                
+                // Auto-cleanup creation state after 30 seconds
+                setTimeout(() => {
+                    gameCreationStates.delete(userIdentifier);
+                }, 30000);
+
+                console.log(`✅ Game ${game.id} created successfully by ${displayName} (${socket.id}) - ${socket.isAuthenticated ? 'Authenticated' : 'Guest'}`);
+                socket.emit('success', `Game created! Game ID: ${game.id}`);
+                broadcastGameState(game.id);
+                
+            } catch (gameCreationError) {
+                // Reset creation state on error
+                gameCreationStates.delete(userIdentifier);
+                throw gameCreationError;
+            }
 
         } catch (error) {
             console.error('Error creating game:', error);
@@ -917,8 +1027,30 @@ io.on('connection', (socket) => {
                 // Remove from connected players but keep session for reconnection
                 connectedPlayers.delete(socket.id);
                 
-                // Clean up game creation request tracking
+                // Enhanced cleanup of game creation tracking
                 recentGameCreationRequests.delete(socket.id);
+                
+                // Clean up user-based tracking for authenticated users
+                if (socket.isAuthenticated && socket.userId) {
+                    const userIdentifier = socket.userId;
+                    
+                    // Clear creation state if it was set by this socket
+                    if (gameCreationStates.get(userIdentifier) === "creating") {
+                        gameCreationStates.delete(userIdentifier);
+                        console.log(`🧹 Cleared creation state for disconnected user ${userIdentifier}`);
+                    }
+                    
+                    // Clear user lock if it was set by this socket
+                    const userLock = userGameCreationLocks.get(userIdentifier);
+                    if (userLock && userLock.socketId === socket.id) {
+                        userGameCreationLocks.delete(userIdentifier);
+                        console.log(`🧹 Cleared user lock for disconnected user ${userIdentifier}`);
+                    }
+                } else {
+                    // For guest users, clean up by socket ID
+                    gameCreationStates.delete(socket.id);
+                    userGameCreationLocks.delete(socket.id);
+                }
             }
         } catch (error) {
             console.error('Error handling disconnect:', error);

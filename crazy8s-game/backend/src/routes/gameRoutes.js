@@ -73,32 +73,5 @@ router.get(
     gameController.getPlayAgainVotingStatus
 );
 
-// Preparation phase routes
-
-// Route to vote to skip preparation phase
-router.post(
-    '/preparation/skip-vote',
-    body('gameId').isString().notEmpty().withMessage('Game ID is required'),
-    body('playerId').isString().notEmpty().withMessage('Player ID is required'),
-    validateRequest,
-    gameController.voteSkipPreparation
-);
-
-// Route to remove skip preparation vote
-router.post(
-    '/preparation/remove-skip-vote',
-    body('gameId').isString().notEmpty().withMessage('Game ID is required'),
-    body('playerId').isString().notEmpty().withMessage('Player ID is required'),
-    validateRequest,
-    gameController.removeSkipPreparationVote
-);
-
-// Route to get preparation phase status
-router.get(
-    '/preparation/status/:gameId',
-    param('gameId').isString().notEmpty().withMessage('Game ID is required'),
-    validateRequest,
-    gameController.getPreparationStatus
-);
 
 module.exports = router;

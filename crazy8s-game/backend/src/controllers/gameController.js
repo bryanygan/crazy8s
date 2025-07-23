@@ -1,11 +1,43 @@
-// Enhanced gameController.js with new draw mechanics
+// Enhanced gameController.js with new draw mechanics and duplicate prevention
 
 const Game = require('../models/game');
 
-// Start a new game
+// Duplicate prevention tracking for REST API (shared with Socket.IO)
+const restGameCreationRequests = new Map(); // requesterId -> { timestamp, requestHash, gameId }
+const restGameCreationStates = new Map(); // requesterId -> "creating" | "completed"
+
+// Helper function to generate request hash for REST API
+const generateRestRequestHash = (playerIds, playerNames, requesterId) => {
+    const content = `${playerIds.sort().join(',')}_${playerNames.sort().join(',')}_${requesterId}`;
+    return Buffer.from(content).toString('base64');
+};
+
+// Cleanup function for REST API tracking
+const cleanupRestGameCreationTracking = () => {
+    const now = Date.now();
+    const cleanupAge = 5 * 60 * 1000; // 5 minutes
+    
+    for (const [key, data] of restGameCreationRequests.entries()) {
+        if (now - data.timestamp > cleanupAge) {
+            restGameCreationRequests.delete(key);
+        }
+    }
+    
+    for (const [key, state] of restGameCreationStates.entries()) {
+        if (state.timestamp && now - state.timestamp > cleanupAge) {
+            restGameCreationStates.delete(key);
+        }
+    }
+};
+
+// Run cleanup every 2 minutes for REST API
+setInterval(cleanupRestGameCreationTracking, 2 * 60 * 1000);
+
+// Start a new game with enhanced duplicate prevention
 exports.startGame = (req, res) => {
     try {
         const { playerIds, playerNames, requesterId } = req.body;
+        const now = Date.now();
         
         if (!playerIds || !playerNames || playerIds.length < 2) {
             return res.status(400).json({ 
@@ -21,48 +53,105 @@ exports.startGame = (req, res) => {
             });
         }
 
-        const newGame = new Game(playerIds, playerNames, requesterId);
-        
-        // Check if the requester is the game creator
-        if (newGame.gameCreator !== requesterId) {
-            return res.status(403).json({
+        const requestHash = generateRestRequestHash(playerIds, playerNames, requesterId);
+
+        // LAYER 1: Check for recent duplicate requests from same requester
+        const lastRequest = restGameCreationRequests.get(requesterId);
+        if (lastRequest && (now - lastRequest.timestamp) < 3000) { // 3 second cooldown for REST
+            console.log(`🛡️ REST: Duplicate request blocked for ${requesterId} (${now - lastRequest.timestamp}ms ago)`);
+            return res.status(429).json({
                 success: false,
-                error: 'Only the lobby creator can start the game'
+                error: 'Game creation request too frequent. Please wait.',
+                retryAfter: Math.ceil((3000 - (now - lastRequest.timestamp)) / 1000)
             });
         }
-        
-        Game.addGame(newGame);
-        
-        const startResult = newGame.startGame();
-        
-        if (startResult.success) {
-            // Get updated game state which now includes preparation phase
-            const gameState = newGame.getGameState();
-            
-            res.status(200).json({ 
-                success: true,
-                message: 'Game started in preparation phase', 
-                gameId: newGame.id,
-                gameState: gameState
+
+        // LAYER 2: Check if requester is currently creating a game
+        const currentCreationState = restGameCreationStates.get(requesterId);
+        if (currentCreationState === "creating") {
+            console.log(`🛡️ REST: Creation in progress blocked for ${requesterId}`);
+            return res.status(409).json({
+                success: false,
+                error: 'Game creation already in progress. Please wait.'
             });
+        }
+
+        // LAYER 3: Check for content-based duplicate
+        const duplicateRequest = Array.from(restGameCreationRequests.entries())
+            .find(([_, reqData]) => reqData.requestHash === requestHash && (now - reqData.timestamp) < 10000);
+        
+        if (duplicateRequest) {
+            console.log(`🛡️ REST: Content duplicate blocked for ${requesterId}`);
+            return res.status(409).json({
+                success: false,
+                error: 'Duplicate game creation request detected. Please wait.'
+            });
+        }
+
+        // Set creation state to prevent concurrent requests
+        restGameCreationStates.set(requesterId, "creating");
+        
+        console.log(`🎮 REST: Starting game creation for ${requesterId}`);
+
+        try {
+            const newGame = new Game(playerIds, playerNames, requesterId);
             
-            // Emit preparation phase started event to all players
-            const io = require('../socket').getIO();
-            if (io) {
-                io.to(newGame.id).emit('preparationPhaseStarted', {
-                    gameId: newGame.id,
-                    gameState: gameState,
-                    preparation: gameState.preparation,
-                    message: 'Game has started! Preparation phase is active for 30 seconds.'
+            // Check if the requester is the game creator
+            if (newGame.gameCreator !== requesterId) {
+                restGameCreationStates.delete(requesterId);
+                return res.status(403).json({
+                    success: false,
+                    error: 'Only the lobby creator can start the game'
                 });
             }
-        } else {
-            res.status(400).json({
-                success: false,
-                error: startResult.error
-            });
+            
+            Game.addGame(newGame);
+            
+            const startResult = newGame.startGame();
+            
+            if (startResult.success) {
+                // Track successful game creation
+                restGameCreationRequests.set(requesterId, {
+                    timestamp: now,
+                    requestHash: requestHash,
+                    gameId: newGame.id
+                });
+                
+                // Mark creation as completed
+                restGameCreationStates.set(requesterId, "completed");
+                
+                // Auto-cleanup creation state after 30 seconds
+                setTimeout(() => {
+                    restGameCreationStates.delete(requesterId);
+                }, 30000);
+                
+                const gameState = newGame.getGameState();
+                
+                console.log(`✅ REST: Game ${newGame.id} created successfully by ${requesterId}`);
+                res.status(200).json({ 
+                    success: true,
+                    message: 'Game started', 
+                    gameId: newGame.id,
+                    gameState: gameState
+                });
+            } else {
+                restGameCreationStates.delete(requesterId);
+                res.status(400).json({
+                    success: false,
+                    error: startResult.error
+                });
+            }
+        } catch (gameCreationError) {
+            // Reset creation state on error
+            restGameCreationStates.delete(requesterId);
+            throw gameCreationError;
         }
     } catch (error) {
+        console.error('REST: Error creating game:', error);
+        // Ensure creation state is cleaned up on error
+        if (req.body.requesterId) {
+            restGameCreationStates.delete(req.body.requesterId);
+        }
         res.status(500).json({ 
             success: false, 
             error: 'Failed to start game: ' + error.message 
@@ -433,171 +522,5 @@ exports.getPlayAgainVotingStatus = (req, res) => {
     }
 };
 
-// Vote to skip preparation phase
-exports.voteSkipPreparation = (req, res) => {
-    try {
-        const { gameId, playerId } = req.body;
-        
-        if (!gameId || !playerId) {
-            return res.status(400).json({
-                success: false,
-                error: 'Game ID and player ID are required'
-            });
-        }
 
-        const game = Game.findById(gameId);
-        
-        if (!game) {
-            return res.status(404).json({ 
-                success: false, 
-                error: 'Game not found' 
-            });
-        }
 
-        const result = game.voteSkipPreparation(playerId);
-        
-        if (result.success) {
-            // Emit preparation phase update to all players
-            const io = require('../socket').getIO();
-            if (io) {
-                const gameState = game.getGameState();
-                
-                if (result.transitioned) {
-                    // Emit preparation phase ended if transition occurred
-                    io.to(gameId).emit('preparationPhaseEnded', {
-                        gameId: gameId,
-                        gameState: gameState,
-                        message: 'All players voted to skip preparation. Game is starting!',
-                        reason: 'vote_skip'
-                    });
-                } else {
-                    // Emit preparation phase update with current vote status
-                    io.to(gameId).emit('preparationPhaseUpdated', {
-                        gameId: gameId,
-                        preparation: gameState.preparation,
-                        votes: result.votes || gameState.preparation?.votes,
-                        totalPlayers: result.totalPlayers || gameState.preparation?.totalPlayers,
-                        votesNeeded: result.votesNeeded,
-                        message: `${result.votes || 0} of ${result.totalPlayers || 0} players voted to skip preparation`
-                    });
-                }
-            }
-            
-            res.status(200).json({ 
-                success: true,
-                message: result.message,
-                voteResult: {
-                    votes: result.votes,
-                    totalPlayers: result.totalPlayers,
-                    votesNeeded: result.votesNeeded,
-                    transitioned: result.transitioned
-                },
-                gameState: result.transitioned ? result.gameState : undefined
-            });
-        } else {
-            res.status(400).json({ 
-                success: false,
-                error: result.message 
-            });
-        }
-    } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            error: 'Failed to vote skip preparation: ' + error.message 
-        });
-    }
-};
-
-// Remove skip preparation vote
-exports.removeSkipPreparationVote = (req, res) => {
-    try {
-        const { gameId, playerId } = req.body;
-        
-        if (!gameId || !playerId) {
-            return res.status(400).json({
-                success: false,
-                error: 'Game ID and player ID are required'
-            });
-        }
-
-        const game = Game.findById(gameId);
-        
-        if (!game) {
-            return res.status(404).json({ 
-                success: false, 
-                error: 'Game not found' 
-            });
-        }
-
-        const result = game.removeSkipPreparationVote(playerId);
-        
-        if (result.success) {
-            // Emit preparation phase update to all players
-            const io = require('../socket').getIO();
-            if (io) {
-                const gameState = game.getGameState();
-                io.to(gameId).emit('preparationPhaseUpdated', {
-                    gameId: gameId,
-                    preparation: gameState.preparation,
-                    votes: result.votes || gameState.preparation?.votes,
-                    totalPlayers: result.totalPlayers || gameState.preparation?.totalPlayers,
-                    message: `${result.votes || 0} of ${result.totalPlayers || 0} players voted to skip preparation`
-                });
-            }
-            
-            res.status(200).json({ 
-                success: true,
-                message: result.message,
-                voteResult: {
-                    votes: result.votes,
-                    totalPlayers: result.totalPlayers
-                }
-            });
-        } else {
-            res.status(400).json({ 
-                success: false,
-                error: result.message 
-            });
-        }
-    } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            error: 'Failed to remove skip vote: ' + error.message 
-        });
-    }
-};
-
-// Get preparation phase status
-exports.getPreparationStatus = (req, res) => {
-    try {
-        const { gameId } = req.params;
-        
-        if (!gameId) {
-            return res.status(400).json({
-                success: false,
-                error: 'Game ID is required'
-            });
-        }
-
-        const game = Game.findById(gameId);
-        
-        if (!game) {
-            return res.status(404).json({ 
-                success: false, 
-                error: 'Game not found' 
-            });
-        }
-
-        const status = game.getPreparationStatus();
-        
-        res.status(200).json({ 
-            success: true,
-            preparationStatus: status
-        });
-    } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            error: 'Failed to get preparation status: ' + error.message 
-        });
-    }
-};
