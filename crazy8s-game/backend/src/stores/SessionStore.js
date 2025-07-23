@@ -2,12 +2,14 @@ const logger = require('../utils/logger');
 
 class SessionStore {
     constructor() {
-        // Store session data: sessionId -> { playerId, gameId, playerName, lastActivity, authId? }
+        // Store session data: sessionId -> { sessionId, socketId, playerId, gameId, playerName, lastActivity, authId? }
         this.sessions = new Map();
         // Store player to session mapping: playerId -> sessionId  
         this.playerSessions = new Map();
         // Store authentication to session mapping: authId -> sessionId
         this.authSessions = new Map();
+        // Store socket to session mapping: socketId -> sessionId
+        this.socketSessions = new Map();
         // Track active operations to prevent race conditions
         this.activeOperations = new Map();
         // Cleanup interval (10 minutes)
@@ -20,19 +22,28 @@ class SessionStore {
 
     /**
      * Create or update a session for a player with race condition protection
+     * Now generates separate session IDs instead of using socket IDs
      */
-    createSession(sessionId, playerId, gameId, playerName, authId = null) {
+    createSession(socketId, playerId, gameId, playerName, authId = null) {
+        const { v4: uuid } = require('uuid');
+        
+        // Generate separate session ID
+        const sessionId = uuid();
+        
         // Prevent concurrent operations on the same player/auth
         const lockKey = authId || playerId;
         if (this.activeOperations.has(lockKey)) {
             logger.warn(`Concurrent session operation blocked for ${lockKey}`);
-            return this.getSession(this.activeOperations.get(lockKey));
+            const existingSessionId = this.activeOperations.get(lockKey);
+            return this.sessions.get(existingSessionId);
         }
         
         this.activeOperations.set(lockKey, sessionId);
         
         try {
             const sessionData = {
+                sessionId,     // Separate session ID
+                socketId,      // Current socket connection
                 playerId,
                 gameId,
                 playerName,
@@ -61,11 +72,15 @@ class SessionStore {
             this.sessions.set(sessionId, sessionData);
             this.playerSessions.set(playerId, sessionId);
             
+            // Map socket to session for quick lookup
+            this.socketSessions = this.socketSessions || new Map();
+            this.socketSessions.set(socketId, sessionId);
+            
             if (authId) {
                 this.authSessions.set(authId, sessionId);
             }
 
-            logger.info(`Session created: ${sessionId} for player ${playerName} in game ${gameId}`);
+            logger.info(`Session created: ${sessionId} (socket: ${socketId}) for player ${playerName} in game ${gameId}`);
             return sessionData;
         } finally {
             this.activeOperations.delete(lockKey);
@@ -151,29 +166,31 @@ class SessionStore {
                 return null;
             }
             
+            // Update socket mapping
+            const oldSocketId = session.socketId;
+            if (oldSocketId && this.socketSessions.has(oldSocketId)) {
+                this.socketSessions.delete(oldSocketId);
+            }
+            
+            // Ensure new socket ID doesn't already have a session
+            const existingSessionId = this.socketSessions.get(newSocketId);
+            if (existingSessionId && existingSessionId !== sessionId) {
+                const existingSession = this.sessions.get(existingSessionId);
+                if (existingSession && existingSession.isValid) {
+                    logger.warn(`Target socket ${newSocketId} already has a valid session: ${existingSessionId}`);
+                    return null;
+                }
+            }
+            
+            // Update session with new socket ID
+            session.socketId = newSocketId;
             session.lastActivity = Date.now();
             session.reconnectionCount = (session.reconnectionCount || 0) + 1;
             
-            // Move session to new socket ID if different
-            if (newSocketId !== sessionId) {
-                // Ensure new socket ID doesn't already have a session
-                const existingNewSession = this.sessions.get(newSocketId);
-                if (existingNewSession && existingNewSession.isValid) {
-                    logger.warn(`Target socket ${newSocketId} already has a valid session`);
-                    return null;
-                }
-                
-                // Atomic update: remove old, add new
-                this.sessions.delete(sessionId);
-                this.sessions.set(newSocketId, session);
-                this.playerSessions.set(session.playerId, newSocketId);
-                if (session.authId) {
-                    this.authSessions.set(session.authId, newSocketId);
-                }
-                logger.info(`Session moved from ${sessionId} to ${newSocketId} for player ${session.playerName}`);
-                return newSocketId;
-            }
+            // Update socket mapping
+            this.socketSessions.set(newSocketId, sessionId);
             
+            logger.info(`Session ${sessionId} updated with new socket ${newSocketId} for player ${session.playerName}`);
             return sessionId;
         } finally {
             this.activeOperations.delete(lockKey);
@@ -204,6 +221,9 @@ class SessionStore {
         this.playerSessions.delete(session.playerId);
         if (session.authId) {
             this.authSessions.delete(session.authId);
+        }
+        if (session.socketId && this.socketSessions.has(session.socketId)) {
+            this.socketSessions.delete(session.socketId);
         }
         
         logger.info(`Session removed: ${sessionId} for player ${session.playerName}`);
@@ -262,6 +282,7 @@ class SessionStore {
         if (session && this.isSessionValid(session.sessionId || identifier)) {
             return {
                 success: true,
+                sessionId: session.sessionId,
                 gameId: session.gameId,
                 playerId: session.playerId,
                 playerName: session.playerName,
@@ -356,7 +377,54 @@ class SessionStore {
         this.sessions.clear();
         this.playerSessions.clear();
         this.authSessions.clear();
+        this.socketSessions.clear();
+        this.activeOperations.clear();
         logger.info('Session store cleared');
+    }
+    
+    /**
+     * Clear all sessions (alias for testing compatibility)
+     */
+    clearAllSessions() {
+        return this.clear();
+    }
+    
+    /**
+     * Get session by socket ID
+     */
+    getSessionBySocketId(socketId) {
+        const sessionId = this.socketSessions.get(socketId);
+        if (sessionId) {
+            return this.getSession(sessionId);
+        }
+        return null;
+    }
+    
+    /**
+     * Update session data (for testing compatibility)
+     */
+    updateSession(sessionId, updateData) {
+        const session = this.sessions.get(sessionId);
+        if (session && session.isValid) {
+            Object.assign(session, updateData);
+            session.lastActivity = Date.now();
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * Get all sessions (for testing)
+     */
+    getAllSessions() {
+        return Array.from(this.sessions.values()).filter(session => session.isValid);
+    }
+    
+    /**
+     * Clean up sessions (alias for testing compatibility)
+     */
+    cleanupSessions() {
+        return this.cleanupExpiredSessions();
     }
 }
 
@@ -364,3 +432,4 @@ class SessionStore {
 const sessionStore = new SessionStore();
 
 module.exports = sessionStore;
+module.exports.SessionStore = SessionStore;

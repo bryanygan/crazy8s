@@ -57,11 +57,12 @@
 
 ### Core Technologies
 - **Express.js** - Web framework with security middleware
-- **Socket.IO** - Real-time multiplayer communication
+- **Socket.IO** - Real-time multiplayer communication with session persistence
 - **MongoDB + Mongoose** OR **PostgreSQL + Sequelize** - Database layer
 - **Winston** - Structured logging
 - **bcrypt** - Password hashing (12 rounds)
 - **JWT** - Authentication tokens
+- **Session Store** - In-memory session persistence for reconnection handling
 
 ## Overview
 This is the backend for the Crazy 8's game, built using Node.js, Express, and Socket.IO. The backend now includes **database integration**, **user management**, **persistent game history**, and **advanced sequential card stacking logic** with sophisticated turn control simulation and multi-stage validation.
@@ -72,6 +73,8 @@ This is the backend for the Crazy 8's game, built using Node.js, Express, and So
 - **Advanced Game Engine**: Sequential stacking with turn control simulation
 - **Multi-Stage Validation System**: Ownership → Stacking → Play rules → Turn control
 - **Socket.IO Server**: Real-time multiplayer communication with debugging
+- **Session Persistence**: Robust session management for reconnection scenarios
+- **Connection Handler**: Advanced reconnection logic with automatic session recovery
 - **REST API**: HTTP endpoints for game operations
 - **Comprehensive Testing Suite**: 95%+ coverage with 350+ unit tests
 - **Tournament Management**: Round progression and player safety tracking
@@ -95,8 +98,14 @@ backend/
 │   │   └── gameController.js # Game API endpoints
 │   ├── routes/               # Express routes
 │   │   └── gameRoutes.js     # Game-related routes
+│   ├── stores/               # Data storage systems
+│   │   ├── SessionStore.js   # In-memory session management
+│   │   └── UserStore.js      # User data management
 │   └── utils/                # Utility functions
-│       └── deck.js           # Deck creation and shuffling
+│       ├── deck.js           # Deck creation and shuffling
+│       ├── sessionPersistence.js # Session persistence utilities
+│       ├── connectionHandler.js  # Connection and reconnection logic
+│       └── logger.js         # Structured logging utilities
 ├── tests/                    # Test suites
 │   ├── game.test.js         # Core game logic tests (150+ tests)
 │   ├── cardPlayLogic.test.js # Validation system tests (200+ tests)
@@ -242,6 +251,133 @@ canCounterDraw(card, topCard) {
 - **Game State Management**: Track victories and player safety for celebrations
 - **Notification System**: Broadcast victory and safety events to all players
 - **Celebration Triggers**: Coordinate frontend celebrations with backend events
+
+### Session Persistence & Reconnection
+
+#### Session Management System
+The backend implements a robust session persistence system that maintains player connections across network interruptions, browser refreshes, and temporary disconnections.
+
+**Key Features:**
+- **Automatic Session Recovery**: Players automatically reconnect to their games
+- **Cross-Device Support**: Sessions persist across different devices using auth tokens
+- **Session Migration**: Seamless transition between socket connections
+- **Connection State Management**: Tracks player connection status and handles timeouts
+
+#### Session Store Architecture (`SessionStore.js`)
+```javascript
+class SessionStore {
+    createSession(sessionId, socketId, playerName, gameId, authId = null) {
+        // Creates new session with automatic expiration
+        const session = {
+            sessionId, socketId, playerName, gameId, authId,
+            lastActivity: Date.now(),
+            reconnectionCount: 0,
+            isValid: true
+        };
+        
+        this.sessions.set(sessionId, session);
+        this.scheduleCleanup(); // Automatic cleanup of expired sessions
+    }
+    
+    getReconnectionData(identifier, gameId = null) {
+        // Supports multiple reconnection scenarios:
+        // - Session ID based (guest users)
+        // - Auth ID based (authenticated users)
+        // - Player name + game ID (fallback)
+    }
+}
+```
+
+#### Session Persistence Utilities (`sessionPersistence.js`)
+```javascript
+class SessionPersistence {
+    static loadSessionData(sessionId) {
+        // Loads and validates session data
+        // Returns complete session info or null if invalid
+    }
+    
+    static migrateSession(sessionId, newSocketId) {
+        // Migrates session to new socket connection
+        // Updates connection tracking and maintains game state
+    }
+    
+    static getReconnectionData(identifier, gameId) {
+        // Retrieves reconnection data for various player types
+        // Handles authenticated and guest user scenarios
+    }
+}
+```
+
+#### Connection Handler (`connectionHandler.js`)
+Advanced reconnection logic with automatic session recovery:
+
+```javascript
+function handleReconnection(socket, reconnectionData) {
+    const { sessionId, gameId, playerName, authId } = reconnectionData;
+    
+    // 1. Validate reconnection request
+    if (!validateReconnectionData(reconnectionData)) {
+        return { success: false, error: 'Invalid reconnection data' };
+    }
+    
+    // 2. Migrate session to new socket
+    const newSessionId = SessionPersistence.migrateSession(sessionId, socket.id);
+    
+    // 3. Restore game state and player connection
+    const game = games.get(gameId);
+    if (game) {
+        game.reconnectPlayer(playerName, socket.id);
+        socket.join(gameId);
+        
+        // 4. Broadcast reconnection to other players
+        socket.to(gameId).emit('playerReconnected', {
+            playerName,
+            message: `${playerName} has reconnected`
+        });
+    }
+    
+    return { success: true, sessionId: newSessionId };
+}
+```
+
+#### Reconnection Scenarios Supported
+
+**1. Browser Refresh (Guest Users)**
+- Session ID stored in localStorage
+- Automatic reconnection on page reload
+- Game state fully restored
+
+**2. Network Interruption**
+- Socket automatically attempts reconnection
+- Session migrated to new socket ID
+- No game state loss
+
+**3. Cross-Device Reconnection (Authenticated Users)**
+- Auth token enables device switching
+- Session lookup by auth ID
+- Maintains player identity across devices
+
+**4. Multiple Disconnection/Reconnection Cycles**
+- Reconnection counter tracks multiple attempts
+- Session expiration prevents infinite reconnections
+- Cleanup of abandoned sessions
+
+#### Edge Case Handling
+
+**Race Conditions:**
+- Session update locks prevent concurrent modifications
+- Atomic session migration operations
+- Proper cleanup of orphaned sessions
+
+**Memory Management:**
+- Automatic cleanup of expired sessions (30-minute timeout)
+- Periodic garbage collection of invalid sessions
+- Connection state monitoring and cleanup
+
+**Error Recovery:**
+- Graceful handling of invalid reconnection attempts
+- Fallback mechanisms for corrupted session data
+- Comprehensive error logging and debugging
 
 ### Real-time Multiplayer Features
 

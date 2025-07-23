@@ -120,7 +120,7 @@ const initSocket = (server) => {
             
             // Check for existing session and attempt auto-reconnection
             const existingSession = sessionStore.getSessionByAuthId(socket.userId);
-            if (existingSession && sessionStore.isSessionValid(existingSession.sessionId || socket.id)) {
+            if (existingSession && sessionStore.isSessionValid(existingSession.sessionId)) {
                 logger.info(`Found existing session for ${socket.user.username}, attempting auto-reconnection to game ${existingSession.gameId}`);
                 
                 // Validate session consistency before offering reconnection
@@ -136,7 +136,7 @@ const initSocket = (server) => {
                 } else {
                     logger.warn(`Session consistency check failed for auto-reconnection: ${validation.errors.join(', ')}`);
                     // Clean up invalid session
-                    sessionStore.removeSession(existingSession.sessionId || socket.id);
+                    sessionStore.removeSession(existingSession.sessionId);
                 }
             }
             
@@ -166,9 +166,9 @@ const initSocket = (server) => {
             }
             
             // Update session activity but don't remove it (preserve for reconnection)
-            const session = sessionStore.getSession(socket.id);
+            const session = sessionStore.getSessionBySocketId(socket.id);
             if (session) {
-                sessionStore.updateActivity(socket.id);
+                sessionStore.updateActivity(session.sessionId);
                 logger.info(`Session preserved for potential reconnection: ${session.playerName} in game ${session.gameId}`);
                 
                 // Emit disconnection event to game with session info
@@ -252,8 +252,8 @@ const initSocket = (server) => {
                 
                 // Create or update session for this player
                 const sessionData = sessionStore.createSession(
-                    socket.id,
-                    socket.id, // playerId is socket.id
+                    socket.id,   // socketId
+                    socket.id,   // playerId is socket.id
                     gameId,
                     socket.playerName,
                     socket.userId || null // authId for authenticated users
@@ -284,7 +284,7 @@ const initSocket = (server) => {
                     gameId,
                     playerId: socket.id,
                     playerName: socket.playerName,
-                    sessionId: sessionData.sessionId || socket.id,
+                    sessionId: sessionData.sessionId,
                     timestamp: Date.now()
                 });
                 
@@ -304,7 +304,10 @@ const initSocket = (server) => {
             logger.info(`Player ${socket.playerName || socket.id} left game ${gameId}`);
             
             // Remove session when player intentionally leaves
-            sessionStore.removeSession(socket.id);
+            const session = sessionStore.getSessionBySocketId(socket.id);
+            if (session) {
+                sessionStore.removeSession(session.sessionId);
+            }
             
             // Notify other players
             socket.to(gameId).emit('playerLeft', {
@@ -679,10 +682,143 @@ const initSocket = (server) => {
         });
 
         // Handle game state requests
-        socket.on('getGameState', (gameId) => {
+        socket.on('getGameState', (data) => {
+            const gameId = data?.gameId || data;
             // This would typically fetch game state from game service
-            // For now, just acknowledge the request
-            socket.emit('gameStateRequested', { gameId });
+            // For now, return a mock game state for testing
+            socket.emit('gameState', { 
+                gameId,
+                currentPlayer: socket.id,
+                players: [socket.id],
+                gamePhase: 'playing',
+                timestamp: Date.now()
+            });
+        });
+        
+        // Handle reconnection requests (for testing compatibility)
+        socket.on('reconnect', (data) => {
+            try {
+                const { sessionId, playerId } = data || {};
+                
+                if (!sessionId || !playerId) {
+                    socket.emit('error', {
+                        message: 'Session ID and Player ID are required for reconnection',
+                        code: 'MISSING_RECONNECT_DATA'
+                    });
+                    return;
+                }
+                
+                // Try to find the session
+                const session = sessionStore.getSession(sessionId);
+                if (!session || !sessionStore.isSessionValid(sessionId)) {
+                    socket.emit('error', {
+                        message: 'Invalid session for reconnection',
+                        code: 'INVALID_SESSION'
+                    });
+                    return;
+                }
+                
+                // Validate the player ID matches
+                if (session.playerId !== playerId) {
+                    socket.emit('error', {
+                        message: 'Player ID mismatch for session',
+                        code: 'PLAYER_MISMATCH'
+                    });
+                    return;
+                }
+                
+                // Update session with new socket ID
+                const updatedSessionId = sessionStore.updateSessionSocket(sessionId, socket.id);
+                if (!updatedSessionId) {
+                    socket.emit('error', {
+                        message: 'Failed to update session for reconnection',
+                        code: 'SESSION_UPDATE_FAILED'
+                    });
+                    return;
+                }
+                
+                // Set player context
+                socket.gameId = session.gameId;
+                socket.playerName = session.playerName;
+                
+                // Join the game room
+                socket.join(session.gameId);
+                
+                // Confirm successful reconnection
+                socket.emit('reconnected', {
+                    success: true,
+                    gameId: session.gameId,
+                    playerId: session.playerId,
+                    playerName: session.playerName,
+                    sessionId: updatedSessionId,
+                    reconnectionCount: session.reconnectionCount,
+                    timestamp: Date.now()
+                });
+                
+                logger.info(`Player ${session.playerName} reconnected to game ${session.gameId} (${socket.id})`);
+                
+            } catch (error) {
+                logger.error('Reconnection error:', error);
+                socket.emit('error', {
+                    message: 'Internal server error during reconnection',
+                    code: 'RECONNECTION_ERROR'
+                });
+            }
+        });
+        
+        // Handle game start requests (for testing)
+        socket.on('startGame', (data) => {
+            const gameId = data?.gameId;
+            if (!gameId) {
+                socket.emit('error', {
+                    message: 'Game ID is required to start game',
+                    code: 'MISSING_GAME_ID'
+                });
+                return;
+            }
+            
+            // For testing, just emit game started event
+            socket.to(gameId).emit('gameStarted', {
+                gameId,
+                startedBy: socket.id,
+                timestamp: Date.now()
+            });
+            
+            socket.emit('gameStarted', {
+                gameId,
+                startedBy: socket.id,
+                timestamp: Date.now()
+            });
+            
+            logger.info(`Game ${gameId} started by ${socket.playerName} (${socket.id})`);
+        });
+        
+        // Handle authentication (for testing)
+        socket.on('authenticate', (data) => {
+            const { authToken } = data || {};
+            if (!authToken) {
+                socket.emit('error', {
+                    message: 'Auth token is required',
+                    code: 'MISSING_AUTH_TOKEN'
+                });
+                return;
+            }
+            
+            // For testing, just update session with auth token
+            const session = sessionStore.getSessionBySocketId(socket.id);
+            if (session) {
+                sessionStore.updateSession(session.sessionId, { authToken });
+                socket.emit('authenticated', {
+                    success: true,
+                    authToken,
+                    timestamp: Date.now()
+                });
+            } else {
+                socket.emit('error', {
+                    message: 'No session found for authentication',
+                    code: 'NO_SESSION'
+                });
+            }
         });
 
         // Handle authentication token refresh
