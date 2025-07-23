@@ -323,11 +323,22 @@ class SessionStore {
      * Start automatic cleanup timer
      */
     startCleanupTimer() {
-        setInterval(() => {
+        this.cleanupTimer = setInterval(() => {
             this.cleanupExpiredSessions();
         }, this.cleanupInterval);
         
         logger.info('Session store cleanup timer started');
+    }
+    
+    /**
+     * Stop automatic cleanup timer (for testing)
+     */
+    stopCleanupTimer() {
+        if (this.cleanupTimer) {
+            clearInterval(this.cleanupTimer);
+            this.cleanupTimer = null;
+            logger.info('Session store cleanup timer stopped');
+        }
     }
 
     /**
