@@ -47,41 +47,55 @@ export const useReconnectionHandler = ({
           break;
 
         case 'reconnected':
-          console.log('🎮 Reconnected - restoring game state');
-          
-          // Clear any temporary UI states that might be stuck
-          setSelectedCards([]);
-          setIsDrawing(false);
-          setIsSkipping(false);
-          
-          // Show reconnection success message
-          const attemptText = data.attempts > 1 ? ` after ${data.attempts} attempts` : '';
-          addToast(`✅ Reconnected${attemptText}`, 'success');
-          
-          // Store current session data for validation
-          if (gameState && playerId) {
-            storeSessionData({
-              gameId: gameState.gameId,
-              playerId,
-              gameState: gameState.gameState,
-              playerCount: gameState.players?.length || 0
-            });
-          }
-          
-          // Handle session validation after reconnect
-          if (sessionValidationTimeoutRef.current) {
-            clearTimeout(sessionValidationTimeoutRef.current);
-          }
-          
-          sessionValidationTimeoutRef.current = setTimeout(async () => {
-            if (socket && socket.connected) {
-              const isValidSession = await validateSession(socket);
-              if (!isValidSession) {
-                addToast('⚠️ Session validation failed - some features may not work', 'warning');
-              }
+          // Only handle user-impacting reconnections
+          if (data.userImpacting !== false) {
+            console.log('🎮 User-impacting reconnection - restoring game state');
+            
+            // Clear any temporary UI states that might be stuck
+            setSelectedCards([]);
+            setIsDrawing(false);
+            setIsSkipping(false);
+            
+            // Show reconnection success message
+            const attemptText = data.attempts > 1 ? ` after ${data.attempts} attempts` : '';
+            const durationText = data.duration ? ` (${Math.round(data.duration / 1000)}s offline)` : '';
+            addToast(`✅ Reconnected${attemptText}${durationText}`, 'success');
+            
+            // Store current session data for validation
+            if (gameState && playerId) {
+              storeSessionData({
+                gameId: gameState.gameId,
+                playerId,
+                gameState: gameState.gameState,
+                playerCount: gameState.players?.length || 0
+              });
             }
-          }, 2000);
+            
+            // Handle session validation after reconnect
+            if (sessionValidationTimeoutRef.current) {
+              clearTimeout(sessionValidationTimeoutRef.current);
+            }
+            
+            sessionValidationTimeoutRef.current = setTimeout(async () => {
+              if (socket && socket.connected) {
+                const isValidSession = await validateSession(socket);
+                if (!isValidSession) {
+                  addToast('⚠️ Session validation failed - some features may not work', 'warning');
+                }
+              }
+            }, 2000);
+          } else {
+            console.log('🔇 Technical reconnection - no UI update needed');
+            return; // Skip further processing for technical reconnections
+          }
+          break;
+
+        case 'technical_reconnected':
+          // Handle technical reconnections silently
+          console.log(`🔇 Technical reconnection handled silently: ${data.reason}, ${data.duration}ms`);
+          return; // Don't show notifications or clear UI state
           
+        case 'user_reconnected':
           // Handle specific reconnection scenarios
           if (gameStateBeforeDisconnectRef.current) {
             const previousState = gameStateBeforeDisconnectRef.current;

@@ -20,9 +20,20 @@ const ConnectionNotifications = () => {
           type = 'success';
           break;
         case 'reconnected':
-          message = `🔄 Reconnected after ${data.attempts || 1} attempts`;
-          type = 'success';
-          duration = 4000;
+          // Only show notifications for user-impacting reconnections
+          if (data.userImpacting !== false) {
+            const durationText = data.duration ? ` (${Math.round(data.duration / 1000)}s offline)` : '';
+            message = `🔄 Reconnected after ${data.attempts || 1} attempts${durationText}`;
+            type = 'success';
+            duration = 4000;
+          } else {
+            showNotification = false; // Don't show notification for technical reconnections
+          }
+          break;
+        case 'technical_reconnected':
+          // Never show notifications for technical reconnections
+          showNotification = false;
+          console.log(`🔇 Technical reconnection (${data.reason}, ${data.duration}ms) - notification suppressed`);
           break;
         case 'disconnected':
           if (data.planned) {

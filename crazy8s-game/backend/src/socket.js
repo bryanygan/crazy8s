@@ -121,17 +121,35 @@ const initSocket = (server) => {
             // Check for existing session and attempt auto-reconnection
             const existingSession = sessionStore.getSessionByAuthId(socket.userId);
             if (existingSession && sessionStore.isSessionValid(existingSession.sessionId)) {
-                logger.info(`Found existing session for ${socket.user.username}, attempting auto-reconnection to game ${existingSession.gameId}`);
+                logger.info(`Found existing session for ${socket.user.username}, checking if actual reconnection needed for game ${existingSession.gameId}`);
+                
+                // Check if this is an actual disconnection or just a new browser tab/refresh
+                const timeSinceLastActivity = Date.now() - (existingSession.lastActivity || 0);
+                const ACTUAL_DISCONNECT_THRESHOLD = 5000; // 5 seconds
+                const wasActuallyDisconnected = timeSinceLastActivity > ACTUAL_DISCONNECT_THRESHOLD;
                 
                 // Validate session consistency before offering reconnection
                 const validation = socketValidator.validateSessionConsistency(socket, existingSession, 'auto-reconnection-check');
-                if (validation.canProceed) {
-                    // Emit reconnection opportunity
+                if (validation.canProceed && wasActuallyDisconnected) {
+                    logger.info(`Actual disconnection detected (${timeSinceLastActivity}ms gap) - offering reconnection`);
+                    
+                    // Emit reconnection opportunity only for actual disconnections
                     socket.emit('reconnection_available', {
                         gameId: existingSession.gameId,
                         playerName: existingSession.playerName,
                         lastActivity: existingSession.lastActivity,
-                        reconnectionCount: existingSession.reconnectionCount || 0
+                        reconnectionCount: existingSession.reconnectionCount || 0,
+                        disconnectDuration: timeSinceLastActivity
+                    });
+                } else if (validation.canProceed && !wasActuallyDisconnected) {
+                    logger.info(`Session refresh detected (${timeSinceLastActivity}ms gap) - silently reconnecting without notification`);
+                    
+                    // Silent reconnection for quick refreshes/new tabs
+                    socket.emit('silent_reconnection_available', {
+                        gameId: existingSession.gameId,
+                        playerName: existingSession.playerName,
+                        lastActivity: existingSession.lastActivity,
+                        type: 'session_refresh'
                     });
                 } else {
                     logger.warn(`Session consistency check failed for auto-reconnection: ${validation.errors.join(', ')}`);

@@ -1,5 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createAuthenticatedSocket, createGuestSocket } from '../utils/socketAuth';
+import { 
+  saveSessionData, 
+  loadSessionData, 
+  saveSessionId, 
+  // getSessionId,
+  clearSessionData,
+  hasValidSession,
+  setupSessionPersistence 
+} from '../utils/sessionPersistence';
 
 const ConnectionContext = createContext({
   socket: null,
@@ -21,7 +30,10 @@ const ConnectionContext = createContext({
   removeConnectionListener: () => {},
   clearConnectionError: () => {},
   storeSessionData: () => {},
-  validateSession: () => {}
+  validateSession: () => {},
+  loadStoredSession: () => null,
+  hasStoredSession: () => false,
+  clearStoredSession: () => {}
 });
 
 export const ConnectionProvider = ({ children }) => {
@@ -37,6 +49,11 @@ export const ConnectionProvider = ({ children }) => {
   const [errorCount, setErrorCount] = useState(0);
   const [sessionValid, setSessionValid] = useState(true);
   
+  // Disconnection duration tracking for filtering false positives
+  const [disconnectStartTime, setDisconnectStartTime] = useState(null);
+  const [disconnectReason, setDisconnectReason] = useState(null);
+  const [lastReconnectNotificationTime, setLastReconnectNotificationTime] = useState(0);
+  
   const connectionListeners = useRef(new Set());
   const pingInterval = useRef(null);
   const reconnectTimeout = useRef(null);
@@ -44,6 +61,43 @@ export const ConnectionProvider = ({ children }) => {
   const errorHistory = useRef([]);
   const sessionData = useRef(null);
   const exponentialBackoff = useRef(1000); // Start with 1 second
+  
+  // Constants for filtering false reconnection notifications
+  const MINIMUM_DISCONNECT_DURATION = 2000; // 2 seconds
+  const RECONNECT_NOTIFICATION_DEBOUNCE = 3000; // 3 seconds between notifications
+  
+  // Helper function to determine if a disconnection/reconnection is user-impacting
+  const isUserImpactingReconnection = useCallback((disconnectReason, disconnectDuration, attempts = 1) => {
+    // Filter out technical reconnections that don't impact user experience
+    const technicalReasons = [
+      'transport close',
+      'transport error', 
+      'ping timeout',
+      'io server disconnect', // Planned server disconnects
+      'io client disconnect'  // Planned client disconnects
+    ];
+    
+    // Don't show notifications for very brief disconnections (likely network blips)
+    if (disconnectDuration < MINIMUM_DISCONNECT_DURATION) {
+      console.log(`🔇 Suppressing reconnection notification: duration ${disconnectDuration}ms < ${MINIMUM_DISCONNECT_DURATION}ms threshold`);
+      return false;
+    }
+    
+    // Don't show notifications for technical transport issues
+    if (technicalReasons.includes(disconnectReason)) {
+      console.log(`🔇 Suppressing reconnection notification: technical reason "${disconnectReason}"`);
+      return false;
+    }
+    
+    // Don't show notifications too frequently (debounce)
+    const timeSinceLastNotification = Date.now() - lastReconnectNotificationTime;
+    if (timeSinceLastNotification < RECONNECT_NOTIFICATION_DEBOUNCE) {
+      console.log(`🔇 Suppressing reconnection notification: debounce period active (${timeSinceLastNotification}ms < ${RECONNECT_NOTIFICATION_DEBOUNCE}ms)`);
+      return false;
+    }
+    
+    return true;
+  }, [lastReconnectNotificationTime]);
   const maxBackoff = useRef(30000); // Max 30 seconds
   const socketRef = useRef(null); // Track current socket in ref to avoid circular dependencies
 
@@ -164,15 +218,40 @@ export const ConnectionProvider = ({ children }) => {
     }
   }, [emitConnectionEvent, handleSocketError]);
   
-  // Store session data for validation
+  // Store session data for validation and persistence
   const storeSessionData = useCallback((data) => {
-    sessionData.current = {
+    const enrichedData = {
       userId: data.userId,
       gameId: data.gameId,
       playerId: data.playerId,
+      playerName: data.playerName,
+      userType: data.type || 'guest',
       timestamp: Date.now(),
       ...data
     };
+    
+    // Store in memory for immediate use
+    sessionData.current = enrichedData;
+    
+    // Persist to localStorage for recovery
+    if (data.gameId && data.playerId) {
+      const persistentData = {
+        gameId: data.gameId,
+        playerId: data.playerId,
+        playerName: data.playerName,
+        userType: data.type || 'guest',
+        sessionId: data.sessionId,
+        gameState: 'connected'
+      };
+      
+      saveSessionData(persistentData);
+      
+      if (data.sessionId) {
+        saveSessionId(data.sessionId);
+      }
+      
+      console.log('💾 Session data stored for persistence:', persistentData);
+    }
   }, []);
 
   // Create socket with enhanced connection handling
@@ -222,6 +301,10 @@ export const ConnectionProvider = ({ children }) => {
       setConnectionLatency(null);
       setConnectionStability('unstable');
       
+      // Track disconnection for filtering false reconnection notifications
+      setDisconnectStartTime(Date.now());
+      setDisconnectReason(reason);
+      
       if (pingInterval.current) {
         clearInterval(pingInterval.current);
         pingInterval.current = null;
@@ -263,8 +346,39 @@ export const ConnectionProvider = ({ children }) => {
       setConnectionStatus('connected');
       setConnectionError(null);
       
+      // Calculate disconnection duration for filtering
+      const disconnectDuration = disconnectStartTime ? Date.now() - disconnectStartTime : 0;
+      const shouldShowNotification = isUserImpactingReconnection(
+        disconnectReason || 'unknown', 
+        disconnectDuration, 
+        attemptNumber
+      );
+      
+      console.log(`🔄 Reconnection analysis: reason="${disconnectReason}", duration=${disconnectDuration}ms, attempts=${attemptNumber}, showNotification=${shouldShowNotification}`);
+      
       startPingMonitoring(newSocket);
-      emitConnectionEvent('reconnected', { attempts: attemptNumber });
+      
+      if (shouldShowNotification) {
+        setLastReconnectNotificationTime(Date.now());
+        emitConnectionEvent('reconnected', { 
+          attempts: attemptNumber, 
+          duration: disconnectDuration,
+          reason: disconnectReason,
+          userImpacting: true
+        });
+      } else {
+        // Still emit event but mark as technical reconnection for other handlers
+        emitConnectionEvent('technical_reconnected', { 
+          attempts: attemptNumber, 
+          duration: disconnectDuration,
+          reason: disconnectReason,
+          userImpacting: false
+        });
+      }
+      
+      // Reset tracking
+      setDisconnectStartTime(null);
+      setDisconnectReason(null);
     });
 
     newSocket.on('reconnect_attempt', (attemptNumber) => {
@@ -345,7 +459,7 @@ export const ConnectionProvider = ({ children }) => {
     });
 
     return newSocket;
-  }, [startPingMonitoring, emitConnectionEvent, connectionStability, handleSocketError, sessionValid, storeSessionData, validateSession]);
+  }, [startPingMonitoring, emitConnectionEvent, connectionStability, handleSocketError, sessionValid, storeSessionData, validateSession, disconnectReason, disconnectStartTime, isUserImpactingReconnection]);
 
   // Update socket ref when socket state changes
   useEffect(() => {
@@ -434,6 +548,48 @@ export const ConnectionProvider = ({ children }) => {
     setConnectionError(null);
   }, []);
 
+  // Setup session persistence monitoring
+  useEffect(() => {
+    console.log('🔧 Setting up ConnectionContext session persistence monitoring');
+    
+    const cleanup = setupSessionPersistence((event) => {
+      console.log('📡 ConnectionContext session persistence event:', event);
+      
+      switch (event.type) {
+        case 'storage_change':
+          if (event.sessionData) {
+            console.log('🔄 Cross-tab session change detected in ConnectionContext');
+            // Update stored session data if it changed
+            if (event.sessionData.gameId && event.sessionData.playerId) {
+              storeSessionData(event.sessionData);
+            }
+          }
+          break;
+          
+        case 'visibility_change':
+          if (event.visible && event.sessionData) {
+            console.log('👁️ Page became visible, refreshing session context');
+            // Refresh session data when page becomes visible
+            if (event.sessionData.gameId && event.sessionData.playerId) {
+              storeSessionData(event.sessionData);
+            }
+          }
+          break;
+        default:
+          console.log('📡 Unknown session persistence event type:', event.type);
+          break;
+      }
+      
+      // Emit session changes to connection listeners
+      emitConnectionEvent('session_persistence_event', event);
+    }, {
+      enableCrossTabSync: true,
+      interval: 60000 // Check every minute
+    });
+    
+    return cleanup;
+  }, [storeSessionData, emitConnectionEvent]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -469,7 +625,11 @@ export const ConnectionProvider = ({ children }) => {
     removeConnectionListener,
     clearConnectionError,
     storeSessionData,
-    validateSession
+    validateSession,
+    // Session persistence methods
+    loadStoredSession: () => loadSessionData(),
+    hasStoredSession: () => hasValidSession(),
+    clearStoredSession: () => clearSessionData()
   };
 
   return (

@@ -9,17 +9,20 @@ This is the frontend for the Crazy 8's game, built using React with modern hooks
 - **React 17+**: Modern functional components with hooks
 - **Socket.IO Client**: Real-time server communication with stacking validation
 - **CSS3**: Custom responsive styling with advanced card animations
-- **localStorage**: User settings persistence
+- **localStorage/sessionStorage**: User settings and session persistence
 - **Modern ES6+**: Clean, maintainable JavaScript with complex state management
 
 ### Key Features
 - **Real-time Multiplayer**: Instant game state synchronization with stacking feedback
 - **Advanced Card Stacking Interface**: Visual selection system for complex sequential stacks
+- **Session Persistence**: Automatic game state recovery after disconnections or page refreshes
 - **Turn Control Visualization**: Real-time feedback on turn control logic
 - **Responsive Design**: Mobile-first approach with desktop optimization
 - **User Customization**: Persistent settings and preferences
 - **Rich UI/UX**: Advanced animations, notifications, and visual stacking feedback
 - **Comprehensive Stacking Controls**: Full sequential stacking functionality through intuitive interface
+- **Auto-Reconnection**: Intelligent reconnection with game state restoration
+- **Cross-Tab Synchronization**: Session data synchronization across browser tabs
 - **Confetti Celebrations**: Animated celebrations for player safety and game wins
 - **Play Again Voting**: Interactive voting system for game continuation
 - **Tournament Progress**: Real-time tournament status and round management displays
@@ -40,6 +43,15 @@ frontend/
 │   │   ├── GameBoard.js    # Legacy component (minimal)
 │   │   ├── PlayerHand.js   # Legacy component (minimal)
 │   │   └── Chat.js         # Legacy component (minimal)
+│   ├── contexts/           # React contexts
+│   │   ├── ConnectionContext.js  # Socket connection management
+│   │   └── AuthContext.js        # Authentication state
+│   ├── hooks/              # Custom React hooks
+│   │   └── useAutoReconnection.js # Auto-reconnection functionality
+│   ├── utils/              # Utility modules
+│   │   ├── sessionPersistence.js # Session storage utilities
+│   │   ├── socketAuth.js         # Socket authentication
+│   │   └── reconnectionErrorHandler.js # Error handling
 │   └── styles/
 │       └── main.css        # Base styles (most styling is inline)
 ├── package.json            # Dependencies and scripts
@@ -310,6 +322,439 @@ const getValidCardsForSelection = (playerHand, gameState, selectedCards, topCard
   console.log('🎯 Frontend: Selected cards:', selectedCards.length);
   
   return valid;
+};
+```
+
+## Session Persistence System
+
+### Overview
+The frontend implements a comprehensive session persistence system that automatically saves and restores game state across browser refreshes, network interruptions, and device switches. This ensures players can continue their games seamlessly without losing progress.
+
+### Core Features
+
+#### Automatic Session Management
+- **Game State Persistence**: Saves player hand, game state, and context automatically
+- **Backend Session Integration**: Syncs with backend session store for server-side persistence  
+- **Cross-Browser Storage**: Uses both localStorage (persistent) and sessionStorage (tab-specific)
+- **Expiration Handling**: Automatically cleans up expired sessions (30-minute timeout)
+- **UUID-based Session IDs**: Secure session identification independent of socket connections
+
+#### Session Persistence Utilities (`utils/sessionPersistence.js`)
+
+```javascript
+// Core session operations
+import { 
+  saveSessionData,    // Save session to storage
+  loadSessionData,    // Load session from storage  
+  clearSessionData,   // Clear session data
+  hasValidSession,    // Check if valid session exists
+  getSessionId,       // Get backend session ID
+  saveSessionId,      // Save backend session ID
+  setupSessionPersistence // Setup auto-persistence
+} from '../utils/sessionPersistence';
+
+// Example: Save current game state
+const sessionData = {
+  sessionId: 'uuid-session-id',
+  playerId: 'player-123',
+  playerName: 'John Doe',
+  gameId: 'game-456',
+  gameState: 'playing',
+  cards: playerHand,
+  isOwner: false,
+  lastActivity: Date.now()
+};
+
+saveSessionData(sessionData, false); // false = use localStorage
+```
+
+#### Storage Strategy
+```javascript
+// Storage keys used by the system
+const STORAGE_KEYS = {
+  SESSION_ID: 'crazy8s_session_id',              // Backend session ID
+  GAME_SESSION: 'crazy8s_game_session',          // Main session data
+  RECONNECTION_CONTEXT: 'crazy8s_reconnection_context', // Reconnection state
+  LAST_ACTIVITY: 'crazy8s_last_activity',        // Activity timestamp
+  SESSION_METADATA: 'crazy8s_session_metadata'   // Session metadata
+};
+
+// Dual storage approach
+const useLocalStorage = true;   // Persistent across browser restarts
+const useSessionStorage = false; // Tab-specific, cleared on tab close
+```
+
+### Auto-Reconnection System (`hooks/useAutoReconnection.js`)
+
+#### Intelligent Reconnection Logic
+```javascript
+const useAutoReconnection = (options) => {
+  const {
+    gameState,
+    setGameState,
+    playerId,
+    setPlayerId,
+    playerName,
+    setPlayerName,
+    gameId,
+    setGameId,
+    addToast,
+    enableAutoReconnection = true,
+    enableSessionPersistence = true,
+    maxAttempts = 3,
+    reconnectionTimeoutMs = 10000
+  } = options;
+
+  // Reconnection states
+  const RECONNECTION_STATES = {
+    IDLE: 'idle',
+    CHECKING: 'checking',
+    CONNECTING: 'connecting',
+    REJOINING: 'rejoining',
+    SUCCESS: 'success', 
+    ERROR: 'error',
+    TIMEOUT: 'timeout',
+    DISABLED: 'disabled'
+  };
+
+  return {
+    isReconnecting,
+    sessionRestored,
+    reconnectionStatus,
+    reconnectionProgress,
+    reconnectionError,
+    manualReconnect,
+    disableAutoReconnection,
+    enableAutoReconnection
+  };
+};
+```
+
+#### Session Restoration Flow
+```javascript
+// Automatic session restoration on component mount
+useEffect(() => {
+  if (!enableSessionPersistence) return;
+
+  const restoredSession = loadSessionData(useSessionStorage);
+  if (restoredSession) {
+    console.log('🔄 Restoring session from storage:', restoredSession);
+    
+    // Restore game state
+    setPlayerId(restoredSession.playerId);
+    setPlayerName(restoredSession.playerName);
+    setGameId(restoredSession.gameId);
+    
+    // Attempt to rejoin game
+    if (socket && socket.connected) {
+      socket.emit('rejoinGame', {
+        gameId: restoredSession.gameId,
+        playerId: restoredSession.playerId,
+        sessionId: restoredSession.sessionId
+      });
+    }
+    
+    setSessionRestored(true);
+    addToast?.('Session restored from previous visit', 'success');
+  }
+}, [socket, isConnected]);
+```
+
+### Connection Context Integration (`contexts/ConnectionContext.js`)
+
+#### Session-Aware Connection Management
+```javascript
+const ConnectionProvider = ({ children }) => {
+  // Session persistence integration
+  const storeSessionData = useCallback((sessionData) => {
+    if (sessionData) {
+      saveSessionData(sessionData, false);
+      saveSessionId(sessionData.sessionId, false);
+    }
+  }, []);
+
+  const validateSession = useCallback(() => {
+    return hasValidSession(false);
+  }, []);
+
+  const loadStoredSession = useCallback(() => {
+    return loadSessionData(false);
+  }, []);
+
+  const hasStoredSession = useCallback(() => {
+    return hasValidSession(false);
+  }, []);
+
+  const clearStoredSession = useCallback(() => {
+    clearSessionData(false);
+    clearSessionData(true); // Clear both localStorage and sessionStorage
+  }, []);
+
+  return (
+    <ConnectionContext.Provider value={{
+      socket,
+      isConnected,
+      // ... other connection state
+      storeSessionData,
+      validateSession,
+      loadStoredSession,
+      hasStoredSession,
+      clearStoredSession
+    }}>
+      {children}
+    </ConnectionContext.Provider>
+  );
+};
+```
+
+### Cross-Tab Synchronization
+
+#### Storage Event Handling
+```javascript
+// Automatic cross-tab synchronization
+const setupSessionPersistence = (callback, options = {}) => {
+  const { enableCrossTabSync = true } = options;
+  
+  if (enableCrossTabSync) {
+    const handleStorageChange = (event) => {
+      if (Object.values(STORAGE_KEYS).includes(event.key)) {
+        console.log('🔄 Cross-tab session change detected:', event.key);
+        
+        const sessionData = loadSessionData(false);
+        if (callback && typeof callback === 'function') {
+          callback({
+            type: 'storage_change',
+            key: event.key,
+            sessionData,
+            newValue: event.newValue,
+            oldValue: event.oldValue
+          });
+        }
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Return cleanup function
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }
+};
+```
+
+### Page Visibility and Activity Tracking
+
+#### Automatic Activity Updates
+```javascript
+// Track user activity for session timeout
+const updateActivity = (useSessionStorage = false) => {
+  return setStorageItem(STORAGE_KEYS.LAST_ACTIVITY, Date.now(), useSessionStorage);
+};
+
+// Page visibility change handler
+const handleVisibilityChange = () => {
+  if (!document.hidden) {
+    updateActivity(useSessionStorage);
+    
+    // Check if session is still valid when page becomes visible
+    const sessionData = loadSessionData(useSessionStorage);
+    if (callback && typeof callback === 'function') {
+      callback({
+        type: 'visibility_change',
+        visible: true,
+        sessionData
+      });
+    }
+  }
+};
+```
+
+### Session Expiration and Cleanup
+
+#### Automatic Expiration Handling
+```javascript
+// Session expiry configuration (30 minutes, matching backend)
+const SESSION_EXPIRY_MS = 30 * 60 * 1000;
+
+// Session validation with expiration check
+const isSessionDataValid = (sessionData) => {
+  if (!sessionData || typeof sessionData !== 'object') return false;
+  
+  const now = Date.now();
+  const lastActivity = sessionData.lastActivity || 0;
+  const isExpired = (now - lastActivity) > SESSION_EXPIRY_MS;
+  
+  if (isExpired) {
+    console.log('🕒 Session data expired, age:', Math.round((now - lastActivity) / 1000 / 60), 'minutes');
+    return false;
+  }
+  
+  return true;
+};
+
+// Automatic cleanup of expired sessions
+const loadSessionData = (useSessionStorage = false) => {
+  const sessionData = getStorageItem(STORAGE_KEYS.GAME_SESSION, useSessionStorage);
+  
+  if (!sessionData) return null;
+  
+  if (!isSessionDataValid(sessionData)) {
+    console.log('❌ Session data invalid or expired, clearing...');
+    clearSessionData(useSessionStorage);
+    return null;
+  }
+  
+  return sessionData;
+};
+```
+
+### Error Handling and Recovery
+
+#### Graceful Error Handling
+```javascript
+// Robust error handling for storage operations
+const saveSessionData = (sessionData, useSessionStorage = false) => {
+  if (!sessionData || typeof sessionData !== 'object') {
+    console.error('❌ Invalid session data provided for saving');
+    return false;
+  }
+  
+  try {
+    const enrichedSessionData = {
+      ...sessionData,
+      lastActivity: Date.now(),
+      savedAt: Date.now(),
+      version: '1.0.0'
+    };
+    
+    const success = setStorageItem(STORAGE_KEYS.GAME_SESSION, enrichedSessionData, useSessionStorage);
+    
+    if (success) {
+      console.log('✅ Session data saved successfully');  
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('❌ Failed to save session data:', error);
+    return false;
+  }
+};
+```
+
+### Migration Between Storage Types
+
+#### Storage Migration Utilities
+```javascript
+// Migrate session data between localStorage and sessionStorage
+const migrateSessionData = (fromSessionStorage = false, toSessionStorage = true) => {
+  console.log(`🔄 Migrating session data from ${fromSessionStorage ? 'sessionStorage' : 'localStorage'} to ${toSessionStorage ? 'sessionStorage' : 'localStorage'}`);
+  
+  try {
+    const sessionData = loadSessionData(fromSessionStorage);
+    
+    if (!sessionData) {
+      console.log('ℹ️ No session data to migrate');
+      return true;
+    }
+    
+    const success = saveSessionData(sessionData, toSessionStorage);
+    
+    if (success) {
+      clearSessionData(fromSessionStorage);
+      console.log('✅ Session data migrated successfully');
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('❌ Failed to migrate session data:', error);
+    return false;
+  }
+};
+```
+
+### Debug and Development Tools
+
+#### Session State Inspection
+```javascript
+// Debug utility to inspect current session state
+const debugSessionState = () => {
+  const localData = loadSessionData(false);
+  const sessionData = loadSessionData(true);
+  
+  const debug = {
+    localStorage: {
+      sessionData: localData,
+      hasValidSession: hasValidSession(false)
+    },
+    sessionStorage: {
+      sessionData,
+      hasValidSession: hasValidSession(true)
+    },
+    keys: STORAGE_KEYS,
+    expiryMs: SESSION_EXPIRY_MS
+  };
+  
+  console.table(debug);
+  return debug;
+};
+
+// Usage in development
+window.debugSession = debugSessionState; // Available in browser console
+```
+
+### Testing and QA
+
+#### Manual Testing Tools
+The system includes comprehensive QA testing utilities:
+
+```javascript
+// Manual QA testing functions available in browser console
+window.sessionPersistenceQA = {
+  runAllTests,                    // Run complete test suite
+  testBrowserStorageCapabilities, // Test basic storage
+  testSessionPersistenceUtils,    // Test utility functions  
+  testBrowserRefreshPersistence,  // Test page refresh recovery
+  testCrossTabSync,              // Test cross-tab synchronization
+  testSessionExpiration,         // Test expiration handling
+  testPerformanceAndMemory       // Test performance metrics
+};
+```
+
+### Browser Compatibility
+
+#### Cross-Browser Support
+- **Chrome**: Full support with advanced features
+- **Firefox**: Full support with performance optimizations
+- **Safari**: Full support with iOS/macOS compatibility
+- **Edge**: Full support with legacy fallbacks
+- **Mobile Browsers**: Optimized for touch interfaces
+
+#### Fallback Strategies
+```javascript
+// Storage availability checks
+const checkStorageAvailability = () => {
+  try {
+    if (typeof Storage === "undefined") {
+      console.warn('⚠️ Web Storage not supported, session persistence disabled');
+      return false;
+    }
+    
+    // Test localStorage
+    localStorage.setItem('test', 'test');
+    localStorage.removeItem('test');
+    
+    // Test sessionStorage  
+    sessionStorage.setItem('test', 'test');
+    sessionStorage.removeItem('test');
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Storage test failed:', error);
+    return false;
+  }
 };
 ```
 
