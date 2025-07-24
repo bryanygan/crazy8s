@@ -12,6 +12,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useConnection } from '../contexts/ConnectionContext';
 import { useAuth } from '../contexts/AuthContext';
+import { SESSION_TIMEOUTS } from '../config/timeouts';
+// calculateAdaptiveTimeout imported for future adaptive timeout features
 import { 
   loadSessionData, 
   saveSessionData, 
@@ -37,10 +39,10 @@ const RECONNECTION_STATES = {
   DISABLED: 'disabled'
 };
 
-// Configuration constants
-const RECONNECTION_TIMEOUT = 10000; // 10 seconds
-const SESSION_CHECK_INTERVAL = 60000; // 1 minute
-const MAX_RECONNECTION_ATTEMPTS = 3;
+// Configuration constants (synchronized with centralized config)
+const RECONNECTION_TIMEOUT = SESSION_TIMEOUTS.AUTO_RECONNECTION_TIMEOUT; // 20s (up from 10s)
+const SESSION_CHECK_INTERVAL = SESSION_TIMEOUTS.SESSION_CHECK_INTERVAL; // 1 minute
+const MAX_RECONNECTION_ATTEMPTS = SESSION_TIMEOUTS.AUTO_RECONNECTION_MAX_ATTEMPTS; // 5 (up from 3)
 
 /**
  * Auto-reconnection hook

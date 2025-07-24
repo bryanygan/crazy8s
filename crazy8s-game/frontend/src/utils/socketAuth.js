@@ -1,31 +1,42 @@
 import { io } from 'socket.io-client';
+import { SOCKET_TIMEOUTS, calculateAdaptiveTimeout } from '../config/timeouts';
 
 const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:3001';
 
-export const createAuthenticatedSocket = (token) => {
+export const createAuthenticatedSocket = (token, options = {}) => {
+  // Calculate adaptive timeouts based on connection quality
+  const adaptiveConnectionTimeout = calculateAdaptiveTimeout(SOCKET_TIMEOUTS.CONNECTION_TIMEOUT, options);
+  const adaptivePingTimeout = calculateAdaptiveTimeout(SOCKET_TIMEOUTS.PING_TIMEOUT, options);
+  
+  console.log('🔐 Creating authenticated socket with optimized timeouts:', {
+    connectionTimeout: adaptiveConnectionTimeout,
+    pingTimeout: adaptivePingTimeout,
+    pingInterval: SOCKET_TIMEOUTS.PING_INTERVAL,
+    maxAttempts: SOCKET_TIMEOUTS.MAX_RECONNECTION_ATTEMPTS
+  });
+  
   const socket = io(SERVER_URL, {
     auth: {
       token: token
     },
     transports: ['websocket', 'polling'],
-    // Enhanced reconnection configuration with error recovery
+    // Enhanced reconnection configuration synchronized with backend
     reconnection: true,
-    reconnectionAttempts: 8, // Increased attempts
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 10000, // Increased max delay
-    maxReconnectionAttempts: 8,
-    timeout: 15000, // Increased timeout
+    reconnectionAttempts: SOCKET_TIMEOUTS.MAX_RECONNECTION_ATTEMPTS, // Increased to 10
+    reconnectionDelay: SOCKET_TIMEOUTS.RECONNECTION_DELAY, // 1s initial
+    reconnectionDelayMax: SOCKET_TIMEOUTS.RECONNECTION_DELAY_MAX, // 15s max (up from 10s)
+    maxReconnectionAttempts: SOCKET_TIMEOUTS.MAX_RECONNECTION_ATTEMPTS,
+    timeout: adaptiveConnectionTimeout, // 30s adaptive (up from 15s)
     forceNew: false,
     // Additional error handling options
     autoConnect: true,
     randomizationFactor: 0.5,
     // Enable multiplex to handle multiple connections
     multiplex: true,
-    // Upgrade timeout
-    upgradeTimeout: 10000,
-    // Ping timeout and interval
-    pingTimeout: 60000,
-    pingInterval: 25000
+    // Synchronized with backend timeout optimizations
+    upgradeTimeout: SOCKET_TIMEOUTS.UPGRADE_TIMEOUT, // 15s (up from 10s)
+    pingTimeout: adaptivePingTimeout, // 120s adaptive (matches backend)
+    pingInterval: SOCKET_TIMEOUTS.PING_INTERVAL // 30s (matches backend)
   });
   
   // Enhanced error handling
@@ -61,27 +72,37 @@ export const createAuthenticatedSocket = (token) => {
   return socket;
 };
 
-export const createGuestSocket = () => {
+export const createGuestSocket = (options = {}) => {
+  // Calculate adaptive timeouts based on connection quality
+  const adaptiveConnectionTimeout = calculateAdaptiveTimeout(SOCKET_TIMEOUTS.CONNECTION_TIMEOUT, options);
+  const adaptivePingTimeout = calculateAdaptiveTimeout(SOCKET_TIMEOUTS.PING_TIMEOUT, options);
+  
+  console.log('👥 Creating guest socket with optimized timeouts:', {
+    connectionTimeout: adaptiveConnectionTimeout,
+    pingTimeout: adaptivePingTimeout,
+    pingInterval: SOCKET_TIMEOUTS.PING_INTERVAL,
+    maxAttempts: SOCKET_TIMEOUTS.MAX_RECONNECTION_ATTEMPTS
+  });
+  
   const socket = io(SERVER_URL, {
     transports: ['websocket', 'polling'],
-    // Enhanced reconnection configuration with error recovery
+    // Enhanced reconnection configuration synchronized with backend
     reconnection: true,
-    reconnectionAttempts: 8, // Increased attempts
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 10000, // Increased max delay
-    maxReconnectionAttempts: 8,
-    timeout: 15000, // Increased timeout
+    reconnectionAttempts: SOCKET_TIMEOUTS.MAX_RECONNECTION_ATTEMPTS, // Increased to 10
+    reconnectionDelay: SOCKET_TIMEOUTS.RECONNECTION_DELAY, // 1s initial
+    reconnectionDelayMax: SOCKET_TIMEOUTS.RECONNECTION_DELAY_MAX, // 15s max (up from 10s)
+    maxReconnectionAttempts: SOCKET_TIMEOUTS.MAX_RECONNECTION_ATTEMPTS,
+    timeout: adaptiveConnectionTimeout, // 30s adaptive (up from 15s)
     forceNew: false,
     // Additional error handling options
     autoConnect: true,
     randomizationFactor: 0.5,
     // Enable multiplex to handle multiple connections
     multiplex: true,
-    // Upgrade timeout
-    upgradeTimeout: 10000,
-    // Ping timeout and interval
-    pingTimeout: 60000,
-    pingInterval: 25000
+    // Synchronized with backend timeout optimizations
+    upgradeTimeout: SOCKET_TIMEOUTS.UPGRADE_TIMEOUT, // 15s (up from 10s)
+    pingTimeout: adaptivePingTimeout, // 120s adaptive (matches backend)
+    pingInterval: SOCKET_TIMEOUTS.PING_INTERVAL // 30s (matches backend)
   });
   
   // Enhanced error handling

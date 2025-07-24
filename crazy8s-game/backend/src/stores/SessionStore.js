@@ -1,4 +1,5 @@
 const logger = require('../utils/logger');
+const { getTimeout } = require('../config/timeouts');
 
 class SessionStore {
     constructor() {
@@ -12,10 +13,18 @@ class SessionStore {
         this.socketSessions = new Map();
         // Track active operations to prevent race conditions
         this.activeOperations = new Map();
-        // Cleanup interval (10 minutes)
-        this.cleanupInterval = 10 * 60 * 1000;
-        // Session timeout (30 minutes)
-        this.sessionTimeout = 30 * 60 * 1000;
+        // Get optimized timeout configurations
+        const sessionTimeouts = getTimeout('session');
+        
+        // Cleanup interval (configurable, default 10 minutes)
+        this.cleanupInterval = sessionTimeouts.cleanupInterval;
+        // Session timeout (configurable, default 30 minutes)
+        this.sessionTimeout = sessionTimeouts.timeout;
+        
+        logger.info('SessionStore initialized with optimized timeouts:', {
+            sessionTimeout: `${this.sessionTimeout / (60 * 1000)}min`,
+            cleanupInterval: `${this.cleanupInterval / (60 * 1000)}min`
+        });
         
         this.startCleanupTimer();
     }

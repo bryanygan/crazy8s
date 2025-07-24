@@ -93,11 +93,13 @@ class DatabaseManager {
       dialect: 'postgres',
       logging: process.env.NODE_ENV === 'development' ? console.log : false,
       pool: {
-        max: parseInt(process.env.DB_MAX_CONNECTIONS) || 20,
-        min: parseInt(process.env.DB_MIN_CONNECTIONS) || 5,
-        acquire: parseInt(process.env.DB_ACQUIRE_TIMEOUT) || 30000,
-        idle: parseInt(process.env.DB_IDLE_TIMEOUT) || 10000,
-        evict: parseInt(process.env.DB_EVICT_TIMEOUT) || 1000
+        max: parseInt(process.env.DB_MAX_CONNECTIONS) || 50,     // Increased from 20 to support 8-player games
+        min: parseInt(process.env.DB_MIN_CONNECTIONS) || 10,     // Increased from 5 for better baseline performance
+        acquire: parseInt(process.env.DB_ACQUIRE_TIMEOUT) || 45000, // Increased from 30s to 45s
+        idle: parseInt(process.env.DB_IDLE_TIMEOUT) || 30000,    // Increased from 10s to 30s (less aggressive)
+        evict: parseInt(process.env.DB_EVICT_TIMEOUT) || 2000,   // Increased from 1s to 2s
+        handleDisconnects: true,                                  // Auto-reconnect on connection loss
+        validate: true                                            // Validate connections before use
       },
       define: {
         timestamps: true,
@@ -106,8 +108,10 @@ class DatabaseManager {
       },
       dialectOptions: {
         connectTimeout: parseInt(process.env.DB_CONNECT_TIMEOUT) || 20000,
-        idle_in_transaction_session_timeout: parseInt(process.env.DB_IDLE_IN_TRANSACTION_TIMEOUT) || 30000,
-        query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT) || 30000
+        idle_in_transaction_session_timeout: parseInt(process.env.DB_IDLE_IN_TRANSACTION_TIMEOUT) || 45000, // Increased from 30s
+        query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT) || 60000, // Increased from 30s to 60s
+        statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT) || 75000, // 75s for complex statements
+        lock_timeout: parseInt(process.env.DB_LOCK_TIMEOUT) || 10000 // 10s for lock conflicts
       },
       retry: {
         max: 3,

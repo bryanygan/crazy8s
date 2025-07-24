@@ -718,6 +718,304 @@ const stackingTestMatrix = [
 - **Connection Pooling**: Efficient Socket.IO connection management
 - **Database Ready**: Architecture supports easy migration to persistent storage
 
+## ⏱️ Timeout Configuration & Optimization
+
+### Centralized Timeout Management
+
+The backend uses a centralized timeout configuration system (`src/config/timeouts.js`) optimized for 8-player games with complex card stacking scenarios. All timeout values are configurable via environment variables.
+
+#### Key Timeout Categories
+
+**Socket.IO Configuration:**
+```javascript
+SOCKET_PING_TIMEOUT=120000      # 120s (increased from 60s for stability)
+SOCKET_PING_INTERVAL=30000      # 30s (matches frontend, reduced ping frequency)
+SOCKET_CONNECTION_TIMEOUT=30000 # 30s for initial connection
+SOCKET_UPGRADE_TIMEOUT=15000    # 15s for WebSocket upgrade
+SOCKET_DISCONNECTION_GRACE=5000 # 5s grace period for false reconnection prevention
+```
+
+**Database Configuration:**
+```javascript
+DB_QUERY_TIMEOUT=60000          # 60s (increased from 30s for complex 8-player queries)
+DB_ACQUIRE_TIMEOUT=45000        # 45s (increased from 30s for connection pool pressure)
+DB_IDLE_TIMEOUT=30000           # 30s (increased from 10s to reduce connection churn)
+DB_CONNECT_TIMEOUT=20000        # 20s for initial database connection
+```
+
+**Game Timing Configuration:**
+```javascript
+GAME_TIMER_DEFAULT=60           # 60s base turn timeout
+GAME_TIMER_PER_PLAYER=5         # 5s additional time per player
+GAME_MAX_TIMER=180              # 3min maximum turn timeout
+GAME_MIN_TIMER=15               # 15s minimum turn timeout
+GAME_ACTION_THROTTLE=500        # 500ms between card actions
+GAME_STACKING_THROTTLE=250      # 250ms for rapid stacking prevention
+```
+
+**Session Management:**
+```javascript
+SESSION_TIMEOUT=1800000         # 30min session expiration
+SESSION_VALIDATION_TIMEOUT=10000 # 10s for session validation
+SESSION_CHECK_INTERVAL=300000   # 5min session cleanup interval
+SESSION_CLEANUP_INTERVAL=600000 # 10min garbage collection
+```
+
+**Reconnection Configuration:**
+```javascript
+RECONNECTION_INITIAL_DELAY=2000      # 2s initial reconnection delay
+RECONNECTION_MAX_DELAY=30000         # 30s maximum delay
+RECONNECTION_MAX_ATTEMPTS=5          # 5 reconnection attempts
+RECONNECTION_BACKOFF_MULTIPLIER=1.5  # 1.5x exponential backoff
+AUTO_RECONNECTION_TIMEOUT=15000      # 15s auto-reconnection timeout
+```
+
+### Adaptive Timeout Calculations
+
+#### Turn Timer Adaptation
+The backend automatically adjusts turn timeouts based on game complexity:
+
+```javascript
+function calculateAdaptiveTurnTimeout(playerCount, gameState = {}) {
+    const baseTimeout = 60000; // 60s base
+    const perPlayerTimeout = 5000; // 5s per player
+    
+    // Base calculation: base + (players * per-player-time)
+    let adaptiveTimeout = baseTimeout + (playerCount * perPlayerTimeout);
+    
+    // Adjust for game complexity
+    if (gameState.stackedCards && gameState.stackedCards.length > 3) {
+        // Extra time for complex stacking (up to 15s)
+        adaptiveTimeout += Math.min(gameState.stackedCards.length * 2000, 15000);
+    }
+    
+    if (gameState.activeEffects && gameState.activeEffects.length > 0) {
+        // Extra time for active card effects (3s per effect)
+        adaptiveTimeout += gameState.activeEffects.length * 3000;
+    }
+    
+    // Ensure within bounds (15s min, 180s max)
+    return Math.max(15000, Math.min(adaptiveTimeout, 180000));
+}
+```
+
+#### Database Operation Adaptation
+Database timeouts adapt based on operation complexity and player count:
+
+```javascript
+function calculateAdaptiveDbTimeout(operation, playerCount = 1, options = {}) {
+    const baseTimeout = 60000; // 60s base query timeout
+    
+    const operationMultipliers = {
+        'simple_select': 1.0,
+        'complex_join': 1.5,
+        'game_state_update': 2.0,
+        'card_validation': 1.2,
+        'player_statistics': 1.8,
+        'tournament_calculation': 3.0
+    };
+    
+    const multiplier = operationMultipliers[operation] || 1.0;
+    const playerMultiplier = 1 + (playerCount - 1) * 0.1; // 10% per player
+    
+    let adaptiveTimeout = baseTimeout * multiplier * playerMultiplier;
+    
+    if (options.highComplexity) {
+        adaptiveTimeout *= 1.5;
+    }
+    
+    return Math.min(adaptiveTimeout, 300000); // Cap at 5 minutes
+}
+```
+
+#### Network Quality Adjustments
+Timeouts automatically adjust based on detected network quality:
+
+```javascript
+function applyNetworkQualityAdjustment(timeout, networkQuality) {
+    switch (networkQuality) {
+        case 'poor':
+            return Math.floor(timeout * 1.5); // 50% increase for poor networks
+        case 'fair':
+            return Math.floor(timeout * 1.2); // 20% increase for fair networks
+        case 'good':
+        default:
+            return timeout; // Standard timeouts for good networks
+    }
+}
+```
+
+### Timeout Validation & Monitoring
+
+#### Configuration Validation
+On startup, the server validates timeout configurations to prevent conflicts:
+
+```javascript
+function validateTimeoutConfig() {
+    const errors = [];
+    
+    // Critical relationships
+    if (SOCKET_PING_TIMEOUT <= SOCKET_PING_INTERVAL) {
+        errors.push('Socket pingTimeout must be greater than pingInterval');
+    }
+    
+    if (GAME_MAX_TIMER <= GAME_MIN_TIMER) {
+        errors.push('Game maxTurnTimeout must be greater than minTurnTimeout');
+    }
+    
+    if (errors.length > 0) {
+        throw new Error(`Invalid timeout configuration: ${errors.join(', ')}`);
+    }
+}
+```
+
+#### Performance Monitoring
+Track timeout performance and adjust automatically:
+
+```javascript
+// Monitor database query performance
+const dbQueryMonitor = new Map();
+
+function trackDbQuery(operation, duration, playerCount) {
+    const key = `${operation}_${playerCount}p`;
+    if (!dbQueryMonitor.has(key)) {
+        dbQueryMonitor.set(key, { count: 0, totalTime: 0, timeouts: 0 });
+    }
+    
+    const stats = dbQueryMonitor.get(key);
+    stats.count++;
+    stats.totalTime += duration;
+    
+    // Track if query exceeded expected time
+    const expectedTime = calculateAdaptiveDbTimeout(operation, playerCount);
+    if (duration > expectedTime) {
+        stats.timeouts++;
+        
+        // Adjust future timeouts if timeout rate is high
+        if (stats.timeouts / stats.count > 0.1) { // 10% timeout rate
+            logger.warn(`High timeout rate for ${key}: ${stats.timeouts}/${stats.count}`);
+        }
+    }
+}
+```
+
+### Environment Configuration Examples
+
+#### Development Environment
+```bash
+# Shorter timeouts for faster development cycles
+SOCKET_PING_TIMEOUT=60000
+SOCKET_PING_INTERVAL=15000
+DB_QUERY_TIMEOUT=30000
+GAME_TIMER_DEFAULT=30
+```
+
+#### Production Environment
+```bash
+# Optimized for stability and 8-player games
+SOCKET_PING_TIMEOUT=120000
+SOCKET_PING_INTERVAL=30000
+DB_QUERY_TIMEOUT=60000
+GAME_TIMER_DEFAULT=60
+GAME_TIMER_PER_PLAYER=5
+```
+
+#### High-Latency Networks
+```bash
+# Extended timeouts for poor network conditions
+SOCKET_PING_TIMEOUT=180000
+SOCKET_CONNECTION_TIMEOUT=45000
+RECONNECTION_MAX_DELAY=45000
+AUTO_RECONNECTION_TIMEOUT=30000
+```
+
+### Best Practices
+
+#### Timeout Configuration Guidelines
+
+1. **Socket Timeouts**: 
+   - Ping timeout should be 4x ping interval minimum
+   - Connection timeout should allow for network handshake completion
+   - Consider client-side timeout synchronization
+
+2. **Database Timeouts**:
+   - Query timeout should exceed expected query time by 100%
+   - Acquire timeout should be longer than query timeout
+   - Consider connection pool size vs. timeout values
+
+3. **Game Timeouts**:
+   - Base timer should accommodate thoughtful play
+   - Per-player scaling prevents unfair disadvantages in large games
+   - Maximum timeout prevents games from stalling indefinitely
+
+4. **Reconnection Timeouts**:
+   - Initial delay should be short for quick recovery
+   - Maximum delay prevents infinite retry cycles
+   - Backoff multiplier balances speed vs. server load
+
+#### Monitoring & Alerting
+```javascript
+// Set up timeout monitoring
+const timeoutMonitor = {
+    socketTimeouts: 0,
+    dbTimeouts: 0,
+    gameTimeouts: 0,
+    lastAlert: 0
+};
+
+function checkTimeoutHealth() {
+    const now = Date.now();
+    const alertThreshold = 5 * 60 * 1000; // 5 minutes
+    
+    if (now - timeoutMonitor.lastAlert > alertThreshold) {
+        const totalTimeouts = timeoutMonitor.socketTimeouts + 
+                             timeoutMonitor.dbTimeouts + 
+                             timeoutMonitor.gameTimeouts;
+        
+        if (totalTimeouts > 10) {
+            logger.warn('High timeout rate detected', {
+                socket: timeoutMonitor.socketTimeouts,
+                database: timeoutMonitor.dbTimeouts,
+                game: timeoutMonitor.gameTimeouts,
+                total: totalTimeouts
+            });
+            
+            timeoutMonitor.lastAlert = now;
+        }
+    }
+}
+```
+
+### Troubleshooting Common Timeout Issues
+
+#### High Socket Disconnection Rate
+**Symptoms**: Frequent 'ping timeout' events, player reconnections
+**Solutions**:
+- Increase `SOCKET_PING_TIMEOUT` to 120-180 seconds
+- Reduce `SOCKET_PING_INTERVAL` to 20-25 seconds
+- Check network infrastructure for packet loss
+
+#### Database Query Timeouts
+**Symptoms**: 'Query timeout' errors, delayed game updates
+**Solutions**:
+- Increase `DB_QUERY_TIMEOUT` based on query complexity
+- Optimize database indexes for game queries
+- Consider connection pool sizing
+
+#### Game Turn Timeouts
+**Symptoms**: Players timing out during complex turns
+**Solutions**:
+- Increase `GAME_TIMER_PER_PLAYER` for larger games
+- Implement adaptive timing based on card stack complexity
+- Consider separate timeouts for different action types
+
+#### Session Persistence Issues
+**Symptoms**: Players unable to reconnect, lost sessions
+**Solutions**:
+- Extend `SESSION_TIMEOUT` for longer games
+- Reduce `SESSION_CHECK_INTERVAL` for faster cleanup
+- Monitor session store memory usage
+
 ## Debug Tools
 
 ### Advanced Logging

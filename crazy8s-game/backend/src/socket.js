@@ -5,6 +5,9 @@ const sessionStore = require('./stores/SessionStore');
 const SocketValidator = require('./utils/socketValidator');
 const connectionLogger = require('./utils/connectionLogger');
 const logger = require('./utils/logger');
+const { TIMEOUT_CONFIG, getTimeout } = require('./config/timeouts');
+const timeoutMonitor = require('./utils/timeoutMonitor');
+const adaptiveTimeoutHandler = require('./utils/adaptiveTimeouts');
 
 let io;
 
@@ -86,15 +89,31 @@ const authenticateSocket = async (socket, next) => {
 };
 
 const initSocket = (server) => {
+    // Get optimized timeout configurations
+    const socketTimeouts = getTimeout('socket');
+    
     io = socketIO(server, {
         cors: {
             origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000'],
             credentials: true
         },
-        // Enhanced configuration for reliability
-        pingTimeout: 60000,
-        pingInterval: 25000,
-        transports: ['websocket', 'polling']
+        // Optimized configuration for 8-player games with complex scenarios
+        pingTimeout: socketTimeouts.pingTimeout,          // 120s (increased from 60s)
+        pingInterval: socketTimeouts.pingInterval,        // 30s (increased from 25s)
+        connectTimeout: socketTimeouts.connectionTimeout, // 30s connection timeout
+        upgradeTimeout: socketTimeouts.upgradeTimeout,    // 15s upgrade timeout
+        transports: ['websocket', 'polling'],
+        // Additional optimizations
+        allowEIO3: true,
+        rememberUpgrade: true,
+        compression: true,
+        serveClient: false
+    });
+    
+    logger.info('Socket.IO initialized with optimized timeouts:', {
+        pingTimeout: `${socketTimeouts.pingTimeout / 1000}s`,
+        pingInterval: `${socketTimeouts.pingInterval / 1000}s`,
+        connectionTimeout: `${socketTimeouts.connectionTimeout / 1000}s`
     });
 
     // Initialize socket validator
@@ -169,6 +188,20 @@ const initSocket = (server) => {
         }
 
         socket.on('disconnect', (reason) => {
+            // Monitor timeout-related disconnections
+            if (reason === 'ping timeout') {
+                timeoutMonitor.recordTimeout('socket', 'ping', getTimeout('socket').pingTimeout, {
+                    socketId: socket.id,
+                    isAuthenticated: socket.isAuthenticated,
+                    gameId: socket.gameId
+                });
+            } else if (reason === 'transport close' || reason === 'transport error') {
+                timeoutMonitor.recordTimeout('socket', 'connection', getTimeout('socket').connectionTimeout, {
+                    socketId: socket.id,
+                    reason: reason
+                });
+            }
+            
             // Enhanced disconnection logging
             const gameInfo = socket.gameId ? {
                 gameId: socket.gameId,
@@ -343,6 +376,32 @@ const initSocket = (server) => {
             const startTime = Date.now();
             let reconnectionAttempt = null;
             
+            // Use adaptive timeout based on context
+            const context = {
+                socketId: socket.id,
+                gameId: data?.gameId,
+                isAuthenticated: socket.isAuthenticated
+            };
+            const reconnectionTimeout = adaptiveTimeoutHandler.getAdaptiveTimeout('game', 'reconnection', context);
+            
+            // Start timeout monitoring for this reconnection
+            const timeoutId = setTimeout(() => {
+                timeoutMonitor.recordTimeout('game', 'reconnection', reconnectionTimeout, {
+                    socketId: socket.id,
+                    gameId: data?.gameId,
+                    type: 'auto_reconnect'
+                });
+                
+                if (socket && !socket.disconnected) {
+                    socket.emit('auto_reconnect_failed', {
+                        error: 'Reconnection timeout',
+                        code: 'RECONNECTION_TIMEOUT',
+                        canRetry: true,
+                        retryDelay: 5000
+                    });
+                }
+            }, reconnectionTimeout);
+            
             try {
                 // Validate socket state
                 if (!socket || socket.disconnected) {
@@ -486,6 +545,27 @@ const initSocket = (server) => {
                         canRetry: true,
                         retryDelay: 5000
                     });
+                }
+            } finally {
+                // Clear the timeout monitoring
+                clearTimeout(timeoutId);
+                
+                // Record operation completion time and adaptive learning
+                const duration = Date.now() - startTime;
+                const success = duration < reconnectionTimeout;
+                
+                adaptiveTimeoutHandler.recordOperationCompletion(
+                    data?.gameId || 'unknown',
+                    'game',
+                    'reconnection',
+                    duration,
+                    success
+                );
+                
+                if (success) {
+                    logger.debug(`Auto-reconnection completed in ${duration}ms`);
+                } else {
+                    logger.warn(`Auto-reconnection took ${duration}ms (expected max: ${reconnectionTimeout}ms)`);
                 }
             }
         });

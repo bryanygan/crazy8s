@@ -13,6 +13,7 @@ const connectionHandler = require('./utils/connectionHandler');
 const GameEventEmitter = require('./utils/eventEmitter');
 const { gracefulShutdown } = require('./config/database');
 const logger = require('./utils/logger');
+const { TIMEOUT_CONFIG, getTimeout, validateTimeoutConfig } = require('./config/timeouts');
 const gameTimers = new Map();
 
 // Environment variable validation
@@ -40,6 +41,15 @@ function validateEnvironment() {
 
 // Validate environment on startup
 validateEnvironment();
+
+// Validate timeout configuration
+try {
+  validateTimeoutConfig();
+  logger.info('Timeout configuration validation passed');
+} catch (error) {
+  logger.error('Timeout configuration validation failed:', error.message);
+  process.exit(1);
+}
 
 const server = http.createServer(app);
 
@@ -127,7 +137,8 @@ const authenticateSocket = async (socket, next) => {
   }
 };
 
-// Updated CORS configuration for production
+// Updated CORS configuration for production with optimized timeouts
+const socketTimeouts = getTimeout('socket');
 const io = socketIo(server, {
     cors: {
         origin: process.env.NODE_ENV === 'production' 
@@ -140,12 +151,22 @@ const io = socketIo(server, {
         allowedHeaders: ["Content-Type", "Authorization"],
         credentials: true
     },
-    // Additional configuration for production
+    // Optimized configuration for 8-player games with complex scenarios
     transports: ['websocket', 'polling'],
     upgrade: true,
     rememberUpgrade: true,
-    pingTimeout: 60000,
-    pingInterval: 25000
+    pingTimeout: socketTimeouts.pingTimeout,          // 120s (increased from 60s)
+    pingInterval: socketTimeouts.pingInterval,        // 30s (increased from 25s)
+    connectTimeout: socketTimeouts.connectionTimeout, // 30s connection timeout
+    upgradeTimeout: socketTimeouts.upgradeTimeout,    // 15s upgrade timeout
+    compression: true,
+    serveClient: false
+});
+
+logger.info('Server Socket.IO initialized with optimized timeouts:', {
+    pingTimeout: `${socketTimeouts.pingTimeout / 1000}s`,
+    pingInterval: `${socketTimeouts.pingInterval / 1000}s`,
+    connectionTimeout: `${socketTimeouts.connectionTimeout / 1000}s`
 });
 
 // Initialize event emitter with IO instance

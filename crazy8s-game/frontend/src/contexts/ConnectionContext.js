@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createAuthenticatedSocket, createGuestSocket } from '../utils/socketAuth';
+// Timeout configurations imported for future use
+// import { SOCKET_TIMEOUTS, SESSION_TIMEOUTS, calculateAdaptiveTimeout } from '../config/timeouts';
 import { 
   saveSessionData, 
   loadSessionData, 
@@ -62,8 +64,8 @@ export const ConnectionProvider = ({ children }) => {
   const sessionData = useRef(null);
   const exponentialBackoff = useRef(1000); // Start with 1 second
   
-  // Constants for filtering false reconnection notifications
-  const MINIMUM_DISCONNECT_DURATION = 2000; // 2 seconds
+  // Constants for filtering false reconnection notifications (synchronized with backend)
+  const MINIMUM_DISCONNECT_DURATION = 5000; // 5 seconds (matches backend grace period)
   const RECONNECT_NOTIFICATION_DEBOUNCE = 3000; // 3 seconds between notifications
   
   // Helper function to determine if a disconnection/reconnection is user-impacting
