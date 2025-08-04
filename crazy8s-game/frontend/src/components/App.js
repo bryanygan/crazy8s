@@ -202,47 +202,73 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
   return (
     <div style={{
       display: 'flex',
-      flexDirection: 'column',
+      justifyContent: 'center',
       alignItems: 'center',
-      padding: '20px',
+      padding: '40px 20px',
       backgroundColor: '#27ae60',
       borderRadius: '20px',
       margin: '20px 0',
-      minHeight: '200px',
+      minHeight: '180px',
       boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
     }}>
-      <h2 style={{ color: '#fff', margin: '0 0 20px 0' }}>Game Board</h2>
-      
       <div style={{
         display: 'flex',
         gap: '40px',
-        alignItems: 'center',
-        marginBottom: '20px'
+        alignItems: 'flex-start',
+        justifyContent: 'center'
       }}>
-        {/* Draw Pile */}
-        <div 
-          onClick={onDrawCard}
-          style={{
-            width: '80px',
-            height: '120px',
-            backgroundColor: '#34495e',
-            border: '3px solid #2c3e50',
-            borderRadius: '10px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            position: 'relative',
-            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
-            transition: 'transform 0.2s ease'
-          }}
-          onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
-          onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
-        >
-          <div style={{ color: '#fff', textAlign: 'center', fontSize: '12px' }}>
-            <div style={{ fontWeight: 'bold' }}>DRAW</div>
-            <div>({drawPileSize})</div>
+        {/* Draw Pile Column */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          <div style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold' }}>
+            Draw Pile
           </div>
+          <div 
+            onClick={onDrawCard}
+            style={{
+              width: '80px',
+              height: '120px',
+              backgroundColor: '#34495e',
+              border: '3px solid #2c3e50',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              position: 'relative',
+              boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+              transition: 'transform 0.2s ease'
+            }}
+            onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
+            onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+          >
+            <div style={{ color: '#fff', textAlign: 'center', fontSize: '12px' }}>
+              <div style={{ fontWeight: 'bold' }}>DRAW</div>
+              <div>({drawPileSize})</div>
+            </div>
+          </div>
+          
+          {/* Draw Stack indicator under draw pile */}
+          {gameState.drawStack > 0 && (
+            <div style={{
+              color: '#fff',
+              backgroundColor: '#e67e22',
+              padding: '4px 8px',
+              borderRadius: '10px',
+              fontSize: '10px',
+              fontWeight: 'bold',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              animation: 'pulse 2s infinite',
+              textAlign: 'center',
+              minWidth: '60px'
+            }}>
+              <FaBook style={{ marginRight: '4px', fontSize: '8px' }} />+{gameState.drawStack}
+            </div>
+          )}
         </div>
 
         {/* Arrow */}
@@ -250,12 +276,14 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
           color: '#fff', 
           fontWeight: 'bold', 
           fontSize: '24px',
-          textShadow: '0 2px 4px rgba(0,0,0,0.3)'
+          textShadow: '0 2px 4px rgba(0,0,0,0.3)',
+          alignSelf: 'flex-start',
+          marginTop: '80px'
         }}>
           →
         </div>
 
-        {/* Discard Pile - UPDATED */}
+        {/* Top Card Column */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -315,12 +343,33 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
               Empty
             </div>
           )}
+          
+          {/* Reversed indicator under top card */}
+          {gameState.direction === -1 && (
+            <div style={{
+              color: '#fff',
+              backgroundColor: '#9b59b6',
+              padding: '4px 8px',
+              borderRadius: '10px',
+              fontSize: '10px',
+              fontWeight: 'bold',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              textAlign: 'center',
+              minWidth: '60px'
+            }}>
+              <FaSync style={{ marginRight: '4px', fontSize: '8px' }} />Reversed
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Game Status Indicators - rest remains the same */}
-      <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', justifyContent: 'center' }}>
-        {gameState.declaredSuit && (
+      {/* Declared Suit Indicator (centered) */}
+      {gameState.declaredSuit && (
+        <div style={{ 
+          display: 'flex',
+          justifyContent: 'center',
+          marginTop: '15px'
+        }}>
           <div style={{
             color: '#fff',
             backgroundColor: '#e74c3c',
@@ -332,37 +381,8 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
           }}>
             <FaBullseye style={{ marginRight: '8px' }} />Current Suit: {gameState.declaredSuit}
           </div>
-        )}
-
-        {gameState.drawStack > 0 && (
-          <div style={{
-            color: '#fff',
-            backgroundColor: '#e67e22',
-            padding: '8px 15px',
-            borderRadius: '15px',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            animation: 'pulse 2s infinite'
-          }}>
-            <FaBook style={{ marginRight: '8px' }} />Draw Stack: +{gameState.drawStack}
-          </div>
-        )}
-
-        {gameState.direction === -1 && (
-          <div style={{
-            color: '#fff',
-            backgroundColor: '#9b59b6',
-            padding: '8px 15px',
-            borderRadius: '15px',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-          }}>
-            <FaSync style={{ marginRight: '8px' }} />Reversed
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1453,6 +1473,7 @@ const GameApp = () => {
   const [hasDrawnThisTurn, setHasDrawnThisTurn] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [lastActionTime, setLastActionTime] = useState(0);
+  const [showTournamentInfo, setShowTournamentInfo] = useState(false);
   
   // Use extracted hooks for timer and tournament
   const { globalTimer, setGlobalTimer, timerDurationRef, timerWarningTimeRef } = useTimer(settings);
@@ -3102,6 +3123,67 @@ const handleLogout = async () => {
             🎯 It's your turn!
           </div>
         )}
+        
+        {/* Tournament Dropdown Toggle - Only show if tournament is active */}
+        {gameState?.tournament?.active && (
+          <>
+            <div 
+              onClick={() => setShowTournamentInfo(!showTournamentInfo)}
+              style={{
+                backgroundColor: '#f8f9fa',
+                borderTop: '1px solid #dee2e6',
+                padding: '8px 20px',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px',
+                color: '#6c757d',
+                transition: 'all 0.2s ease',
+                marginTop: '10px',
+                borderRadius: '0 0 10px 10px'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#e9ecef'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#f8f9fa'}
+            >
+              <FaTrophy style={{ fontSize: '12px', color: 'gold' }} />
+              <span>Tournament Info</span>
+              <span style={{
+                transform: showTournamentInfo ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+                fontSize: '10px'
+              }}>
+                ▼
+              </span>
+            </div>
+            
+            {/* Tournament Info Dropdown */}
+            <div style={{
+              maxHeight: showTournamentInfo ? '500px' : '0px',
+              overflow: 'hidden',
+              transition: 'max-height 0.3s ease-in-out',
+              backgroundColor: '#fff',
+              borderRadius: '0 0 10px 10px'
+            }}>
+              <div style={{ 
+                padding: showTournamentInfo ? '15px 20px' : '0 20px',
+                transition: 'padding 0.3s ease-in-out'
+              }}>
+                <TournamentStatus gameState={gameState} />
+                <SafePlayerNotification 
+                  isPlayerSafe={(gameState?.players?.find(p => p.id === playerId)?.isSafe || false) && gameState?.gameState !== 'finished' && gameState?.tournament?.currentRound > 1}
+                  playerName={playerName}
+                  gameState={gameState}
+                  onStartNextRound={handleStartNextRound}
+                  playerId={playerId}
+                  currentPlayerId={playerId}
+                />
+                <TournamentPlayerDisplay players={gameState?.players || []} gameState={gameState} />
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Players */}
@@ -3116,13 +3198,13 @@ const handleLogout = async () => {
         <div
             key={index}
             style={{
-            padding: '12px 18px',
+            padding: '8px 16px',
             backgroundColor: player.isCurrentPlayer ? '#3498db' : '#95a5a6',
             color: '#fff',
-            borderRadius: '25px',
+            borderRadius: '20px',
             fontWeight: 'bold',
             textAlign: 'center',
-            minWidth: '140px',
+            minWidth: '100px',
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
             transform: player.isCurrentPlayer ? 'scale(1.05)' : 'scale(1)',
             transition: 'all 0.3s ease',
@@ -3130,17 +3212,11 @@ const handleLogout = async () => {
             }}
         >
             <div style={{ fontSize: '14px' }}>
-            {player.name}
+            {player.name} ({player.handSize})
             {!player.isConnected && ' 🔴'}
             {player.id === playerId && ' (YOU)'}
-            </div>
-            <div style={{ fontSize: '12px', opacity: 0.9 }}>
-            {player.handSize} cards
             {player.isSafe && ' ✅'}
             {player.isEliminated && ' ❌'}
-            </div>
-            <div style={{ fontSize: '10px', opacity: 0.7 }}>
-            ID: {player.id?.slice(-4)}
             </div>
             
             {/* TIMER COMPONENT ADDED HERE */}
@@ -3155,19 +3231,6 @@ const handleLogout = async () => {
 
       {/* Game Board */}
 
-      {/* Tournament Components */}
-      <TournamentStatus gameState={gameState} />
-      
-      <SafePlayerNotification 
-        isPlayerSafe={(gameState?.players?.find(p => p.id === playerId)?.isSafe || false) && gameState?.gameState !== 'finished' && gameState?.tournament?.currentRound > 1}
-        playerName={playerName}
-        gameState={gameState}
-        onStartNextRound={handleStartNextRound}
-        playerId={playerId}
-        currentPlayerId={playerId}
-      />
-      
-      <TournamentPlayerDisplay players={gameState?.players || []} gameState={gameState} />
 
       <GameBoard 
         gameState={gameState}
