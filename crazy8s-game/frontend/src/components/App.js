@@ -529,7 +529,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
             borderRadius: '8px'
           }}>
             <div>
-              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Sort by Rank</div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px', color: '#2c3e50' }}>Sort by Rank</div>
               <div style={{ fontSize: '12px', color: '#6c757d' }}>
                 Order cards by rank (2, 3, 4... Jack, Queen, King, Ace)
               </div>
@@ -555,7 +555,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
             borderRadius: '8px'
           }}>
             <div>
-              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Group by Suit</div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px', color: '#2c3e50' }}>Group by Suit</div>
               <div style={{ fontSize: '12px', color: '#6c757d' }}>
                 Group cards by suit (Hearts, Diamonds, Clubs, Spades)
               </div>
@@ -620,7 +620,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
             borderRadius: '8px'
           }}>
             <div>
-              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Experienced Mode</div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px', color: '#2c3e50' }}>Experienced Mode</div>
               <div style={{ fontSize: '12px', color: '#6c757d' }}>
                 Show all cards clearly - removes graying out of unplayable cards
               </div>
@@ -651,7 +651,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
             borderRadius: '8px'
           }}>
             <div>
-              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Enable Turn Timer</div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px', color: '#2c3e50' }}>Enable Turn Timer</div>
               <div style={{ fontSize: '12px', color: '#6c757d' }}>
                 Show countdown timer and auto-draw when time expires
               </div>
@@ -676,7 +676,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
                 borderRadius: '8px',
                 marginBottom: '15px'
               }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '10px' }}>Quick Presets:</div>
+                <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#2c3e50' }}>Quick Presets:</div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '15px' }}>
                   {[30, 60, 90, 120, 180].map(duration => (
                     <button
@@ -707,7 +707,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
                     alignItems: 'center',
                     marginBottom: '8px'
                   }}>
-                    <label style={{ fontWeight: 'bold', fontSize: '14px' }}>
+                    <label style={{ fontWeight: 'bold', fontSize: '14px', color: '#2c3e50' }}>
                       Timer Duration: {Math.floor(settings.timerDuration/60)}:{(settings.timerDuration%60).toString().padStart(2,'0')}
                     </label>
                     <span style={{ fontSize: '12px', color: '#6c757d' }}>
@@ -744,7 +744,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
 
                 {/* Custom Input */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <label style={{ fontWeight: 'bold', fontSize: '14px', minWidth: 'fit-content' }}>
+                  <label style={{ fontWeight: 'bold', fontSize: '14px', minWidth: 'fit-content', color: '#2c3e50' }}>
                     Custom:
                   </label>
                   <input
@@ -780,7 +780,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
                   <FaExclamationTriangle style={{ marginRight: '8px' }} />Warning Threshold:
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '14px', minWidth: 'fit-content' }}>Show warning at:</span>
+                  <span style={{ fontSize: '14px', minWidth: 'fit-content', color: '#856404' }}>Show warning at:</span>
                   <input
                     type="number"
                     min="5"
@@ -2975,39 +2975,6 @@ const handleLogout = async () => {
         </div>
       </div>
 
-      {/* Debug Info */}
-      <div style={{
-        backgroundColor: '#f8f9fa',
-        padding: '10px',
-        borderRadius: '5px',
-        marginBottom: '15px',
-        fontSize: '12px',
-        color: '#6c757d',
-        textAlign: 'center',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '15px'
-      }}>
-        <span>🆔 Player ID: {playerId}</span>
-        <span>|</span>
-        <span style={{
-          color: isAuthenticated ? '#27ae60' : '#f39c12',
-          fontWeight: 'bold'
-        }}>
-          {isAuthenticated ? '👤 Authenticated' : '👥 Guest'}
-        </span>
-        <span>|</span>
-        <span>🎮 Current: {gameState.currentPlayer}</span>
-        <span>|</span>
-        <span style={{
-          color: isMyTurn ? '#e74c3c' : '#6c757d',
-          fontWeight: isMyTurn ? 'bold' : 'normal'
-        }}>
-          {isMyTurn ? '🔥 MY TURN' : '⏳ Waiting'}
-        </span>
-      </div>
 
       {/* Game Info */}
       <div style={{ 
