@@ -8,8 +8,6 @@ const jwt = require('jsonwebtoken');
 const app = require('./app');
 const Game = require('./models/game');
 const UserStore = require('./stores/UserStore');
-const sessionStore = require('./stores/SessionStore');
-const connectionHandler = require('./utils/connectionHandler');
 const GameEventEmitter = require('./utils/eventEmitter');
 const { gracefulShutdown } = require('./config/database');
 const logger = require('./utils/logger');
@@ -1001,12 +999,6 @@ io.on('connection', (socket) => {
                         logger.info(`Player ${gamePlayer.name} disconnected from game ${player.gameId} (${socket.id}) - Reason: ${reason}`);
                     }
                     
-                    // Update session activity (preserve session for reconnection)
-                    const session = sessionStore.getSession(socket.id);
-                    if (session) {
-                        sessionStore.updateActivity(socket.id);
-                        logger.info(`Session preserved for ${session.playerName} in game ${session.gameId} - available for reconnection`);
-                    }
                     
                     // If all players disconnect, start cleanup timer (but don't immediately destroy)
                     const connectedPlayersInGame = game.players.filter(p => p.isConnected);
@@ -1019,11 +1011,6 @@ io.on('connection', (socket) => {
                             manageGameTimer(player.gameId, 'stop');
                             Game.removeGame(player.gameId);
                             
-                            // Clean up sessions for this game
-                            const gameSessions = sessionStore.getGameSessions(player.gameId);
-                            gameSessions.forEach(session => {
-                                sessionStore.removeSession(session.sessionId);
-                            });
                         }, 30 * 60 * 1000); // 30 minutes
                         
                         gameTimers.set(`cleanup_${player.gameId}`, cleanupTimer);
@@ -1105,17 +1092,6 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Check if there's a valid session for this player
-            let session = sessionStore.findSessionByNameAndGame(playerName, gameId);
-            if (!session) {
-                // Try to find session by authenticated user if available
-                if (socket.isAuthenticated) {
-                    session = sessionStore.getSessionByAuthId(socket.userId);
-                    if (session && (session.gameId !== gameId || session.playerName !== playerName)) {
-                        session = null; // Session doesn't match current reconnection attempt
-                    }
-                }
-            }
 
             // Update player's socket ID and mark as connected
             const oldPlayerId = gamePlayer.id;
@@ -1129,20 +1105,6 @@ io.on('connection', (socket) => {
                 playerId: gamePlayer.id
             });
 
-            // Update or create session
-            if (session) {
-                sessionStore.updateSessionSocket(session.sessionId || oldPlayerId, socket.id);
-                logger.info(`Session updated for reconnection: ${playerName} to game ${gameId} (${socket.id})`);
-            } else {
-                sessionStore.createSession(
-                    socket.id,
-                    socket.id,
-                    gameId,
-                    playerName,
-                    socket.userId || null
-                );
-                logger.info(`New session created for reconnection: ${playerName} to game ${gameId} (${socket.id})`);
-            }
 
             // Join socket room
             socket.join(gameId);
@@ -1162,7 +1124,7 @@ io.on('connection', (socket) => {
                 playerName,
                 playerId: socket.id,
                 timestamp: Date.now(),
-                reconnectionCount: session ? (session.reconnectionCount || 0) : 0
+                reconnectionCount: 0
             });
 
             logger.info(`Player ${playerName} successfully reconnected to game ${gameId} (${socket.id})`);

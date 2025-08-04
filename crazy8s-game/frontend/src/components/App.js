@@ -3,9 +3,6 @@ import CardSortingPreferences from './CardSortingPreferences';
 import { AuthModal, UserDashboard } from './auth';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ConnectionProvider, useConnection } from '../contexts/ConnectionContext';
-import ConnectionNotifications from './ConnectionNotifications';
-import useReconnectionHandler from '../hooks/useReconnectionHandler';
-import useAutoReconnection from '../hooks/useAutoReconnection';
 import MainMenu from './MainMenu';
 import {
   validateCardStackFrontend,
@@ -1574,45 +1571,6 @@ const GameApp = () => {
 
   // Toast functions now provided by useToasts hook
 
-  // Enhanced reconnection handling hook
-  useReconnectionHandler({
-    gameState,
-    playerId,
-    isMyTurn: gameState?.currentPlayerId === playerId,
-    addToast,
-    setSelectedCards,
-    setHasDrawnThisTurn,
-    setIsDrawing,
-    setIsSkipping
-  });
-
-  // Auto-reconnection with session persistence hook
-  const {
-    isReconnecting,
-    sessionRestored,
-    reconnectionStatus,
-    reconnectionProgress,
-    reconnectionError,
-    triggerReconnection
-    // clearCurrentSession,
-    // hasValidSession
-  } = useAutoReconnection({
-    gameState,
-    setGameState,
-    playerId,
-    setPlayerId,
-    playerName,
-    setPlayerName,
-    gameId,
-    setGameId,
-    addToast,
-    enableAutoReconnection: true,
-    enableSessionPersistence: true,
-    useSessionStorage: false, // Use localStorage for cross-session persistence
-    maxAttempts: 3,
-    reconnectionTimeout: 10000
-  });
-
   // Play again voting now handled by usePlayAgainVoting hook
 
 
@@ -2640,7 +2598,7 @@ const handleLogout = async () => {
   // Show confirmation dialog
   const confirmLogout = window.confirm(
     '🚪 Are you sure you want to logout?\n\n' +
-    '• Your current game session will continue\n' +
+    '• Your current game will continue\n' +
     '• Your settings will be saved\n' +
     '• You can sign back in anytime'
   );
@@ -3229,65 +3187,6 @@ const handleLogout = async () => {
     </div>
 
       {/* Game Board */}
-      
-      {/* Reconnection Status Indicator */}
-      {(isReconnecting || sessionRestored || reconnectionError) && (
-        <div style={{
-          backgroundColor: isReconnecting ? '#3498db' : reconnectionError ? '#e74c3c' : '#27ae60',
-          color: '#fff',
-          padding: '12px 20px',
-          borderRadius: '10px',
-          marginBottom: '20px',
-          textAlign: 'center',
-          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '10px'
-        }}>
-          {isReconnecting && (
-            <>
-              <FaSync className="fa-spin" />
-              <div>
-                <div style={{ fontWeight: 'bold' }}>Reconnecting... ({reconnectionProgress}%)</div>
-                <div style={{ fontSize: '14px', opacity: 0.9 }}>Status: {reconnectionStatus}</div>
-              </div>
-            </>
-          )}
-          {sessionRestored && !isReconnecting && (
-            <>
-              <FaRocket />
-              <div style={{ fontWeight: 'bold' }}>✅ Session restored successfully!</div>
-            </>
-          )}
-          {reconnectionError && !isReconnecting && (
-            <>
-              <FaExclamationTriangle />
-              <div>
-                <div style={{ fontWeight: 'bold' }}>Reconnection Failed</div>
-                <div style={{ fontSize: '14px', opacity: 0.9 }}>{reconnectionError}</div>
-                <button
-                  onClick={triggerReconnection}
-                  style={{
-                    marginTop: '8px',
-                    padding: '4px 12px',
-                    backgroundColor: 'rgba(255,255,255,0.2)',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    borderRadius: '5px',
-                    color: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '12px'
-                  }}
-                  onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.3)'}
-                  onMouseOut={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.2)'}
-                >
-                  Try Again
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Tournament Components */}
       <TournamentStatus gameState={gameState} />
@@ -3920,7 +3819,6 @@ const App = () => {
     <AuthProvider>
       <ConnectionProvider>
         <GameApp />
-        <ConnectionNotifications />
       </ConnectionProvider>
     </AuthProvider>
   );
