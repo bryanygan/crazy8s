@@ -2974,24 +2974,6 @@ const handleLogout = async () => {
               </button>
             )}
             
-            <button
-              onClick={() => setShowSettings(true)}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: '#95a5a6',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: 'bold',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-            >
-              ⚙️ Settings
-            </button>
           </div>
         </div>
       </div>
@@ -3006,20 +2988,37 @@ const handleLogout = async () => {
         borderRadius: '10px',
         boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-          <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1', textAlign: 'left' }}>
             <strong style={{ color: '#000' }}>Round:</strong> <span style={{ color: '#000' }}>{gameState.roundNumber}</span>
           </div>
-          <div style={{ 
-            color: isMyTurn ? '#e74c3c' : '#2c3e50', 
-            fontWeight: isMyTurn ? 'bold' : 'normal',
-            textAlign: 'center',
-            flex: '1 1 200px'
-          }}>
-            <strong>Current Player:</strong> {gameState.currentPlayer}
+          
+          <div style={{ flex: '1', textAlign: 'center' }}>
+            <button
+              onClick={() => setShowSettings(true)}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#95a5a6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 'bold',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#7f8c8d'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#95a5a6'}
+            >
+              ⚙️ Settings
+            </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div>
+          
+          <div style={{ flex: '1', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
               <strong style={{ color: '#000' }}>Game ID:</strong> 
               <span style={{ 
                 fontFamily: 'monospace', 
@@ -3048,7 +3047,8 @@ const handleLogout = async () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 width: '24px',
-                height: '24px'
+                height: '24px',
+                flexShrink: 0
               }}
               title={copiedGameId ? 'Copied!' : 'Copy Game ID'}
             >
