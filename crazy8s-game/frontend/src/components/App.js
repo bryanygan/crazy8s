@@ -3,6 +3,8 @@ import CardSortingPreferences from './CardSortingPreferences';
 import { AuthModal, UserDashboard } from './auth';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ConnectionProvider, useConnection } from '../contexts/ConnectionContext';
+import { CardSelectionProvider } from '../contexts/CardSelectionContext';
+import { DragProvider } from '../contexts/DragContext';
 import MainMenu from './MainMenu';
 import {
   validateCardStackFrontend,
@@ -32,9 +34,12 @@ import { useTournament } from '../hooks/useTournament';
 import { usePlayAgainVoting } from '../hooks/usePlayAgainVoting';
 
 // Import extracted components
-import Card from './game/Card';
+import Card from './Card'; // Updated to use our new drag-enabled Card
 import ToastContainer from './ui/ToastContainer';
 import TurnTimer from './ui/TurnTimer';
+import DragPreview from './DragPreview';
+import { useDragHandler } from '../hooks/useDragHandler';
+import DropZone from './DropZone';
 
 
 
@@ -186,6 +191,7 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
                     isBottomCard={isBottomCard && selectedCards.length > 1}
                     settings={settings}
                     onCardSelect={onCardSelect}
+                    allCards={cards}
                   />
                 );
               })}
@@ -283,16 +289,28 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
           →
         </div>
 
-        {/* Top Card Column */}
+        {/* Top Card Column with Drop Zone */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           gap: '10px'
         }}>
-          <div style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold' }}>
-            Top Card
-          </div>
+          <DropZone
+            id="discardPile"
+            acceptCards={true}
+            label=""
+            style={{
+              minWidth: '130px',
+              minHeight: '160px',
+              backgroundColor: topCard ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)',
+              border: '2px solid rgba(255,255,255,0.3)',
+              position: 'relative'
+            }}
+          >
+            <div style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>
+              Discard Pile
+            </div>
           {topCard ? (
             <div 
               style={{
@@ -333,16 +351,19 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
             <div style={{
               width: '90px',        // Increased to match
               height: '135px',      // Increased to match
-              border: '2px dashed #fff',
+              border: '2px dashed rgba(255,255,255,0.5)',
               borderRadius: '12px', // Increased to match
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#fff'
+              fontSize: '12px',
+              color: '#bdc3c7',
+              backgroundColor: 'rgba(255,255,255,0.05)'
             }}>
               Empty
             </div>
           )}
+          </DropZone>
           
           {/* Reversed indicator under top card */}
           {gameState.direction === -1 && (
@@ -1477,6 +1498,17 @@ const GameApp = () => {
   
   // Use extracted hooks for timer and tournament
   const { globalTimer, setGlobalTimer, timerDurationRef, timerWarningTimeRef } = useTimer(settings);
+  
+  // Handle card drops on discard pile
+  const handleCardDrop = (dropZoneId, cards) => {
+    if (dropZoneId === 'discardPile' && cards.length > 0) {
+      // Use the existing playSelectedCards function since cards are already selected
+      playSelectedCards();
+    }
+  };
+  
+  // Initialize drag handler
+  useDragHandler(handleCardDrop);
   const {
     showRoundEndModal, setShowRoundEndModal, roundEndData, setRoundEndData,
     nextRoundTimer, setNextRoundTimer, showTournamentWinnerModal, setShowTournamentWinnerModal,
@@ -3687,6 +3719,9 @@ const handleLogout = async () => {
         toasts={toasts}
         onRemoveToast={removeToast}
       />
+      
+      {/* Drag Preview */}
+      <DragPreview />
 
       {/* Settings Modal */}
       <Settings 
@@ -3848,7 +3883,11 @@ const App = () => {
   return (
     <AuthProvider>
       <ConnectionProvider>
-        <GameApp />
+        <CardSelectionProvider>
+          <DragProvider>
+            <GameApp />
+          </DragProvider>
+        </CardSelectionProvider>
       </ConnectionProvider>
     </AuthProvider>
   );

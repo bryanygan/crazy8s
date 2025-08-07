@@ -1,0 +1,194 @@
+/* Stacked Cards Component Styles */
+
+.stackContainer {
+  position: fixed;
+  pointer-events: none;
+  z-index: 1000;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cardStack {
+  position: relative;
+}
+
+.stackedCard {
+  position: absolute;
+  width: 60px;
+  height: 90px;
+  background-color: #ffffff;
+  border: 3px solid #3498db;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px;
+  font-size: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  transform-origin: center center;
+  cursor: grabbing;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stackedCard.entering {
+  animation: stackCardEnter 0.3s ease-out forwards;
+}
+
+.stackedCard.leaving {
+  animation: stackCardLeave 0.2s ease-in forwards;
+}
+
+.cardRank {
+  font-weight: bold;
+  font-size: 8px;
+  text-align: center;
+  line-height: 10px;
+}
+
+.cardSuit {
+  font-size: 20px;
+  font-weight: bold;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.cardRankBottom {
+  font-weight: bold;
+  font-size: 8px;
+  transform: rotate(180deg);
+  text-align: center;
+  line-height: 10px;
+}
+
+.cardNumber {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background-color: #2c3e50;
+  color: #fff;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  z-index: 1010;
+}
+
+.hiddenCountIndicator {
+  position: absolute;
+  background-color: #e74c3c;
+  color: #fff;
+  border-radius: 12px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: bold;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 1020;
+  animation: countPulse 0.5s ease-out;
+  white-space: nowrap;
+}
+
+.totalCountIndicator {
+  position: absolute;
+  top: -35px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #3498db;
+  color: #fff;
+  border-radius: 8px;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  z-index: 1021;
+  white-space: nowrap;
+}
+
+/* Color variants for different suits */
+.stackedCard.hearts,
+.stackedCard.diamonds {
+  color: #e74c3c;
+}
+
+.stackedCard.clubs,
+.stackedCard.spades {
+  color: #2c3e50;
+}
+
+/* Stack direction variants */
+.horizontalStack .stackedCard {
+  /* Cards spread horizontally */
+}
+
+.verticalStack .stackedCard {
+  /* Cards spread vertically */
+}
+
+/* Animations */
+@keyframes stackCardEnter {
+  0% {
+    opacity: 0;
+    transform: rotate(0deg) scale(0.8) translateY(-20px);
+  }
+  50% {
+    opacity: 0.5;
+    transform: rotate(0deg) scale(1.1) translateY(-10px);
+  }
+  100% {
+    opacity: 0.9;
+  }
+}
+
+@keyframes stackCardLeave {
+  0% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8) translateY(20px);
+  }
+}
+
+@keyframes countPulse {
+  0% { 
+    transform: scale(0.8); 
+    opacity: 0; 
+  }
+  50% { 
+    transform: scale(1.1); 
+    opacity: 1; 
+  }
+  100% { 
+    transform: scale(1); 
+    opacity: 1; 
+  }
+}
+
+/* Hover effects for interactive contexts */
+.stackedCard:hover {
+  transform: scale(1.05);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .stackedCard {
+    width: 50px;
+    height: 75px;
+    font-size: 9px;
+  }
+  
+  .cardSuit {
+    font-size: 16px;
+  }
+  
+  .cardNumber {
+    width: 14px;
+    height: 14px;
+    font-size: 7px;
+  }
+}
