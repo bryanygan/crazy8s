@@ -3,6 +3,8 @@
  * Handles progress persistence, completion tracking, and statistics
  */
 
+import { FaCheck, FaSync, FaTrophy, FaBullseye, FaTrash, FaCog, FaDownload, FaUpload, FaChartBar, FaFolder, FaFile, FaExclamationTriangle } from 'react-icons/fa';
+
 /**
  * Tracks and persists user tutorial progress
  */
@@ -39,7 +41,7 @@ class ProgressTracker {
     initialize() {
         this.loadProgress();
         this.setupAutoSave();
-        console.log('📊 Progress Tracker initialized');
+        console.log('Progress Tracker initialized');
     }
 
     /**
@@ -92,21 +94,21 @@ class ProgressTracker {
                         modules: this.progress.modules
                     };
                     
-                    console.log('📁 Progress loaded from localStorage');
+                    console.log('Progress loaded from localStorage');
                     return true;
                 } else {
-                    console.warn('⚠️ Progress version incompatible, starting fresh');
+                    console.warn('Progress version incompatible, starting fresh');
                     this.resetProgress();
                     return false;
                 }
             } else {
-                console.log('📝 No previous progress found, starting fresh');
+                console.log('No previous progress found, starting fresh');
                 this.progress.startedAt = Date.now();
                 return false;
             }
             
         } catch (error) {
-            console.error('❌ Failed to load progress:', error);
+            console.error('Failed to load progress:', error);
             this.resetProgress();
             return false;
         }
@@ -140,11 +142,11 @@ class ProgressTracker {
             localStorage.setItem(this.storageKey, JSON.stringify(dataToSave));
             this.isModified = false;
             
-            console.log('💾 Progress saved to localStorage');
+            console.log('Progress saved to localStorage');
             return true;
             
         } catch (error) {
-            console.error('❌ Failed to save progress:', error);
+            console.error('Failed to save progress:', error);
             return false;
         }
     }
@@ -169,7 +171,7 @@ class ProgressTracker {
      * @returns {boolean} Whether reset was successful
      */
     resetProgress() {
-        console.log('🔄 Resetting all progress');
+        console.log('Resetting all progress');
         
         this.progress = {
             version: '1.0.0',
@@ -195,7 +197,7 @@ class ProgressTracker {
      * @param {string} lessonId - Lesson identifier
      */
     markLessonStarted(moduleId, lessonId) {
-        console.log(`📚 Lesson started: ${moduleId}/${lessonId}`);
+        console.log(`Lesson started: ${moduleId}/${lessonId}`);
         
         const moduleData = this.ensureModuleExists(moduleId);
         const lessonData = this.ensureLessonExists(moduleData, lessonId);
@@ -217,7 +219,7 @@ class ProgressTracker {
      * @param {Object} completionData - Additional completion data
      */
     markLessonCompleted(moduleId, lessonId, completionData = {}) {
-        console.log(`✅ Lesson completed: ${moduleId}/${lessonId}`);
+        console.log(`Lesson completed: ${moduleId}/${lessonId}`);
         
         const moduleData = this.ensureModuleExists(moduleId);
         const lessonData = this.ensureLessonExists(moduleData, lessonId);
@@ -271,7 +273,7 @@ class ProgressTracker {
         lessonData.lastUpdated = Date.now();
         this.isModified = true;
         
-        console.log(`📊 Updated progress for ${moduleId}/${lessonId}:`, progressData);
+        console.log(`Updated progress for ${moduleId}/${lessonId}:`, progressData);
     }
 
     /**
@@ -426,7 +428,7 @@ class ProgressTracker {
      * @param {Object} newSettings - Settings to update
      */
     updateSettings(newSettings) {
-        console.log('⚙️ Updating tutorial settings:', newSettings);
+        console.log('Updating tutorial settings:', newSettings);
         
         this.progress.settings = {
             ...this.progress.settings,
@@ -462,7 +464,7 @@ class ProgressTracker {
             this.progress.achievements.push(achievementData);
             this.isModified = true;
             
-            console.log('🏆 Achievement earned:', achievement.title);
+            console.log('Achievement earned:', achievement.title);
         }
     }
 
@@ -531,11 +533,11 @@ class ProgressTracker {
             this.isModified = true;
             this.saveProgress();
             
-            console.log('📥 Progress imported successfully');
+            console.log('Progress imported successfully');
             return true;
             
         } catch (error) {
-            console.error('❌ Failed to import progress:', error);
+            console.error('Failed to import progress:', error);
             return false;
         }
     }
@@ -602,7 +604,7 @@ class ProgressTracker {
             
             if (!moduleData.completedAt) {
                 moduleData.completedAt = Date.now();
-                console.log(`🎯 Module completed: ${moduleId}`);
+                console.log(`Module completed: ${moduleId}`);
             }
         }
     }
@@ -667,7 +669,7 @@ class ProgressTracker {
      * Clean up resources
      */
     destroy() {
-        console.log('🗑️ Destroying progress tracker');
+        console.log('Destroying progress tracker');
         
         // Save final progress
         this.saveProgress();

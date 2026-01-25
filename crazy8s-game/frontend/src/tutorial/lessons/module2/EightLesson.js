@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { FaLightbulb, FaCheck, FaSync, FaTrophy, FaBullseye } from 'react-icons/fa';
 
 /**
  * Eight lesson component for learning wild card mechanics
@@ -697,7 +698,7 @@ const EightLesson = ({
                             fontSize: '14px',
                             color: theme.colors.text
                         }}>
-                            💡 Tip: Choose the suit you have the most cards of!
+                            <FaLightbulb style={{ marginRight: '8px', color: '#FF9800' }} />Tip: Choose the suit you have the most cards of!
                         </div>
                     )}
                     
@@ -834,7 +835,7 @@ const EightLesson = ({
                     marginBottom: theme.spacing.large
                 }}>
                     <h4 style={{ color: '#f39c12', marginBottom: theme.spacing.small }}>
-                        💡 Master Strategy
+                        <FaLightbulb style={{ marginRight: '8px', color: '#FF9800' }} />Master Strategy
                     </h4>
                     <p style={{ margin: 0, lineHeight: 1.6 }}>
                         • Save 8s for when you're stuck - they're your escape card<br/>
@@ -879,7 +880,7 @@ const EightLesson = ({
                         animation: 'completeButtonPulse 2s infinite'
                     }}
                 >
-                    ✅ Master the Wild Card!
+                    <FaCheck style={{ marginRight: '8px', color: '#4CAF50' }} />Master the Wild Card!
                 </button>
             </div>
         );
@@ -1134,7 +1135,7 @@ const EightLesson = ({
                         color: '#27ae60', 
                         marginBottom: theme.spacing.small 
                     }}>
-                        💡 Result: {scenario.explanation}
+                        <FaLightbulb style={{ marginRight: '8px', color: '#FF9800' }} />Result: {scenario.explanation}
                     </h4>
                 </div>
                 
@@ -1157,7 +1158,7 @@ const EightLesson = ({
                             fontSize: '14px'
                         }}
                     >
-                        🔄 Replay
+                        <FaSync style={{ marginRight: '8px' }} />Replay
                     </button>
                     
                     {scenarios.map((s, index) => (

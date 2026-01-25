@@ -7,6 +7,7 @@ import LessonManager from './LessonManager.js';
 import ProgressTracker from './ProgressTracker.js';
 import ValidationSystem from './ValidationSystem.js';
 import HintSystem from './HintSystem.js';
+import { FaGamepad, FaLightbulb, FaCheck, FaSync, FaBook, FaTrophy, FaGraduationCap, FaStop, FaSearch } from 'react-icons/fa';
 
 /**
  * Main tutorial engine that orchestrates all tutorial systems
@@ -53,7 +54,7 @@ class TutorialEngine {
         // Set up event handlers
         this.setupEventHandlers();
         
-        console.log('🎓 Tutorial Engine initialized');
+        console.log('Tutorial Engine initialized');
     }
 
     /**
@@ -85,7 +86,7 @@ class TutorialEngine {
      */
     async startTutorial(moduleId, lessonId = null) {
         try {
-            console.log(`🎓 Starting tutorial: Module ${moduleId}, Lesson ${lessonId || 'first'}`);
+            console.log(`Starting tutorial: Module ${moduleId}, Lesson ${lessonId || 'first'}`);
             
             this.isActive = true;
             this.tutorialState = 'active';
@@ -121,7 +122,7 @@ class TutorialEngine {
             };
             
         } catch (error) {
-            console.error('❌ Failed to start tutorial:', error);
+            console.error('Failed to start tutorial:', error);
             return {
                 success: false,
                 error: error.message
@@ -139,7 +140,7 @@ class TutorialEngine {
         }
         
         this.tutorialState = 'paused';
-        console.log('⏸️ Tutorial paused');
+        console.log('Tutorial paused');
         
         this.notifyStateChange();
         
@@ -156,7 +157,7 @@ class TutorialEngine {
         }
         
         this.tutorialState = 'active';
-        console.log('▶️ Tutorial resumed');
+        console.log('Tutorial resumed');
         
         this.notifyStateChange();
         
@@ -168,7 +169,7 @@ class TutorialEngine {
      * @returns {Object} Stop result
      */
     stopTutorial() {
-        console.log('🛑 Tutorial stopped');
+        console.log('Tutorial stopped');
         
         this.isActive = false;
         this.tutorialState = 'inactive';
@@ -196,7 +197,7 @@ class TutorialEngine {
             return { success: false, error: 'Tutorial not active' };
         }
         
-        console.log(`🎮 Processing tutorial action: ${actionType}`, actionData);
+        console.log(`Processing tutorial action: ${actionType}`, actionData);
         
         try {
             // Validate the action against lesson requirements
@@ -241,7 +242,7 @@ class TutorialEngine {
             }
             
         } catch (error) {
-            console.error('❌ Error processing tutorial action:', error);
+            console.error('Error processing tutorial action:', error);
             return {
                 success: false,
                 error: error.message
@@ -265,7 +266,7 @@ class TutorialEngine {
             contextType
         );
         
-        console.log('💡 Hint requested:', hint);
+        console.log('Hint requested:', hint);
         
         return {
             success: true,
@@ -337,7 +338,7 @@ class TutorialEngine {
             Object.assign(baseState, lesson.gameStateModifiers);
         }
         
-        console.log('🎮 Created simulated game state for lesson:', lesson.id);
+        console.log('Created simulated game state for lesson:', lesson.id);
         
         return baseState;
     }
@@ -366,7 +367,7 @@ class TutorialEngine {
                 console.warn('Unknown action type in tutorial:', actionType);
         }
         
-        console.log('🔄 Applied action to simulated state:', actionType);
+        console.log('Applied action to simulated state:', actionType);
     }
 
     /**
@@ -527,7 +528,7 @@ class TutorialEngine {
      * @private
      */
     async handleLessonCompletion() {
-        console.log('🎉 Lesson completed:', this.currentLesson.id);
+        console.log('Lesson completed:', this.currentLesson.id);
         
         // Mark lesson as completed
         this.progressTracker.markLessonCompleted(this.currentModule, this.currentLesson.id);
@@ -536,14 +537,14 @@ class TutorialEngine {
         const moduleCompleted = this.progressTracker.isModuleCompleted(this.currentModule);
         
         if (moduleCompleted) {
-            console.log('🏆 Module completed:', this.currentModule);
+            console.log('Module completed:', this.currentModule);
         }
         
         // Check if entire tutorial is completed
         const tutorialCompleted = this.progressTracker.isTutorialCompleted();
         
         if (tutorialCompleted) {
-            console.log('🎓 Tutorial completed!');
+            console.log('Tutorial completed!');
             this.tutorialState = 'completed';
             
             if (this.onComplete) {
@@ -578,7 +579,7 @@ class TutorialEngine {
      * @private
      */
     handleLessonStateChange(lessonState) {
-        console.log('📚 Lesson state changed:', lessonState);
+        console.log('Lesson state changed:', lessonState);
         this.notifyStateChange();
     }
 
@@ -588,12 +589,12 @@ class TutorialEngine {
      * @private
      */
     handleValidationResult(validationResult) {
-        console.log('✅ Validation result:', validationResult);
+        console.log('Validation result:', validationResult);
         
         if (!validationResult.isValid) {
             // Provide contextual hints for failed validation
             const hint = this.hintSystem.getValidationHint(validationResult);
-            console.log('💡 Validation hint:', hint);
+            console.log('Validation hint:', hint);
         }
     }
 
@@ -603,7 +604,7 @@ class TutorialEngine {
      * @private
      */
     handleHintRequest(hintData) {
-        console.log('🔍 Hint requested:', hintData);
+        console.log('Hint requested:', hintData);
     }
 
     /**
@@ -736,7 +737,7 @@ class TutorialEngine {
      * Clean up resources when tutorial engine is destroyed
      */
     destroy() {
-        console.log('🗑️ Destroying tutorial engine');
+        console.log('Destroying tutorial engine');
         
         this.stopTutorial();
         this.eventListeners.clear();

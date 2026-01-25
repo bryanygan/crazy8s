@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { FaLightbulb, FaCheck, FaRocket, FaBullseye } from 'react-icons/fa';
 
 /**
  * Drawing cards lesson component for learning when and how to draw cards
@@ -224,11 +225,11 @@ const DrawingCardsLesson = ({
         setHintsUsed(prev => prev + 1);
         
         if (currentPhase === 'explanation') {
-            setFeedbackMessage('💡 Click "Start Practice" to begin the drawing exercise!');
+            setFeedbackMessage('Click "Start Practice" to begin the drawing exercise!');
         } else if (!canPlay) {
-            setFeedbackMessage('💡 Click the deck to draw cards. Keep drawing until you get one that matches the top card!');
+            setFeedbackMessage('Click the deck to draw cards. Keep drawing until you get one that matches the top card!');
         } else {
-            setFeedbackMessage('💡 You found a playable card! The lesson will complete automatically.');
+            setFeedbackMessage('You found a playable card! The lesson will complete automatically.');
         }
         
         setFeedbackType('info');
@@ -423,7 +424,7 @@ const DrawingCardsLesson = ({
                         padding: theme.spacing.medium,
                         textAlign: 'center'
                     }}>
-                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>✅</div>
+                        <div style={{ fontSize: '24px', marginBottom: '8px' }}><FaCheck style={{ color: '#4CAF50' }} /></div>
                         <h4 style={{ 
                             color: theme.colors.success, 
                             marginBottom: '8px',
@@ -488,7 +489,7 @@ const DrawingCardsLesson = ({
                         e.target.style.boxShadow = 'none';
                     }}
                 >
-                    🚀 Start Practice
+                    <FaRocket style={{ marginRight: '8px' }} />Start Practice
                 </button>
             </div>
         );
@@ -511,7 +512,7 @@ const DrawingCardsLesson = ({
                         color: theme.colors.primary,
                         marginBottom: theme.spacing.small
                     }}>
-                        🎯 Drawing Practice
+                        <FaBullseye style={{ marginRight: '8px' }} />Drawing Practice
                     </h2>
                     <p style={{
                         fontSize: '16px',
@@ -726,7 +727,7 @@ const DrawingCardsLesson = ({
                     }}
                     title="Show hint"
                 >
-                    💡 Hint
+                    <FaLightbulb style={{ marginRight: '8px' }} />Hint
                 </button>
             </div>
         </>

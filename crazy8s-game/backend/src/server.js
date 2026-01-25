@@ -1,13 +1,142 @@
+// Load environment variables first
+require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+const jwt = require('jsonwebtoken');
 const app = require('./app');
 const Game = require('./models/game');
+const UserStore = require('./stores/UserStore');
+const GameEventEmitter = require('./utils/eventEmitter');
+const { gracefulShutdown } = require('./config/database');
+const logger = require('./utils/logger');
+const { TIMEOUT_CONFIG, getTimeout, validateTimeoutConfig } = require('./config/timeouts');
 const gameTimers = new Map();
+
+// Environment variable validation
+function validateEnvironment() {
+  const requiredVars = ['JWT_SECRET'];
+  const missing = requiredVars.filter(varName => !process.env[varName]);
+  
+  if (missing.length > 0) {
+    logger.error(`Missing required environment variables: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+  
+  // Validate JWT_SECRET is not the default value
+  if (process.env.JWT_SECRET === 'your-super-secret-jwt-key-change-this-in-production') {
+    logger.error('JWT_SECRET is set to the default value. Please change it for security.');
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    } else {
+      logger.warn('Using default JWT_SECRET in development mode - this is insecure!');
+    }
+  }
+  
+  logger.info('Environment validation passed');
+}
+
+// Validate environment on startup
+validateEnvironment();
+
+// Validate timeout configuration
+try {
+  validateTimeoutConfig();
+  logger.info('Timeout configuration validation passed');
+} catch (error) {
+  logger.error('Timeout configuration validation failed:', error.message);
+  process.exit(1);
+}
 
 const server = http.createServer(app);
 
-// Updated CORS configuration for production
+// Socket authentication middleware
+const authenticateSocket = async (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    
+    if (!token) {
+      // Allow unauthenticated connections (guest mode)
+      socket.user = null;
+      socket.isAuthenticated = false;
+      socket.isGuest = true;
+      logger.info(`Guest user connected: ${socket.id}`);
+      return next();
+    }
+
+    try {
+      // Verify JWT token
+      const secret = process.env.JWT_SECRET;
+      const decoded = jwt.verify(token, secret);
+      
+      // Find user
+      const user = await UserStore.findById(decoded.id);
+      
+      if (!user) {
+        logger.warn(`Socket authentication failed - user not found: ${decoded.id}`);
+        socket.user = null;
+        socket.isAuthenticated = false;
+        socket.isGuest = true;
+        return next();
+      }
+      
+      if (!user.profile.isActive) {
+        logger.warn(`Socket authentication failed - account deactivated: ${user.username}`);
+        socket.user = null;
+        socket.isAuthenticated = false;
+        socket.isGuest = true;
+        return next();
+      }
+      
+      if (user.isLocked()) {
+        logger.warn(`Socket authentication failed - account locked: ${user.username}`);
+        socket.user = null;
+        socket.isAuthenticated = false;
+        socket.isGuest = true;
+        return next();
+      }
+      
+      // Set user context on socket
+      socket.user = user;
+      socket.isAuthenticated = true;
+      socket.isGuest = false;
+      socket.userId = user.id;
+      
+      logger.info(`Authenticated user connected: ${user.username} (${socket.id})`);
+      next();
+    } catch (jwtError) {
+      if (jwtError.name === 'TokenExpiredError') {
+        logger.warn(`Socket authentication failed - token expired: ${socket.id}`);
+        socket.emit('auth_error', { 
+          code: 'TOKEN_EXPIRED', 
+          message: 'Authentication token has expired' 
+        });
+      } else if (jwtError.name === 'JsonWebTokenError') {
+        logger.warn(`Socket authentication failed - invalid token: ${socket.id}`);
+        socket.emit('auth_error', { 
+          code: 'INVALID_TOKEN', 
+          message: 'Invalid authentication token' 
+        });
+      }
+      
+      // Continue as guest user
+      socket.user = null;
+      socket.isAuthenticated = false;
+      socket.isGuest = true;
+      next();
+    }
+  } catch (error) {
+    logger.error('Socket authentication middleware error:', error);
+    socket.user = null;
+    socket.isAuthenticated = false;
+    socket.isGuest = true;
+    next();
+  }
+};
+
+// Updated CORS configuration for production with optimized timeouts
+const socketTimeouts = getTimeout('socket');
 const io = socketIo(server, {
     cors: {
         origin: process.env.NODE_ENV === 'production' 
@@ -17,16 +146,32 @@ const io = socketIo(server, {
               ]
             : ["http://localhost:3000", "http://localhost:3001"],
         methods: ["GET", "POST"],
-        allowedHeaders: ["Content-Type"],
+        allowedHeaders: ["Content-Type", "Authorization"],
         credentials: true
     },
-    // Additional configuration for production
+    // Optimized configuration for 8-player games with complex scenarios
     transports: ['websocket', 'polling'],
     upgrade: true,
     rememberUpgrade: true,
-    pingTimeout: 60000,
-    pingInterval: 25000
+    pingTimeout: socketTimeouts.pingTimeout,          // 120s (increased from 60s)
+    pingInterval: socketTimeouts.pingInterval,        // 30s (increased from 25s)
+    connectTimeout: socketTimeouts.connectionTimeout, // 30s connection timeout
+    upgradeTimeout: socketTimeouts.upgradeTimeout,    // 15s upgrade timeout
+    compression: true,
+    serveClient: false
 });
+
+logger.info('Server Socket.IO initialized with optimized timeouts:', {
+    pingTimeout: `${socketTimeouts.pingTimeout / 1000}s`,
+    pingInterval: `${socketTimeouts.pingInterval / 1000}s`,
+    connectionTimeout: `${socketTimeouts.connectionTimeout / 1000}s`
+});
+
+// Initialize event emitter with IO instance
+const eventEmitter = new GameEventEmitter(io);
+
+// Apply authentication middleware
+io.use(authenticateSocket);
 
 // Add Express CORS middleware as well
 app.use((req, res, next) => {
@@ -53,8 +198,82 @@ app.use((req, res, next) => {
 });
 
 // Store connected players
-// Map of socketId -> { name, gameId, playerId }
+// Map of socketId -> { name, gameId, playerId, user, isAuthenticated }
 const connectedPlayers = new Map();
+
+// Enhanced duplicate game creation prevention system
+// Track recent game creation requests by multiple identifiers
+const recentGameCreationRequests = new Map(); // socketId -> { timestamp, userId, requestHash }
+const gameCreationStates = new Map(); // userId/socketId -> "creating" | "completed"
+const userGameCreationLocks = new Map(); // userId -> { socketId, timestamp, gameId }
+
+// Helper function to generate request hash for content-based deduplication
+const generateRequestHash = (playerName, userId = null) => {
+    const content = `${playerName.trim().toLowerCase()}_${userId || 'guest'}`;
+    return Buffer.from(content).toString('base64');
+};
+
+// Helper function to get unique identifier for user (userId or socketId for guests)
+const getUserIdentifier = (socket) => {
+    return socket.isAuthenticated && socket.userId ? socket.userId : socket.id;
+};
+
+// Enhanced cleanup function for game creation tracking
+const cleanupGameCreationTracking = () => {
+    const now = Date.now();
+    const cleanupAge = 5 * 60 * 1000; // 5 minutes
+    
+    // Clean up old requests
+    for (const [key, data] of recentGameCreationRequests.entries()) {
+        if (now - data.timestamp > cleanupAge) {
+            recentGameCreationRequests.delete(key);
+        }
+    }
+    
+    // Clean up old creation states
+    for (const [key, state] of gameCreationStates.entries()) {
+        if (state.timestamp && now - state.timestamp > cleanupAge) {
+            gameCreationStates.delete(key);
+        }
+    }
+    
+    // Clean up old user locks
+    for (const [userId, lock] of userGameCreationLocks.entries()) {
+        if (now - lock.timestamp > cleanupAge) {
+            userGameCreationLocks.delete(userId);
+        }
+    }
+};
+
+// Run cleanup every minute
+setInterval(cleanupGameCreationTracking, 60 * 1000);
+
+// Helper to get display name for a player
+const getPlayerDisplayName = (socket, providedName = null) => {
+    if (socket.isAuthenticated && socket.user) {
+        return socket.user.profile.displayName || socket.user.username;
+    }
+    return providedName || `Guest_${socket.id.slice(0, 6)}`;
+};
+
+// Helper to update user statistics after game
+const updateUserGameStats = async (userId, gameResult) => {
+    if (!userId) return; // Skip for guest users
+    
+    try {
+        const user = await UserStore.findById(userId);
+        if (user) {
+            user.updateGameStats(gameResult);
+            await UserStore.update(userId, {
+                statistics: user.statistics,
+                updatedAt: new Date()
+            });
+            logger.info(`Updated game statistics for user: ${user.username}`);
+        }
+    } catch (error) {
+        logger.error('Error updating user game statistics:', error);
+    }
+};
 
 // Helper to find which socket currently controls a given player
 const getSocketForPlayer = (gameId, playerId) => {
@@ -140,42 +359,169 @@ const checkTournamentProgress = (gameId) => {
 
 // Set up Socket.IO connections
 io.on('connection', (socket) => {
-    console.log('A player connected:', socket.id);
+    if (socket.isAuthenticated) {
+        logger.info(`Authenticated user connected: ${socket.user.username} (${socket.id})`);
+        
+        // Join user to their personal room for direct messages
+        socket.join(`user_${socket.userId}`);
+        
+        // Emit authentication success
+        socket.emit('authenticated', {
+            user: socket.user.toPublicJSON(),
+            socketId: socket.id
+        });
+        
+        // Record login activity
+        socket.user.recordLogin(
+            socket.handshake.address, 
+            socket.handshake.headers['user-agent']
+        );
+        UserStore.update(socket.userId, {
+            security: socket.user.security
+        }).catch(error => {
+            logger.error('Error updating login activity:', error);
+        });
+    } else {
+        logger.info(`Guest user connected: ${socket.id}`);
+        socket.emit('guest_connected', { socketId: socket.id });
+    }
 
-    socket.emit('connect_success', { socketId: socket.id });
+    socket.emit('connect_success', { 
+        socketId: socket.id,
+        isAuthenticated: socket.isAuthenticated,
+        user: socket.isAuthenticated ? socket.user.toPublicJSON() : null
+    });
 
-    // Handle creating a new game
+    // Handle creating a new game with enhanced duplicate prevention
     socket.on('createGame', (data) => {
         try {
+            const now = Date.now();
             const { playerName } = data;
+            const displayName = getPlayerDisplayName(socket, playerName);
             
-            if (!playerName) {
+            if (!displayName) {
                 socket.emit('error', 'Player name is required');
                 return;
             }
 
-            // Create new game with this player
-            const game = new Game([socket.id], [playerName], socket.id);
-            Game.addGame(game);
-            game.onAutoPass = (playerId) => {
-                const player = game.getPlayerById(playerId);
-                broadcastGameState(game.id);
-                io.to(game.id).emit('playerAutoPassed', { playerName: player?.name });
-            };
+            // Get unique identifier for this user/session
+            const userIdentifier = getUserIdentifier(socket);
+            const requestHash = generateRequestHash(displayName, socket.userId);
+
+            // LAYER 1: Check for recent duplicate requests from same socket
+            const lastSocketRequest = recentGameCreationRequests.get(socket.id);
+            if (lastSocketRequest && (now - lastSocketRequest.timestamp) < 2000) {
+                console.log(`🛡️ Duplicate request blocked: Socket ${socket.id} (${now - lastSocketRequest.timestamp}ms ago)`);
+                socket.emit('error', 'Game creation request too frequent. Please wait.');
+                return;
+            }
+
+            // LAYER 2: Check for duplicate requests from same user (across multiple connections)
+            if (socket.isAuthenticated) {
+                const existingUserRequests = Array.from(recentGameCreationRequests.entries())
+                    .filter(([_, reqData]) => reqData.userId === socket.userId && (now - reqData.timestamp) < 2000);
+                
+                if (existingUserRequests.length > 0) {
+                    console.log(`🛡️ Duplicate user request blocked: User ${socket.userId} has recent request from different socket`);
+                    socket.emit('error', 'You have a recent game creation request. Please wait.');
+                    return;
+                }
+            }
+
+            // LAYER 3: Check if user is currently creating a game
+            const currentCreationState = gameCreationStates.get(userIdentifier);
+            if (currentCreationState === "creating") {
+                console.log(`🛡️ Creation in progress blocked: ${userIdentifier} is already creating a game`);
+                socket.emit('error', 'Game creation already in progress. Please wait.');
+                return;
+            }
+
+            // LAYER 4: Check for content-based duplicate (same player name + user)
+            const duplicateRequest = Array.from(recentGameCreationRequests.entries())
+                .find(([_, reqData]) => reqData.requestHash === requestHash && (now - reqData.timestamp) < 5000);
             
-            // Store player info
-            connectedPlayers.set(socket.id, {
-                name: playerName,
-                gameId: game.id,
-                playerId: socket.id
-            });
+            if (duplicateRequest) {
+                console.log(`🛡️ Content duplicate blocked: Same request content from ${userIdentifier}`);
+                socket.emit('error', 'Duplicate game creation request detected. Please wait.');
+                return;
+            }
 
-            // Join socket room for this game
-            socket.join(game.id);
+            // LAYER 5: Check if user already has an active game creation lock
+            const existingLock = userGameCreationLocks.get(userIdentifier);
+            if (existingLock && (now - existingLock.timestamp) < 10000) { // 10 second lock
+                console.log(`🛡️ User lock blocked: ${userIdentifier} has active game creation lock`);
+                socket.emit('error', 'You recently created a game. Please wait before creating another.');
+                return;
+            }
 
-            console.log(`Game ${game.id} created by ${playerName} (${socket.id})`);
-            socket.emit('success', `Game created! Game ID: ${game.id}`);
-            broadcastGameState(game.id);
+            // LAYER 6: Check if player is already in a game
+            const existingPlayerInfo = connectedPlayers.get(socket.id);
+            if (existingPlayerInfo && existingPlayerInfo.gameId) {
+                console.log(`🛡️ Already in game blocked: ${socket.id} is in game ${existingPlayerInfo.gameId}`);
+                socket.emit('error', 'You are already in a game. Leave current game first.');
+                return;
+            }
+
+            // Set creation state to prevent concurrent requests
+            gameCreationStates.set(userIdentifier, "creating");
+            
+            console.log(`🎮 Starting game creation for ${displayName} (${userIdentifier})`);
+            
+            try {
+                // Create new game with this player
+                const game = new Game([socket.id], [displayName], socket.id);
+                Game.addGame(game);
+                game.onAutoPass = (playerId) => {
+                    const player = game.getPlayerById(playerId);
+                    broadcastGameState(game.id);
+                    io.to(game.id).emit('playerAutoPassed', { playerName: player?.name });
+                };
+                
+                // Store player info
+                connectedPlayers.set(socket.id, {
+                    name: displayName,
+                    gameId: game.id,
+                    playerId: socket.id,
+                    user: socket.user,
+                    userId: socket.userId,
+                    isAuthenticated: socket.isAuthenticated
+                });
+
+                // Join socket room for this game
+                socket.join(game.id);
+
+                // Track successful game creation
+                recentGameCreationRequests.set(socket.id, {
+                    timestamp: now,
+                    userId: socket.userId,
+                    requestHash: requestHash,
+                    gameId: game.id
+                });
+                
+                // Set user lock to prevent rapid subsequent creations
+                userGameCreationLocks.set(userIdentifier, {
+                    socketId: socket.id,
+                    timestamp: now,
+                    gameId: game.id
+                });
+                
+                // Mark creation as completed
+                gameCreationStates.set(userIdentifier, "completed");
+                
+                // Auto-cleanup creation state after 30 seconds
+                setTimeout(() => {
+                    gameCreationStates.delete(userIdentifier);
+                }, 30000);
+
+                console.log(`✅ Game ${game.id} created successfully by ${displayName} (${socket.id}) - ${socket.isAuthenticated ? 'Authenticated' : 'Guest'}`);
+                socket.emit('success', `Game created! Game ID: ${game.id}`);
+                broadcastGameState(game.id);
+                
+            } catch (gameCreationError) {
+                // Reset creation state on error
+                gameCreationStates.delete(userIdentifier);
+                throw gameCreationError;
+            }
 
         } catch (error) {
             console.error('Error creating game:', error);
@@ -226,7 +572,10 @@ io.on('connection', (socket) => {
             connectedPlayers.set(socket.id, {
                 name: playerNames[0],
                 gameId: game.id,
-                playerId: playerIds[0]
+                playerId: playerIds[0],
+                user: socket.user,
+                userId: socket.userId,
+                isAuthenticated: socket.isAuthenticated
             });
 
             socket.join(game.id);
@@ -283,8 +632,9 @@ io.on('connection', (socket) => {
     socket.on('joinGame', (data) => {
         try {
             const { gameId, playerName } = data;
+            const displayName = getPlayerDisplayName(socket, playerName);
             
-            if (!gameId || !playerName) {
+            if (!gameId || !displayName) {
                 socket.emit('error', 'Game ID and player name are required');
                 return;
             }
@@ -312,11 +662,13 @@ io.on('connection', (socket) => {
                 // Add player to game
                 const newPlayer = {
                     id: socket.id,
-                    name: playerName,
+                    name: displayName,
                     hand: [],
                     isSafe: false,
                     isEliminated: false,
-                    isConnected: true
+                    isConnected: true,
+                    userId: socket.userId || null,
+                    isAuthenticated: socket.isAuthenticated
                 };
 
                 game.players.push(newPlayer);
@@ -325,15 +677,18 @@ io.on('connection', (socket) => {
 
             // Store player info
             connectedPlayers.set(socket.id, {
-                name: playerName,
+                name: displayName,
                 gameId: gameId,
-                playerId: socket.id
+                playerId: socket.id,
+                user: socket.user,
+                userId: socket.userId,
+                isAuthenticated: socket.isAuthenticated
             });
 
             // Join socket room for this game
             socket.join(gameId);
 
-            console.log(`${playerName} (${socket.id}) joined game ${gameId}`);
+            console.log(`${displayName} (${socket.id}) joined game ${gameId} - ${socket.isAuthenticated ? 'Authenticated' : 'Guest'}`);
             socket.emit('success', `Joined game ${gameId}!`);
             
             // Notify all players in the game
@@ -627,57 +982,105 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Handle disconnection
-    socket.on('disconnect', () => {
-        console.log('A player disconnected:', socket.id);
+    // Handle disconnection (enhanced with session preservation)
+    socket.on('disconnect', (reason) => {
+        console.log(`Player disconnected: ${socket.id} - Reason: ${reason}`);
         
         try {
             const player = connectedPlayers.get(socket.id);
             if (player) {
-            const game = Game.findById(player.gameId);
-            if (game) {
-                // Mark player as disconnected
-                const gamePlayer = game.players.find(p => p.id === player.playerId);
-                if (gamePlayer) {
-                gamePlayer.isConnected = false;
-                console.log(`${gamePlayer.name} disconnected from game ${player.gameId}`);
+                const game = Game.findById(player.gameId);
+                if (game) {
+                    // Mark player as disconnected but preserve game state
+                    const gamePlayer = game.players.find(p => p.id === player.playerId);
+                    if (gamePlayer) {
+                        gamePlayer.isConnected = false;
+                        console.log(`${gamePlayer.name} disconnected from game ${player.gameId}`);
+                        logger.info(`Player ${gamePlayer.name} disconnected from game ${player.gameId} (${socket.id}) - Reason: ${reason}`);
+                    }
+                    
+                    
+                    // If all players disconnect, start cleanup timer (but don't immediately destroy)
+                    const connectedPlayersInGame = game.players.filter(p => p.isConnected);
+                    if (connectedPlayersInGame.length === 0) {
+                        logger.info(`All players disconnected from game ${player.gameId}. Starting extended cleanup timer.`);
+                        
+                        // Start a longer timer for completely empty games (30 minutes)
+                        const cleanupTimer = setTimeout(() => {
+                            logger.info(`Cleaning up abandoned game ${player.gameId} after extended timeout`);
+                            manageGameTimer(player.gameId, 'stop');
+                            Game.removeGame(player.gameId);
+                            
+                        }, 30 * 60 * 1000); // 30 minutes
+                        
+                        gameTimers.set(`cleanup_${player.gameId}`, cleanupTimer);
+                    } else {
+                        // Some players still connected, just manage regular game timer
+                        manageGameTimer(player.gameId, 'stop');
+                    }
+                    
+                    // Notify other players about disconnection
+                    socket.to(player.gameId).emit('playerDisconnected', {
+                        playerName: player.name,
+                        playerId: socket.id,
+                        disconnectReason: reason,
+                        timestamp: Date.now(),
+                        sessionPreserved: true
+                    });
+                    
+                    // Broadcast updated game state
+                    broadcastGameState(player.gameId);
                 }
                 
-                // If game becomes empty, clean up timer
-                const connectedPlayers = game.players.filter(p => p.isConnected);
-                if (connectedPlayers.length === 0) {
-                manageGameTimer(player.gameId, 'stop');
+                // Remove from connected players but keep session for reconnection
+                connectedPlayers.delete(socket.id);
+                
+                // Enhanced cleanup of game creation tracking
+                recentGameCreationRequests.delete(socket.id);
+                
+                // Clean up user-based tracking for authenticated users
+                if (socket.isAuthenticated && socket.userId) {
+                    const userIdentifier = socket.userId;
+                    
+                    // Clear creation state if it was set by this socket
+                    if (gameCreationStates.get(userIdentifier) === "creating") {
+                        gameCreationStates.delete(userIdentifier);
+                        console.log(`🧹 Cleared creation state for disconnected user ${userIdentifier}`);
+                    }
+                    
+                    // Clear user lock if it was set by this socket
+                    const userLock = userGameCreationLocks.get(userIdentifier);
+                    if (userLock && userLock.socketId === socket.id) {
+                        userGameCreationLocks.delete(userIdentifier);
+                        console.log(`🧹 Cleared user lock for disconnected user ${userIdentifier}`);
+                    }
+                } else {
+                    // For guest users, clean up by socket ID
+                    gameCreationStates.delete(socket.id);
+                    userGameCreationLocks.delete(socket.id);
                 }
-                
-                // Notify other players
-                socket.to(player.gameId).emit('playerDisconnected', {
-                playerName: player.name
-                });
-                
-                // Broadcast updated game state
-                broadcastGameState(player.gameId);
-            }
-            
-            connectedPlayers.delete(socket.id);
             }
         } catch (error) {
             console.error('Error handling disconnect:', error);
+            logger.error(`Error handling disconnect for ${socket.id}:`, error);
         }
-        });
+    });
 
-    // Handle reconnection
+    // Handle reconnection (enhanced with session store)
     socket.on('reconnect', (data) => {
         try {
             const { gameId, playerName } = data;
             
             if (!gameId || !playerName) {
                 socket.emit('error', 'Game ID and player name are required for reconnection');
+                logger.warn(`Reconnection failed: Missing gameId or playerName from ${socket.id}`);
                 return;
             }
 
             const game = Game.findById(gameId);
             if (!game) {
                 socket.emit('error', 'Game not found');
+                logger.warn(`Reconnection failed: Game ${gameId} not found for player ${playerName}`);
                 return;
             }
 
@@ -685,10 +1088,13 @@ io.on('connection', (socket) => {
             const gamePlayer = game.players.find(p => p.name === playerName);
             if (!gamePlayer) {
                 socket.emit('error', 'Player not found in this game');
+                logger.warn(`Reconnection failed: Player ${playerName} not found in game ${gameId}`);
                 return;
             }
 
+
             // Update player's socket ID and mark as connected
+            const oldPlayerId = gamePlayer.id;
             gamePlayer.id = socket.id;
             gamePlayer.isConnected = true;
 
@@ -699,19 +1105,33 @@ io.on('connection', (socket) => {
                 playerId: gamePlayer.id
             });
 
+
             // Join socket room
             socket.join(gameId);
+
+            // Clear any existing timers
+            if (gameTimers.has(gameId)) {
+                clearTimeout(gameTimers.get(gameId));
+                gameTimers.delete(gameId);
+                logger.info(`Cleared game timer for ${gameId} due to player reconnection`);
+            }
 
             // Send current game state
             broadcastGameState(gameId);
             
             socket.emit('success', 'Reconnected successfully');
-            socket.to(gameId).emit('playerReconnected', { playerName });
+            socket.to(gameId).emit('playerReconnected', { 
+                playerName,
+                playerId: socket.id,
+                timestamp: Date.now(),
+                reconnectionCount: 0
+            });
 
-            console.log(`Player ${playerName} reconnected to game ${gameId}`);
+            logger.info(`Player ${playerName} successfully reconnected to game ${gameId} (${socket.id})`);
 
         } catch (error) {
             console.error('Error handling reconnection:', error);
+            logger.error(`Reconnection error for ${playerName} to ${gameId}:`, error);
             socket.emit('error', 'Failed to reconnect');
         }
     });
@@ -979,9 +1399,12 @@ io.on('connection', (socket) => {
 
             // Update stored player info
             connectedPlayers.set(socket.id, {
-                name: playerName,
+                name: gamePlayer.name,
                 gameId: gameId,
-                playerId: gamePlayer.id
+                playerId: gamePlayer.id,
+                user: socket.user,
+                userId: socket.userId,
+                isAuthenticated: socket.isAuthenticated
             });
 
             // Join socket room
@@ -1102,6 +1525,106 @@ io.on('connection', (socket) => {
             socket.emit('error', 'Failed to force next round');
         }
     });
+
+    // Handle authentication token refresh in active connection
+    socket.on('refreshAuth', async (data) => {
+        try {
+            const { token } = data;
+            
+            if (!token) {
+                socket.emit('auth_error', { 
+                    code: 'NO_TOKEN', 
+                    message: 'No token provided' 
+                });
+                return;
+            }
+
+            const secret = process.env.JWT_SECRET;
+            const decoded = jwt.verify(token, secret);
+            const user = await UserStore.findById(decoded.id);
+            
+            if (user && user.profile.isActive && !user.isLocked()) {
+                socket.user = user;
+                socket.isAuthenticated = true;
+                socket.isGuest = false;
+                socket.userId = user.id;
+                
+                // Update player info if in a game
+                const playerInfo = connectedPlayers.get(socket.id);
+                if (playerInfo) {
+                    playerInfo.user = user;
+                    playerInfo.userId = user.id;
+                    playerInfo.isAuthenticated = true;
+                    playerInfo.name = user.profile.displayName || user.username;
+                }
+                
+                socket.emit('authRefreshed', {
+                    user: user.toPublicJSON()
+                });
+                
+                logger.info(`Socket authentication refreshed: ${user.username} (${socket.id})`);
+            } else {
+                socket.emit('auth_error', { 
+                    code: 'USER_INVALID', 
+                    message: 'User account is not valid' 
+                });
+            }
+        } catch (error) {
+            socket.emit('auth_error', { 
+                code: 'TOKEN_INVALID', 
+                message: 'Invalid or expired token' 
+            });
+        }
+    });
+    
+    // Handle getting user statistics (authenticated users only)
+    socket.on('getUserStats', async () => {
+        try {
+            if (!socket.isAuthenticated) {
+                socket.emit('error', 'Authentication required to view statistics');
+                return;
+            }
+            
+            socket.emit('userStats', {
+                success: true,
+                statistics: socket.user.statistics
+            });
+        } catch (error) {
+            console.error('Error getting user stats:', error);
+            socket.emit('error', 'Failed to get user statistics');
+        }
+    });
+    
+    // Handle updating user settings (authenticated users only)
+    socket.on('updateUserSettings', async (settings) => {
+        try {
+            if (!socket.isAuthenticated) {
+                socket.emit('error', 'Authentication required to update settings');
+                return;
+            }
+            
+            const settingsValidation = socket.user.constructor.validateSettings(settings);
+            if (!settingsValidation.isValid) {
+                socket.emit('error', settingsValidation.error);
+                return;
+            }
+            
+            socket.user.updateGameSettings(settings);
+            await UserStore.update(socket.userId, {
+                gameSettings: socket.user.gameSettings
+            });
+            
+            socket.emit('settingsUpdated', {
+                success: true,
+                settings: socket.user.gameSettings
+            });
+            
+            logger.info(`Settings updated for ${socket.user.username}`);
+        } catch (error) {
+            console.error('Error updating user settings:', error);
+            socket.emit('error', 'Failed to update settings');
+        }
+    });
 });
 
 // Broadcast timer updates to all players in a game
@@ -1208,9 +1731,62 @@ const manageGameTimer = (gameId, action, settings = {}) => {
   }
 };
 
-// Start the server
-const PORT = process.env.PORT || 3001; // Changed to 3001 to avoid conflict with React
-server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+// Graceful shutdown handling
+const gracefulShutdownHandler = async (signal) => {
+  logger.info(`Received ${signal}. Starting graceful shutdown...`);
+  
+  // Stop accepting new connections
+  server.close(async () => {
+    logger.info('HTTP server closed');
+    
+    try {
+      // Close database connections
+      await gracefulShutdown();
+      
+      // Clear all game timers
+      for (const [gameId, timer] of gameTimers.entries()) {
+        clearInterval(timer.interval);
+        logger.info(`Cleared timer for game ${gameId}`);
+      }
+      gameTimers.clear();
+      
+      logger.info('Graceful shutdown completed');
+      process.exit(0);
+    } catch (error) {
+      logger.error('Error during graceful shutdown:', error);
+      process.exit(1);
+    }
+  });
+  
+  // Force close after 30 seconds
+  setTimeout(() => {
+    logger.error('Could not close connections in time, forcefully shutting down');
+    process.exit(1);
+  }, 30000);
+};
+
+// Register shutdown handlers
+process.on('SIGTERM', () => gracefulShutdownHandler('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdownHandler('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', error);
+  gracefulShutdownHandler('uncaughtException');
 });
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdownHandler('unhandledRejection');
+});
+
+// Start the server
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
+    logger.info(`🚀 Server is running on port ${PORT}`);
+    logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`🗄️  Database type: ${process.env.DB_TYPE || 'mongodb'}`);
+});
+
+// Export server for testing
+module.exports = server;

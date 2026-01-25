@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { FaTrophy, FaCheck, FaBullseye, FaBook, FaCircle, FaLock, FaLightbulb } from 'react-icons/fa';
 
 /**
  * Progress sidebar component for tutorial navigation and tracking
@@ -159,7 +160,7 @@ const ProgressSidebar = ({
         const achievements = tutorialState.progress?.achievements || [];
         
         return achievements.slice(0, 3).map(achievement => ({
-            icon: '🏆',
+            icon: <FaTrophy style={{ color: '#FFD700' }} />,
             title: achievement.title,
             description: achievement.description
         }));
@@ -243,7 +244,7 @@ const ProgressSidebar = ({
                             alignItems: 'center',
                             gap: theme.spacing.small
                         }}>
-                            {isCompleted ? '✅' : isCurrent ? '🎯' : '📚'}
+                            {isCompleted ? <FaCheck style={{ color: '#4CAF50' }} /> : isCurrent ? <FaBullseye style={{ color: '#2196F3' }} /> : <FaBook style={{ color: '#9E9E9E' }} />}
                             <span style={{
                                 textOverflow: 'ellipsis',
                                 overflow: 'hidden',
@@ -339,7 +340,7 @@ const ProgressSidebar = ({
                 aria-label={`${lesson.title} - ${isCompleted ? 'Completed' : isCurrent ? 'Current' : 'Available'}`}
             >
                 <span style={{ fontSize: '14px', flexShrink: 0 }}>
-                    {isCompleted ? '✅' : isCurrent ? '🎯' : isUnlocked ? '⭕' : '🔒'}
+                    {isCompleted ? <FaCheck style={{ color: '#4CAF50' }} /> : isCurrent ? <FaBullseye style={{ color: '#2196F3' }} /> : isUnlocked ? <FaCircle style={{ color: '#9E9E9E' }} /> : <FaLock style={{ color: '#757575' }} />}
                 </span>
                 
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -666,7 +667,8 @@ const ProgressSidebar = ({
                             color: theme.colors.secondary
                         }}>
                             <div style={{ fontWeight: '600', marginBottom: '4px' }}>
-                                💡 Quick Tips
+                                <FaLightbulb style={{ marginRight: '8px', color: '#FF9800' }} />
+                                Quick Tips
                             </div>
                             <ul style={{ margin: 0, paddingLeft: '16px' }}>
                                 <li>Click lessons to navigate</li>

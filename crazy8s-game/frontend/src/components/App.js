@@ -1,311 +1,45 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { io } from 'socket.io-client';
-import confetti from 'canvas-confetti';
+import React, { useState, useEffect, useRef } from 'react';
 import CardSortingPreferences from './CardSortingPreferences';
+import { AuthModal, UserDashboard } from './auth';
+import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { ConnectionProvider, useConnection } from '../contexts/ConnectionContext';
+import MainMenu from './MainMenu';
 import {
   validateCardStackFrontend,
   canStackCardsFrontend
 } from '../utils/cardValidation';
 
-// Helper function to check if two cards are the same (using ID if available, fallback to suit/rank)
-const isSameCard = (card1, card2) => {
-  if (card1.id && card2.id) {
-    return card1.id === card2.id;
-  }
-  return card1.suit === card2.suit && card1.rank === card2.rank;
-};
+// Import extracted utilities
+import { isSameCard, getValidCardsForSelection } from '../utils/cardUtils';
+import { fireConfetti } from '../utils/animationUtils';
 
-// Confetti function for celebrations
-const fireConfetti = () => {
-  const count = 200;
+// Import extracted hooks
+import { useToasts } from '../hooks/useToasts';
 
-  // Fire from left corner
-  const leftCornerDefaults = { origin: { x: 0, y: 0.7 } };
-  function fireLeft(particleRatio, opts) {
-    confetti({
-      ...leftCornerDefaults,
-      ...opts,
-      particleCount: Math.floor(count * particleRatio)
-    });
-  }
+// Import React Icons
+import { 
+  FaBullseye, FaBook, FaSync, FaCog, FaTimes, FaGamepad, 
+  FaComments, FaTrophy, FaRocket, FaFlag, FaChartBar, FaHome, 
+  FaExclamationTriangle
+} from 'react-icons/fa';
+import { GiSpadeSkull } from 'react-icons/gi';
+import { useSettings } from '../hooks/useSettings';
+import { useModals } from '../hooks/useModals';
+import { useGameState } from '../hooks/useGameState';
+import { usePlayerHand } from '../hooks/usePlayerHand';
+import { useTimer } from '../hooks/useTimer';
+import { useTournament } from '../hooks/useTournament';
+import { usePlayAgainVoting } from '../hooks/usePlayAgainVoting';
 
-  // Fire from right corner
-  const rightCornerDefaults = { origin: { x: 1, y: 0.7 } };
-  function fireRight(particleRatio, opts) {
-    confetti({
-      ...rightCornerDefaults,
-      ...opts,
-      particleCount: Math.floor(count * particleRatio)
-    });
-  }
-
-  // Fire the sequence from both corners
-  const sequences = [
-    { ratio: 0.25, opts: { spread: 26, startVelocity: 55 } },
-    { ratio: 0.2, opts: { spread: 60 } },
-    { ratio: 0.35, opts: { spread: 100, decay: 0.91, scalar: 0.8 } },
-    { ratio: 0.1, opts: { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 } },
-    { ratio: 0.1, opts: { spread: 120, startVelocity: 45 } }
-  ];
-
-  sequences.forEach(({ ratio, opts }) => {
-    fireLeft(ratio, opts);
-    fireRight(ratio, opts);
-  });
-};
-
-const Card = ({ 
-  card, 
-  isPlayable, 
-  isSelected, 
-  selectedIndex, 
-  isBottomCard, 
-  settings, 
-  onCardSelect 
-}) => {
-  const [isHovered, setIsHovered] = useState(false);
-
-  // Style calculation functions
-  const getCardStyles = () => {
-    const baseStyles = {
-      width: '60px',
-      height: '90px',
-      border: `2px solid ${getBorderColor()}`,
-      borderRadius: '8px',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: getBackgroundColor(),
-      cursor: getCursor(),
-      fontSize: '10px',
-      padding: '4px',
-      color: getTextColor(),
-      flexShrink: 0,
-      minWidth: '50px',
-      maxWidth: '60px',
-      opacity: getOpacity(),
-      transform: getTransform(),
-      boxShadow: getBoxShadow(),
-      transition: getTransition(),
-      transformOrigin: 'center center'
-    };
-
-    return baseStyles;
-  };
-
-  const getBorderColor = () => {
-    if (settings.experiencedMode) return '#333';
-    if (isHovered && isPlayable && !settings.experiencedMode) return '#2ecc71';
-    return isPlayable ? '#27ae60' : '#bdc3c7';
-  };
-
-  const getBackgroundColor = () => {
-    if (isPlayable && !settings.experiencedMode) {
-      return 'linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%)';
-    }
-    return '#ffffff';
-  };
-
-  const getCursor = () => {
-    return (isPlayable || settings.experiencedMode) ? 'pointer' : 'default';
-  };
-
-  const getTextColor = () => {
-    return (card.suit === 'Hearts' || card.suit === 'Diamonds') ? '#e74c3c' : '#2c3e50';
-  };
-
-  const getOpacity = () => {
-    if (settings.experiencedMode) return 1;
-    return isPlayable ? 1 : 0.6;
-  };
-
-  const getTransform = () => {
-    if (isSelected) {
-      return 'translateY(-15px) scale(1.05)';
-    }
-    if (isHovered && !isSelected) {
-      return 'translateY(-8px) scale(1.03)';
-    }
-    return 'translateY(0px) scale(1)';
-  };
-
-  const getBoxShadow = () => {
-    if (isSelected) {
-      return '0 8px 20px rgba(52, 152, 219, 0.4)';
-    }
-    if (isHovered && isPlayable) {
-      return '0 6px 16px rgba(39, 174, 96, 0.4)';
-    }
-    if (isHovered) {
-      return '0 4px 12px rgba(0,0,0,0.2)';
-    }
-    if (isPlayable && !settings.experiencedMode) {
-      return '0 2px 6px rgba(39, 174, 96, 0.3)';
-    }
-    return '0 2px 4px rgba(0,0,0,0.1)';
-  };
-
-  const getTransition = () => {
-    return [
-      'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-      'box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-      'opacity 0.3s ease',
-      'border-color 0.3s ease'
-    ].join(', ');
-  };
-
-  const getSuitSymbol = () => {
-    const symbols = {
-      'Hearts': '♥',
-      'Diamonds': '♦',
-      'Clubs': '♣',
-      'Spades': '♠'
-    };
-    return symbols[card.suit] || '?';
-  };
-
-  const handleClick = () => {
-    if (isPlayable || settings.experiencedMode) {
-      onCardSelect(card);
-    }
-  };
-
-  const handleMouseEnter = () => setIsHovered(true);
-  const handleMouseLeave = () => setIsHovered(false);
-
-  return (
-    <div 
-      style={{ 
-        position: 'relative', 
-        margin: '3px',
-        flexShrink: 0,
-        minWidth: '60px',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        zIndex: isSelected ? 15 : (isHovered ? 10 : 1)
-      }}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      {/* Bottom Card Indicator */}
-      {isBottomCard && selectedIndex !== undefined && selectedIndex >= 0 && (
-        <div style={{
-          position: 'absolute',
-          top: '-25px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          backgroundColor: '#e74c3c',
-          color: '#fff',
-          padding: '2px 6px',
-          borderRadius: '10px',
-          fontSize: '8px',
-          fontWeight: 'bold',
-          whiteSpace: 'nowrap',
-          zIndex: 20,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}>
-          Bottom Card
-        </div>
-      )}
-      
-      {/* Play Order Indicator */}
-      {isSelected && selectedIndex > 0 && (
-        <div style={{
-          position: 'absolute',
-          top: '-20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          backgroundColor: '#3498db',
-          color: '#fff',
-          padding: '1px 5px',
-          borderRadius: '8px',
-          fontSize: '10px',
-          fontWeight: 'bold',
-          zIndex: 20,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}>
-          #{selectedIndex + 1}
-        </div>
-      )}
-      
-      {/* Card Element */}
-      <div 
-        className={`card ${isPlayable ? 'playable' : ''} ${isSelected ? 'selected' : ''}`}
-        onClick={handleClick}
-        style={getCardStyles()}
-      >
-        <div style={{ fontWeight: 'bold', fontSize: '8px' }}>
-          {card.rank}
-        </div>
-        <div style={{ fontSize: '16px' }}>
-          {getSuitSymbol()}
-        </div>
-        <div style={{ 
-          fontWeight: 'bold', 
-          fontSize: '8px', 
-          transform: 'rotate(180deg)' 
-        }}>
-          {card.rank}
-        </div>
-      </div>
-    </div>
-  );
-};
+// Import extracted components
+import Card from './game/Card';
+import ToastContainer from './ui/ToastContainer';
+import TurnTimer from './ui/TurnTimer';
 
 
-// Enhanced frontend validation for card selection
-const getValidCardsForSelection = (playerHand, gameState, selectedCards, topCard) => {
-  if (!gameState || playerHand.length === 0) return [];
-  
-  
-  let valid = [];
-  const activePlayers = gameState.players?.length || 2;
 
-  if (selectedCards.length === 0) {
-    // No cards selected - show cards that can be played as bottom card
-    valid = playerHand.filter(card => {
-      // When there's a draw stack, ONLY counter cards are valid (no 8s allowed)
-      if (gameState.drawStack > 0) {
-        return canCounterDrawFrontend(card, topCard);
-      }
-      
-      // 8s can be played on anything (except when draw stack is present)
-      if (card.rank === '8') return true;
-      
-      const suitToMatch = gameState.declaredSuit || topCard.suit;
-      return card.suit === suitToMatch || card.rank === topCard.rank;
-    });
-  } else {
-    // Cards already selected - show stackable cards
-    valid = playerHand.filter(card => {
-      // Already selected cards are always "valid" for reordering
-      const isSelected = selectedCards.some(sc => isSameCard(sc, card));
-      if (isSelected) return true;
-      
-      // Check if this card can be stacked with the current selection using proper validation
-      return canStackCardsFrontend(selectedCards, card, activePlayers);
-    });
-  }
-  
-  console.log('🎯 Frontend: Valid cards calculated:', valid.length, 'out of', playerHand.length);
-  console.log('🎯 Frontend: Selected cards:', selectedCards.length);
-  console.log('🎯 Frontend: Draw stack:', gameState.drawStack);
-  
-  return valid;
-};
 
-// Frontend counter draw validation
-const canCounterDrawFrontend = (card, topCard) => {
-  if (!topCard) return false;
-  
-  if (topCard.rank === 'Ace') {
-    return card.rank === 'Ace' || (card.rank === '2' && card.suit === topCard.suit);
-  }
-  if (topCard.rank === '2') {
-    return card.rank === '2' || (card.rank === 'Ace' && card.suit === topCard.suit);
-  }
-  return false;
-};
+// Functions moved to utils/cardUtils.js
 
 const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, settings = {} }) => {
 
@@ -468,47 +202,73 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
   return (
     <div style={{
       display: 'flex',
-      flexDirection: 'column',
+      justifyContent: 'center',
       alignItems: 'center',
-      padding: '20px',
+      padding: '40px 20px',
       backgroundColor: '#27ae60',
       borderRadius: '20px',
       margin: '20px 0',
-      minHeight: '200px',
+      minHeight: '180px',
       boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
     }}>
-      <h2 style={{ color: '#fff', margin: '0 0 20px 0' }}>Game Board</h2>
-      
       <div style={{
         display: 'flex',
         gap: '40px',
-        alignItems: 'center',
-        marginBottom: '20px'
+        alignItems: 'flex-start',
+        justifyContent: 'center'
       }}>
-        {/* Draw Pile */}
-        <div 
-          onClick={onDrawCard}
-          style={{
-            width: '80px',
-            height: '120px',
-            backgroundColor: '#34495e',
-            border: '3px solid #2c3e50',
-            borderRadius: '10px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            position: 'relative',
-            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
-            transition: 'transform 0.2s ease'
-          }}
-          onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
-          onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
-        >
-          <div style={{ color: '#fff', textAlign: 'center', fontSize: '12px' }}>
-            <div style={{ fontWeight: 'bold' }}>DRAW</div>
-            <div>({drawPileSize})</div>
+        {/* Draw Pile Column */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          <div style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold' }}>
+            Draw Pile
           </div>
+          <div 
+            onClick={onDrawCard}
+            style={{
+              width: '80px',
+              height: '120px',
+              backgroundColor: '#34495e',
+              border: '3px solid #2c3e50',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              position: 'relative',
+              boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+              transition: 'transform 0.2s ease'
+            }}
+            onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
+            onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+          >
+            <div style={{ color: '#fff', textAlign: 'center', fontSize: '12px' }}>
+              <div style={{ fontWeight: 'bold' }}>DRAW</div>
+              <div>({drawPileSize})</div>
+            </div>
+          </div>
+          
+          {/* Draw Stack indicator under draw pile */}
+          {gameState.drawStack > 0 && (
+            <div style={{
+              color: '#fff',
+              backgroundColor: '#e67e22',
+              padding: '4px 8px',
+              borderRadius: '10px',
+              fontSize: '10px',
+              fontWeight: 'bold',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              animation: 'pulse 2s infinite',
+              textAlign: 'center',
+              minWidth: '60px'
+            }}>
+              <FaBook style={{ marginRight: '4px', fontSize: '8px' }} />+{gameState.drawStack}
+            </div>
+          )}
         </div>
 
         {/* Arrow */}
@@ -516,12 +276,14 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
           color: '#fff', 
           fontWeight: 'bold', 
           fontSize: '24px',
-          textShadow: '0 2px 4px rgba(0,0,0,0.3)'
+          textShadow: '0 2px 4px rgba(0,0,0,0.3)',
+          alignSelf: 'flex-start',
+          marginTop: '80px'
         }}>
           →
         </div>
 
-        {/* Discard Pile - UPDATED */}
+        {/* Top Card Column */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -581,12 +343,33 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
               Empty
             </div>
           )}
+          
+          {/* Reversed indicator under top card */}
+          {gameState.direction === -1 && (
+            <div style={{
+              color: '#fff',
+              backgroundColor: '#9b59b6',
+              padding: '4px 8px',
+              borderRadius: '10px',
+              fontSize: '10px',
+              fontWeight: 'bold',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              textAlign: 'center',
+              minWidth: '60px'
+            }}>
+              <FaSync style={{ marginRight: '4px', fontSize: '8px' }} />Reversed
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Game Status Indicators - rest remains the same */}
-      <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', justifyContent: 'center' }}>
-        {gameState.declaredSuit && (
+      {/* Declared Suit Indicator (centered) */}
+      {gameState.declaredSuit && (
+        <div style={{ 
+          display: 'flex',
+          justifyContent: 'center',
+          marginTop: '15px'
+        }}>
           <div style={{
             color: '#fff',
             backgroundColor: '#e74c3c',
@@ -596,39 +379,10 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
             fontWeight: 'bold',
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
           }}>
-            🎯 Current Suit: {gameState.declaredSuit}
+            <FaBullseye style={{ marginRight: '8px' }} />Current Suit: {gameState.declaredSuit}
           </div>
-        )}
-
-        {gameState.drawStack > 0 && (
-          <div style={{
-            color: '#fff',
-            backgroundColor: '#e67e22',
-            padding: '8px 15px',
-            borderRadius: '15px',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            animation: 'pulse 2s infinite'
-          }}>
-            📚 Draw Stack: +{gameState.drawStack}
-          </div>
-        )}
-
-        {gameState.direction === -1 && (
-          <div style={{
-            color: '#fff',
-            backgroundColor: '#9b59b6',
-            padding: '8px 15px',
-            borderRadius: '15px',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-          }}>
-            🔄 Reversed
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -765,7 +519,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
           alignItems: 'center',
           marginBottom: '25px'
         }}>
-          <h2 style={{ margin: 0, color: '#2c3e50' }}>⚙️ Game Settings</h2>
+          <h2 style={{ margin: 0, color: '#2c3e50' }}><FaCog style={{ marginRight: '8px' }} />Game Settings</h2>
           <button
             onClick={onClose}
             style={{
@@ -776,13 +530,13 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
               color: '#95a5a6'
             }}
           >
-            ×
+            <FaTimes />
           </button>
         </div>
 
         {/* Card Display Settings */}
         <div style={{ marginBottom: '25px' }}>
-          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>🃏 Card Display</h3>
+          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}><GiSpadeSkull style={{ marginRight: '8px' }} />Card Display</h3>
           
           {/* Sort by Rank */}
           <div style={{
@@ -795,7 +549,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
             borderRadius: '8px'
           }}>
             <div>
-              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Sort by Rank</div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px', color: '#2c3e50' }}>Sort by Rank</div>
               <div style={{ fontSize: '12px', color: '#6c757d' }}>
                 Order cards by rank (2, 3, 4... Jack, Queen, King, Ace)
               </div>
@@ -821,7 +575,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
             borderRadius: '8px'
           }}>
             <div>
-              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Group by Suit</div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px', color: '#2c3e50' }}>Group by Suit</div>
               <div style={{ fontSize: '12px', color: '#6c757d' }}>
                 Group cards by suit (Hearts, Diamonds, Clubs, Spades)
               </div>
@@ -874,7 +628,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
 
         {/* Gameplay Settings */}
         <div style={{ marginBottom: '25px' }}>
-          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}>🎮 Gameplay</h3>
+          <h3 style={{ color: '#2c3e50', marginBottom: '15px' }}><FaGamepad style={{ marginRight: '8px' }} />Gameplay</h3>
           
           {/* Experienced Mode */}
           <div style={{
@@ -886,7 +640,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
             borderRadius: '8px'
           }}>
             <div>
-              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Experienced Mode</div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px', color: '#2c3e50' }}>Experienced Mode</div>
               <div style={{ fontSize: '12px', color: '#6c757d' }}>
                 Show all cards clearly - removes graying out of unplayable cards
               </div>
@@ -917,7 +671,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
             borderRadius: '8px'
           }}>
             <div>
-              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Enable Turn Timer</div>
+              <div style={{ fontWeight: 'bold', marginBottom: '2px', color: '#2c3e50' }}>Enable Turn Timer</div>
               <div style={{ fontSize: '12px', color: '#6c757d' }}>
                 Show countdown timer and auto-draw when time expires
               </div>
@@ -942,7 +696,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
                 borderRadius: '8px',
                 marginBottom: '15px'
               }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '10px' }}>Quick Presets:</div>
+                <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#2c3e50' }}>Quick Presets:</div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '15px' }}>
                   {[30, 60, 90, 120, 180].map(duration => (
                     <button
@@ -973,7 +727,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
                     alignItems: 'center',
                     marginBottom: '8px'
                   }}>
-                    <label style={{ fontWeight: 'bold', fontSize: '14px' }}>
+                    <label style={{ fontWeight: 'bold', fontSize: '14px', color: '#2c3e50' }}>
                       Timer Duration: {Math.floor(settings.timerDuration/60)}:{(settings.timerDuration%60).toString().padStart(2,'0')}
                     </label>
                     <span style={{ fontSize: '12px', color: '#6c757d' }}>
@@ -1010,7 +764,7 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
 
                 {/* Custom Input */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <label style={{ fontWeight: 'bold', fontSize: '14px', minWidth: 'fit-content' }}>
+                  <label style={{ fontWeight: 'bold', fontSize: '14px', minWidth: 'fit-content', color: '#2c3e50' }}>
                     Custom:
                   </label>
                   <input
@@ -1043,10 +797,10 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
                 border: '1px solid #ffeaa7'
               }}>
                 <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#856404' }}>
-                  ⚠️ Warning Threshold:
+                  <FaExclamationTriangle style={{ marginRight: '8px' }} />Warning Threshold:
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '14px', minWidth: 'fit-content' }}>Show warning at:</span>
+                  <span style={{ fontSize: '14px', minWidth: 'fit-content', color: '#856404' }}>Show warning at:</span>
                   <input
                     type="number"
                     min="5"
@@ -1099,151 +853,9 @@ const Settings = ({ isOpen, onClose, settings, onSettingsChange, setToasts }) =>
   );
 };
 
-const ToastContainer = ({ toasts, onRemoveToast }) => {
-  return (
-    <div style={{
-      position: 'fixed',
-      top: '20px',
-      right: '20px',
-      zIndex: 2500,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '10px',
-      maxWidth: '300px'
-    }}>
-      {toasts.map((toast, index) => (
-        <Toast
-          key={toast.id}
-          toast={toast}
-          index={index}
-          onClose={() => onRemoveToast(toast.id)}
-        />
-      ))}
-    </div>
-  );
-};
+// ToastContainer moved to components/ui/ToastContainer.js
 
-const Toast = ({ toast, index, onClose }) => {
-  const [isExiting, setIsExiting] = useState(false);
-  const timerRef = useRef(null);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    // Create a stable reference to onClose to prevent timer resets
-    const stableOnClose = () => {
-      console.log(`🍞 Auto-closing toast: ${toast.message}`);
-      setIsExiting(true);
-      setTimeout(() => {
-        onClose();
-      }, 300);
-    };
-
-    // Auto-close timer with stable reference
-    timerRef.current = setTimeout(stableOnClose, 4000);
-    
-    console.log(`🍞 Toast timer started for: ${toast.message}`);
-
-    return () => {
-      if (timerRef.current) {
-        console.log(`🍞 Toast timer cleared for: ${toast.message}`);
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast.id]); // ONLY depend on toast.id, NOT onClose
-
-  const handleManualClose = () => {
-    console.log(`🍞 Manual close toast: ${toast.message}`);
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setIsExiting(true);
-    setTimeout(() => {
-      onClose();
-    }, 300);
-  };
-
-  const getBackgroundColor = () => {
-    switch (toast.type) {
-      case 'success': return '#27ae60';
-      case 'error': return '#e74c3c';
-      case 'info': return '#3498db';
-      default: return '#95a5a6';
-    }
-  };
-
-  const getTransform = () => {
-    if (isExiting) {
-      return 'translateX(100%) scale(0.8)';
-    }
-    return `translateY(${index * 5}px) scale(${1 - index * 0.05})`;
-  };
-
-  const getOpacity = () => {
-    if (isExiting) return 0;
-    return Math.max(0.3, 1 - index * 0.15);
-  };
-
-  const getZIndex = () => {
-    return 2500 - index;
-  };
-
-  return (
-    <div 
-      style={{
-        padding: '15px 20px',
-        backgroundColor: getBackgroundColor(),
-        color: '#fff',
-        borderRadius: '8px',
-        boxShadow: `0 ${4 + index * 2}px ${8 + index * 4}px rgba(0,0,0,${0.2 + index * 0.1})`,
-        fontSize: '14px',
-        cursor: 'pointer',
-        transform: getTransform(),
-        opacity: getOpacity(),
-        zIndex: getZIndex(),
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        transformOrigin: 'top right',
-        position: 'relative',
-        overflow: 'hidden',
-        border: index === 0 ? '2px solid rgba(255,255,255,0.3)' : 'none'
-      }}
-      onClick={handleManualClose}
-    >
-      {/* Progress bar for the newest notification */}
-      {index === 0 && !isExiting && (
-        <div style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          height: '3px',
-          backgroundColor: 'rgba(255,255,255,0.5)',
-          animation: 'progressBar 4s linear forwards',
-          borderRadius: '0 0 6px 6px'
-        }} />
-      )}
-      
-      {/* Stack indicator for older notifications */}
-      {index > 0 && (
-        <div style={{
-          position: 'absolute',
-          top: '8px',
-          right: '8px',
-          fontSize: '10px',
-          backgroundColor: 'rgba(0,0,0,0.3)',
-          padding: '2px 6px',
-          borderRadius: '10px',
-          fontWeight: 'bold'
-        }}>
-          +{index}
-        </div>
-      )}
-      
-      {toast.message}
-    </div>
-  );
-};
+// Toast moved to components/ui/Toast.js
 
 // Chat component
 const Chat = ({ socket }) => {
@@ -1259,11 +871,11 @@ const Chat = ({ socket }) => {
     });
 
     socket.on('cardPlayed', (data) => {
-      setMessages(prev => [...prev.slice(-50), `🃏 ${data.playerName}: ${data.message}`]);
+      setMessages(prev => [...prev.slice(-50), `${data.playerName}: ${data.message}`]);
     });
 
     socket.on('playerDrewCards', (data) => {
-      setMessages(prev => [...prev.slice(-50), `📚 ${data.playerName} drew ${data.cardCount} card(s)`]);
+      setMessages(prev => [...prev.slice(-50), `${data.playerName} drew ${data.cardCount} card(s)`]);
     });
 
     return () => {
@@ -1294,19 +906,21 @@ const Chat = ({ socket }) => {
     }}>
       <div 
         style={{
-          padding: '10px',
+          padding: '8px 10px',
           borderBottom: '1px solid #ddd',
           fontWeight: 'bold',
           backgroundColor: '#f8f9fa',
           cursor: 'pointer',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          color: '#000',
+          minHeight: '40px'
         }}
         onClick={() => setIsMinimized(!isMinimized)}
       >
-        <span>💬 Game Chat</span>
-        <span style={{ fontSize: '12px' }}>{isMinimized ? '▲' : '▼'}</span>
+        <span style={{ display: 'flex', alignItems: 'center' }}><FaComments style={{ marginRight: '8px' }} />Game Chat</span>
+        <span style={{ fontSize: '12px', display: 'flex', alignItems: 'center' }}>{isMinimized ? '▲' : '▼'}</span>
       </div>
       
       {!isMinimized && (
@@ -1371,32 +985,7 @@ const Chat = ({ socket }) => {
   );
 };
 
-const TurnTimer = ({ timeLeft, isWarning, isVisible }) => {
-  if (!isVisible) return null;
-  
-  const minutes = Math.floor(timeLeft / 60);
-  const seconds = timeLeft % 60;
-  
-  return (
-    <div style={{
-      fontSize: '9px',
-      marginTop: '3px',
-      padding: '2px 8px',
-      borderRadius: '10px',
-      backgroundColor: isWarning ? '#e74c3c' : 'rgba(255,255,255,0.2)',
-      color: '#fff',
-      fontWeight: 'bold',
-      minHeight: '16px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      animation: isWarning ? 'pulse 1s infinite' : 'none'
-    }}>
-      {isWarning ? '⚠️ ' : '⏱️ '}
-      {minutes}:{seconds.toString().padStart(2, '0')}
-    </div>
-  );
-};
+// TurnTimer moved to components/ui/TurnTimer.js
 
 // Tournament Components
 
@@ -1421,8 +1010,8 @@ const TournamentStatus = ({ gameState }) => {
         alignItems: 'center',
         marginBottom: '10px'
       }}>
-        <h3 style={{ margin: 0, fontSize: '18px', color: 'gold' }}>🏆 Tournament Mode</h3>
-        <div style={{ fontSize: '14px', opacity: 0.8 }}>
+        <h3 style={{ margin: 0, fontSize: '18px', color: 'gold' }}><FaTrophy style={{ marginRight: '8px' }} />Tournament Mode</h3>
+        <div style={{ fontSize: '14px', opacity: 0.8, color: '#000' }}>
           Round {tournament.currentRound}
         </div>
       </div>
@@ -1475,7 +1064,7 @@ const SafePlayerNotification = ({ isPlayerSafe, playerName, gameState, onStartNe
       boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
       animation: 'pulse 1s infinite'
     }}>
-      <div style={{ fontSize: '24px', marginBottom: '8px' }}>🏆</div>
+      <div style={{ fontSize: '24px', marginBottom: '8px' }}><FaTrophy /></div>
       <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '4px' }}>
         You're Safe!
       </div>
@@ -1501,7 +1090,7 @@ const SafePlayerNotification = ({ isPlayerSafe, playerName, gameState, onStartNe
           onMouseEnter={(e) => e.target.style.backgroundColor = '#34495e'}
           onMouseLeave={(e) => e.target.style.backgroundColor = '#2c3e50'}
         >
-          🚀 Start Next Round
+          <FaRocket style={{ marginRight: '8px' }} />Start Next Round
         </button>
       )}
     </div>
@@ -1535,7 +1124,7 @@ const RoundEndModal = ({ isOpen, roundData, nextRoundTimer, onClose, onStartNext
         boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
       }}>
         <h2 style={{ color: '#2c3e50', marginBottom: '20px' }}>
-          🏁 Round {roundData.round} Complete!
+          <FaFlag style={{ marginRight: '8px' }} />Round {roundData.round} Complete!
         </h2>
         
         <div style={{
@@ -1587,7 +1176,7 @@ const RoundEndModal = ({ isOpen, roundData, nextRoundTimer, onClose, onStartNext
               onMouseEnter={(e) => e.target.style.backgroundColor = '#2ecc71'}
               onMouseLeave={(e) => e.target.style.backgroundColor = '#27ae60'}
             >
-              🚀 Start Next Round Now
+              <FaRocket style={{ marginRight: '8px' }} />Start Next Round Now
             </button>
           )}
         </div>
@@ -1648,7 +1237,7 @@ const TournamentWinnerModal = ({ isOpen, winnerData, onClose }) => {
         textAlign: 'center',
         boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
       }}>
-        <div style={{ fontSize: '64px', marginBottom: '20px' }}>🏆</div>
+        <div style={{ fontSize: '64px', marginBottom: '20px' }}><FaTrophy /></div>
         
         <h1 style={{ 
           color: '#f39c12', 
@@ -1677,7 +1266,7 @@ const TournamentWinnerModal = ({ isOpen, winnerData, onClose }) => {
             textAlign: 'left'
           }}>
             <h3 style={{ color: '#2c3e50', marginBottom: '15px', textAlign: 'center' }}>
-              📊 Tournament Statistics
+              <FaChartBar style={{ marginRight: '8px' }} />Tournament Statistics
             </h3>
             
             <div style={{ 
@@ -1739,7 +1328,7 @@ const TournamentWinnerModal = ({ isOpen, winnerData, onClose }) => {
           onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
           onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
         >
-          🏠 Return to Lobby
+          <FaHome style={{ marginRight: '8px' }} />Return to Lobby
         </button>
       </div>
     </div>
@@ -1773,7 +1362,7 @@ const TournamentPlayerDisplay = ({ players, gameState }) => {
         {playingPlayers.length > 0 && (
           <div>
             <div style={{ fontWeight: 'bold', color: '#2c3e50', marginBottom: '8px' }}>
-              🎮 Still Playing ({playingPlayers.length})
+              <FaGamepad style={{ marginRight: '8px' }} />Still Playing ({playingPlayers.length})
             </div>
             {playingPlayers.map(player => (
               <div key={player.id} style={{
@@ -1785,7 +1374,7 @@ const TournamentPlayerDisplay = ({ players, gameState }) => {
                 fontSize: '12px'
               }}>
                 {player.name} ({player.handSize} cards)
-                {player.isCurrentPlayer && ' 🎯'}
+                {player.isCurrentPlayer && <FaBullseye style={{ marginLeft: '8px' }} />}
               </div>
             ))}
           </div>
@@ -1794,7 +1383,7 @@ const TournamentPlayerDisplay = ({ players, gameState }) => {
         {safePlayers.length > 0 && (
           <div>
             <div style={{ fontWeight: 'bold', color: '#27ae60', marginBottom: '8px' }}>
-              🏆 Safe ({safePlayers.length})
+              <FaTrophy style={{ marginRight: '8px' }} />Safe ({safePlayers.length})
             </div>
             {safePlayers.map(player => (
               <div key={player.id} style={{
@@ -1865,45 +1454,35 @@ const DebugPanel = ({ isOpen, logs, onClose, onStart, players, currentId, onSwit
   );
 };
 
-// Main App component
-const App = () => {
-  const [socket, setSocket] = useState(null);
-  const [gameState, setGameState] = useState(null);
-  const [playerHand, setPlayerHand] = useState([]);
-  const [playerId, setPlayerId] = useState(null);
-  const [playerName, setPlayerName] = useState('');
-  const [gameId, setGameId] = useState('');
-  const [isConnected, setIsConnected] = useState(false);
-  const [selectedCards, setSelectedCards] = useState([]);
-  const [showSuitSelector, setShowSuitSelector] = useState(false);
-  const [validCards, setValidCards] = useState([]);
-  const [toasts, setToasts] = useState([]);
-  const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState({
-    sortByRank: false,
-    groupBySuit: false,
-    experiencedMode: false,
-    enableTimer: true,
-    timerDuration: 60,
-    timerWarningTime: 15
-  });
+
+// Main App component (wrapped with authentication)
+const GameApp = () => {
+  const { user, token, isAuthenticated, updateSettings, migrateLocalSettings: authMigrateSettings, logout } = useAuth();
+  const { socket, isConnected, connectWithAuth, connectAsGuest, requestGameState, addConnectionListener } = useConnection();
+  
+  // Use extracted hooks
+  const { gameState, setGameState, playerId, setPlayerId, playerName, setPlayerName, gameId, setGameId } = useGameState();
+  const { playerHand, setPlayerHand, selectedCards, setSelectedCards, validCards, setValidCards } = usePlayerHand();
+  const { toasts, addToast, removeToast, setToasts } = useToasts();
+  const { settings, setSettings } = useSettings();
+  const { 
+    showSettings, showAuthModal, showUserDashboard, showSuitSelector,
+    setShowSettings, setShowAuthModal, setShowUserDashboard, setShowSuitSelector 
+  } = useModals();
   const [copiedGameId, setCopiedGameId] = useState(false);
   const [hasDrawnThisTurn, setHasDrawnThisTurn] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [lastActionTime, setLastActionTime] = useState(0);
-  const [globalTimer, setGlobalTimer] = useState({
-    timeLeft: 60,
-    isWarning: false,
-    isActive: false
-  });
-
-  // Tournament state
-  const [showRoundEndModal, setShowRoundEndModal] = useState(false);
-  const [roundEndData, setRoundEndData] = useState(null);
-  const [nextRoundTimer, setNextRoundTimer] = useState(0);
-  const [showTournamentWinnerModal, setShowTournamentWinnerModal] = useState(false);
-  const [tournamentWinnerData, setTournamentWinnerData] = useState(null);
-  const [, setTournamentStatus] = useState(null);
+  const [showTournamentInfo, setShowTournamentInfo] = useState(false);
+  
+  // Use extracted hooks for timer and tournament
+  const { globalTimer, setGlobalTimer, timerDurationRef, timerWarningTimeRef } = useTimer(settings);
+  const {
+    showRoundEndModal, setShowRoundEndModal, roundEndData, setRoundEndData,
+    nextRoundTimer, setNextRoundTimer, showTournamentWinnerModal, setShowTournamentWinnerModal,
+    tournamentWinnerData, setTournamentWinnerData, setTournamentStatus
+  } = useTournament();
+  const { playAgainVotes, setPlayAgainVotes } = usePlayAgainVoting();
 
   // Debug mode state
   const [debugMode, setDebugMode] = useState(false);
@@ -2005,54 +1584,22 @@ const App = () => {
   const [debugPlayers, setDebugPlayers] = useState([]);
 
 
-  // Refs to access latest timer values inside stable callbacks
-  const timerDurationRef = useRef(settings.timerDuration);
-  const timerWarningTimeRef = useRef(settings.timerWarningTime);
+  // Timer refs now provided by useTimer hook
   const playerIdRef = useRef(playerId);
   const hasDrawnThisTurnRef = useRef(hasDrawnThisTurn);
   const lastSkipTimeRef = useRef(0);
   const [isSkipping, setIsSkipping] = useState(false);
 
-  const addToast = (message, type = 'info') => {
-    const newToast = {
-      id: Date.now() + Math.random(),
-      message,
-      type,
-      timestamp: Date.now()
-    };
+  // Toast functions now provided by useToasts hook
 
-    setToasts(prevToasts => {
-      const newToasts = [newToast, ...prevToasts];
-      
-      // If we have more than 3 toasts, remove the oldest ones
-      if (newToasts.length > 3) {
-        return newToasts.slice(0, 3);
-      }
-      
-      return newToasts;
-    });
-  };
-
-  const removeToast = useCallback((toastId) => {
-  console.log(`🗑️ Removing toast with ID: ${toastId}`);
-  setToasts(prevToasts => prevToasts.filter(toast => toast.id !== toastId));
-}, []);
-
-    // Play again voting
-  const [playAgainVotes, setPlayAgainVotes] = useState({
-    votedPlayers: [],
-    totalPlayers: 0,
-    allVoted: false,
-    creatorVoted: false,
-    canStartGame: false,
-    gameCreator: null
-  });
+  // Play again voting now handled by usePlayAgainVoting hook
 
 
   // Keep refs in sync with settings
   useEffect(() => {
     timerDurationRef.current = settings.timerDuration;
     timerWarningTimeRef.current = settings.timerWarningTime;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.timerDuration, settings.timerWarningTime]);
 
   useEffect(() => {
@@ -2067,28 +1614,48 @@ const App = () => {
     hasDrawnThisTurnRef.current = hasDrawnThisTurn;
   }, [hasDrawnThisTurn]);
 
-  // Load settings from localStorage on component mount
+  // Load settings from localStorage on component mount with enhanced compatibility
   useEffect(() => {
     if (playerId) {
-      const savedSettings = localStorage.getItem(`crazy8s_settings_${playerId}`);
-      if (savedSettings) {
-        try {
-          const parsed = JSON.parse(savedSettings);
-          setSettings({
-            sortByRank: false,
-            groupBySuit: false,
-            experiencedMode: false,
-            enableTimer: true,
-            timerDuration: 60,
-            timerWarningTime: 15,
-            ...parsed
-          });
-        } catch (error) {
-          console.log('Error loading settings:', error);
+      const defaultSettings = {
+        sortByRank: false,
+        groupBySuit: false,
+        experiencedMode: false,
+        enableTimer: true,
+        timerDuration: 60,
+        timerWarningTime: 15,
+        theme: 'default',
+        soundEnabled: true,
+        animationsEnabled: true,
+        autoPlay: false,
+        customCardback: 'default'
+      };
+
+      // Check if user is authenticated and has server settings
+      if (isAuthenticated && user?.settings) {
+        // Use server settings for authenticated users
+        const serverSettings = { ...defaultSettings, ...user.settings };
+        setSettings(serverSettings);
+        console.log('📱 Loaded settings from user account');
+      } else {
+        // Fallback to localStorage for unauthenticated users
+        const savedSettings = localStorage.getItem(`crazy8s_settings_${playerId}`);
+        if (savedSettings) {
+          try {
+            const parsed = JSON.parse(savedSettings);
+            const mergedSettings = { ...defaultSettings, ...parsed };
+            setSettings(mergedSettings);
+            console.log('📱 Loaded settings from localStorage');
+          } catch (error) {
+            console.log('❌ Error loading settings:', error);
+            setSettings(defaultSettings);
+          }
+        } else {
+          setSettings(defaultSettings);
         }
       }
     }
-  }, [playerId]);
+  }, [playerId, isAuthenticated, user, setSettings]);
 
   // Debug mode activation - secret keyboard combo Ctrl+Shift+D then EBUG
   useEffect(() => {
@@ -2128,44 +1695,70 @@ const App = () => {
     return validated;
   };
 
-  // Save settings to localStorage whenever they change
-  const handleSettingsChange = (newSettings) => {
-  const validatedSettings = validateTimerSettings(newSettings);
-  
-  // Check what local settings changed and show appropriate toast
-  const oldSettings = settings;
-  if (oldSettings.sortByRank !== validatedSettings.sortByRank) {
-    addToast(validatedSettings.sortByRank ? 'Card sorting by rank enabled' : 'Card sorting by rank disabled', 'success');
-  }
-  if (oldSettings.groupBySuit !== validatedSettings.groupBySuit) {
-    addToast(validatedSettings.groupBySuit ? 'Card grouping by suit enabled' : 'Card grouping by suit disabled', 'success');
-  }
-  if (oldSettings.experiencedMode !== validatedSettings.experiencedMode) {
-    addToast(validatedSettings.experiencedMode ? 'Experienced mode enabled' : 'Experienced mode disabled', 'success');
-  }
-  
-  setSettings(validatedSettings);
-  if (playerId) {
-    localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(validatedSettings));
-  }
-  
-  // Only send timer settings to server if timer settings actually changed
-  const timerSettingsChanged = 
-    oldSettings.enableTimer !== validatedSettings.enableTimer ||
-    oldSettings.timerDuration !== validatedSettings.timerDuration ||
-    oldSettings.timerWarningTime !== validatedSettings.timerWarningTime;
+  // Save settings with backward compatibility and server sync
+  const handleSettingsChange = async (newSettings) => {
+    const validatedSettings = validateTimerSettings(newSettings);
     
-  if (socket && gameState?.gameId && timerSettingsChanged) {
-    socket.emit('updateTimerSettings', {
-      gameId: gameState.gameId,
-      timerSettings: {
-        enableTimer: validatedSettings.enableTimer,
-        timerDuration: validatedSettings.timerDuration,
-        timerWarningTime: validatedSettings.timerWarningTime
+    // Check what local settings changed and show appropriate toast
+    const oldSettings = settings;
+    if (oldSettings.sortByRank !== validatedSettings.sortByRank) {
+      addToast(validatedSettings.sortByRank ? 'Card sorting by rank enabled' : 'Card sorting by rank disabled', 'success');
+    }
+    if (oldSettings.groupBySuit !== validatedSettings.groupBySuit) {
+      addToast(validatedSettings.groupBySuit ? 'Card grouping by suit enabled' : 'Card grouping by suit disabled', 'success');
+    }
+    if (oldSettings.experiencedMode !== validatedSettings.experiencedMode) {
+      addToast(validatedSettings.experiencedMode ? 'Experienced mode enabled' : 'Experienced mode disabled', 'success');
+    }
+    
+    setSettings(validatedSettings);
+    
+    // Save to appropriate storage based on authentication status
+    if (isAuthenticated && updateSettings) {
+      // Save to server for authenticated users
+      try {
+        await updateSettings(validatedSettings);
+        console.log('✅ Settings synced to server');
+      } catch (error) {
+        console.error('❌ Failed to sync settings to server:', error);
+        // Fallback to localStorage if server sync fails
+        if (playerId) {
+          localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(validatedSettings));
+        }
       }
-    });
-  }
-};
+    } else {
+      // Save to localStorage for unauthenticated users
+      if (playerId) {
+        const settingsToSave = {
+          ...validatedSettings,
+          _metadata: {
+            lastModified: new Date().toISOString(),
+            version: '2.0.0',
+            playerId: playerId
+          }
+        };
+        localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(settingsToSave));
+        console.log('💾 Settings saved to localStorage');
+      }
+    }
+    
+    // Only send timer settings to server if timer settings actually changed
+    const timerSettingsChanged = 
+      oldSettings.enableTimer !== validatedSettings.enableTimer ||
+      oldSettings.timerDuration !== validatedSettings.timerDuration ||
+      oldSettings.timerWarningTime !== validatedSettings.timerWarningTime;
+      
+    if (socket && gameState?.gameId && timerSettingsChanged) {
+      socket.emit('updateTimerSettings', {
+        gameId: gameState.gameId,
+        timerSettings: {
+          enableTimer: validatedSettings.enableTimer,
+          timerDuration: validatedSettings.timerDuration,
+          timerWarningTime: validatedSettings.timerWarningTime
+        }
+      });
+    }
+  };
 
   useEffect(() => {
   console.log('⏰ Timer Settings Updated:', {
@@ -2196,7 +1789,7 @@ const App = () => {
     if (!isMyTurn) {
       setSelectedCards([]);
     }
-  }, [gameState?.currentPlayerId, playerId]);
+  }, [gameState?.currentPlayerId, playerId, setSelectedCards]);
 
   // Debug logging helper
   const addDebugLog = (message, type = 'info', data = null) => {
@@ -2233,70 +1826,26 @@ const App = () => {
     }
   };
 
-  // Initialize socket connection
-useEffect(() => {
-  // Determine backend URL based on environment
-  const BACKEND_URL = process.env.NODE_ENV === 'production' 
-    ? 'https://crazy8s-production.up.railway.app'
-    : 'http://localhost:3001';
+  // Initialize socket connection with authentication support and enhanced reconnection
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      console.log('🔌 Creating authenticated socket connection');
+      connectWithAuth(token);
+    } else {
+      console.log('🔌 Creating guest socket connection');
+      connectAsGuest();
+    }
+  }, [isAuthenticated, token, connectWithAuth, connectAsGuest]);
 
-  console.log('🔌 Connecting to:', BACKEND_URL);
+  // Game event handlers - set up when socket is available
+  useEffect(() => {
+    if (!socket) return;
 
-  const newSocket = io(BACKEND_URL, {
-    transports: ['websocket', 'polling'],
-    upgrade: true,
-    rememberUpgrade: true,
-    timeout: 20000,
-    forceNew: false,
-    autoConnect: true,
-    reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    maxReconnectionAttempts: 5,
-    withCredentials: true,
-    extraHeaders: process.env.NODE_ENV === 'production' ? {
-      'Access-Control-Allow-Origin': window.location.origin
-    } : {}
-  });
-
-  setSocket(newSocket);
-
-  newSocket.on('connect', () => {
-    setIsConnected(true);
-    console.log('🔌 Connected to server with ID:', newSocket.id);
-    // Set playerId to the socket ID
-    setPlayerId(newSocket.id);
-    removeToast();
-  });
-
-  newSocket.on('connect_success', (data) => {
-    console.log('✅ Connection confirmed by server:', data);
-  });
-
-  newSocket.on('disconnect', () => {
-    setIsConnected(false);
-    console.log('❌ Disconnected from server');
-  });
-
-  newSocket.on('reconnect_error', (error) => {
-    console.error('❌ Reconnection failed:', error);
-  });
-
-  newSocket.on('reconnect_failed', () => {
-    console.error('❌ Failed to reconnect after maximum attempts');
-    addToast('Failed to reconnect to server. Please refresh the page.', 'error');
-  });
-
-  newSocket.on('connect_error', (error) => {
-    console.error('❌ Connection error:', error);
-    addToast('Connection failed. Please check your internet connection.', 'error');
-  });
-
-  newSocket.on('gameUpdate', (data) => {
-    console.log('🎮 Game state updated:', data);
-    console.log('  📊 Current Player:', data.currentPlayer, '(ID:', data.currentPlayerId, ')');
-    console.log('  🆔 My Player ID:', playerIdRef.current);
-    console.log('  🎯 Is My Turn:', data.currentPlayerId === playerIdRef.current);
+    const handleGameUpdate = (data) => {
+      console.log('🎮 Game state updated:', data);
+      console.log('  📊 Current Player:', data.currentPlayer, '(ID:', data.currentPlayerId, ')');
+      console.log('  🆔 My Player ID:', playerIdRef.current);
+      console.log('  🎯 Is My Turn:', data.currentPlayerId === playerIdRef.current);
     
     if (data.currentPlayerId !== playerIdRef.current) {
       setHasDrawnThisTurn(false);
@@ -2328,18 +1877,17 @@ useEffect(() => {
       });
     }
     
-    setGameState(data);
-  });
+      setGameState(data);
+    };
 
-
-  newSocket.on('handUpdate', (hand) => {
+    const handleHandUpdate = (hand) => {
     console.log('🃏 Hand updated:', hand.length, 'cards');
     console.log('🔍 First few cards:', hand.slice(0, 3).map(card => ({ id: card.id, suit: card.suit, rank: card.rank })));
     
-    setPlayerHand(hand);
-  });
+      setPlayerHand(hand);
+    };
 
-  newSocket.on('error', (errorMsg) => {
+    const handleError = (errorMsg) => {
     console.log('❌ [FRONTEND] Socket Error:', errorMsg);
     console.log('❌ Error:', errorMsg);
     // Don't show 'not your turn' errors if we just tried to skip after drawing
@@ -2347,44 +1895,45 @@ useEffect(() => {
       console.log('🔇 Suppressing "not your turn" error after drawing');
       return;
     }
-    addToast(errorMsg, 'error');
-  });
+      addToast(errorMsg, 'error');
+    };
 
-  newSocket.on('success', (successMsg) => {
+    const handleSuccess = (successMsg) => {
     console.log('✅ Success:', successMsg);
-    addToast(successMsg, 'success');
-  });
+      addToast(successMsg, 'success');
+    };
 
-  newSocket.on('cardPlayed', (data) => {
+    const handleCardPlayed = (data) => {
     console.log('🃏 Card played:', data);
-    // Use the socket ID directly instead of playerId state
-    if (data.playerId !== newSocket.id) {
-      addToast(`${data.playerName}: ${data.message}`, 'info');
+      // Use the socket ID directly instead of playerId state
+      if (data.playerId !== socket.id) {
+        addToast(`${data.playerName}: ${data.message}`, 'info');
+      }
+    };
+
+    const handleNewDeckAdded = (data) => {
+    console.log('🆕 New deck added:', data);
+      addToast(data.message, 'info');
+    };
+
+    const handlePlayerDrewCards = (data) => {
+    console.log('📚 Player drew cards:', data);
+    
+    let message = '';
+    if (data.fromPenalty) {
+      message = `${data.playerName} drew ${data.cardCount} penalty cards`;
+    } else {
+      message = `${data.playerName} drew ${data.cardCount} card(s)`;
     }
-  });
-
-  newSocket.on('newDeckAdded', (data) => {
-  console.log('🆕 New deck added:', data);
-  addToast(data.message, 'info');
-});
-
-newSocket.on('playerDrewCards', (data) => {
-  console.log('📚 Player drew cards:', data);
+    
+    if (data.newDeckAdded) {
+      message += ' NEW';
+    }
+    
+      addToast(message, 'info');
+    };
   
-  let message = '';
-  if (data.fromPenalty) {
-    message = `${data.playerName} drew ${data.cardCount} penalty cards`;
-  } else {
-    message = `${data.playerName} drew ${data.cardCount} card(s)`;
-  }
-  
-  if (data.newDeckAdded) {
-    message += ' 🆕';
-  }
-  
-  addToast(message, 'info');
-});
-  newSocket.on('drawComplete', (data) => {
+    const handleDrawComplete = (data) => {
     console.log('🎲 Draw completed:', data);
     setIsDrawing(false);
     setHasDrawnThisTurn(true);
@@ -2399,31 +1948,31 @@ newSocket.on('playerDrewCards', (data) => {
         `Drew ${data.drawnCards.length} cards.`,
         'info'
       );
-    }
-  });
+      }
+    };
 
-  newSocket.on('playerPassedTurn', (data) => {
+    const handlePlayerPassedTurn = (data) => {
     console.log('👤 Player passed turn:', data);
-    addToast(`${data.playerName} passed their turn`, 'info');
-  });
+      addToast(`${data.playerName} passed their turn`, 'info');
+    };
 
-  // Listen for timer updates from server
-  newSocket.on('timerUpdate', (timerData) => {
+    // Listen for timer updates from server
+    const handleTimerUpdate = (timerData) => {
     console.log('⏰ Timer update received:', timerData);
     setGlobalTimer({
       timeLeft: timerData.timeLeft,
       isWarning: timerData.isWarning,
       isActive: true
-    });
-  });
+      });
+    };
 
-  // Handler for play again errors
-  newSocket.on('playAgainError', (errorMsg) => {
+    // Handler for play again errors
+    const handlePlayAgainError = (errorMsg) => {
     console.log('❌ Play Again Error:', errorMsg);
-    addToast(`Failed to start new game: ${errorMsg}`, 'error');
-  });
+      addToast(`Failed to start new game: ${errorMsg}`, 'error');
+    };
 
-    newSocket.on('playAgainVoteUpdate', (voteData) => {
+    const handlePlayAgainVoteUpdate = (voteData) => {
     console.log('🗳️ [FRONTEND] Received playAgainVoteUpdate:', voteData);
     console.log('🗳️ Play again vote update:', voteData);
     
@@ -2440,10 +1989,10 @@ newSocket.on('playerDrewCards', (data) => {
     const lastVoter = voteData.votedPlayers[voteData.votedPlayers.length - 1];
     if (lastVoter && lastVoter.id !== playerIdRef.current) {
       addToast(`${lastVoter.name} voted to play again (${voteData.votedPlayers.length}/${voteData.totalPlayers})`, 'info');
-    }
-  });
+      }
+    };
 
-  newSocket.on('newGameStarted', (data) => {
+    const handleNewGameStarted = (data) => {
     console.log('🎮 New game started:', data);
     
     // Reset local state for new game
@@ -2463,23 +2012,23 @@ newSocket.on('playerDrewCards', (data) => {
     });
     
     // Show success notification
-    addToast(`🎮 ${data.message} Started by ${data.startedBy}`, 'success');
+    addToast(`${data.message} Started by ${data.startedBy}`, 'success');
     
     // Log the new game start
     console.log(`🎮 New game started with ${data.playerCount} players`);
-  });
+    };
 
-  // Tournament-specific socket listeners
-  newSocket.on('playerSafe', (data) => {
+    // Tournament-specific socket listeners
+    const handlePlayerSafe = (data) => {
     console.log('🏆 Player safe:', data);
-    addToast(`🏆 ${data.message}`, 'success');
+    addToast(`${data.message}`, 'success');
     // Trigger confetti only for the player who became safe
     if (data.playerId === playerIdRef.current) {
       fireConfetti();
-    }
-  });
+      }
+    };
 
-  newSocket.on('roundEnded', (data) => {
+    const handleRoundEnded = (data) => {
     console.log('🏁 Round ended:', data);
     setRoundEndData(data);
     setShowRoundEndModal(true);
@@ -2494,39 +2043,178 @@ newSocket.on('playerDrewCards', (data) => {
           return 0;
         }
         return prev - 1;
-      });
-    }, 1000);
-  });
+        });
+      }, 1000);
+    };
 
-  newSocket.on('tournamentFinished', (data) => {
+    const handleTournamentFinished = (data) => {
     console.log('🏆 Tournament finished:', data);
     setTournamentWinnerData(data);
     setShowTournamentWinnerModal(true);
-    addToast(`🏆 ${data.message}`, 'success');
+    addToast(`${data.message}`, 'success');
+    
     // Trigger confetti only for the tournament winner
     if (data.winnerId === playerIdRef.current) {
       fireConfetti();
-    }
-  });
+      
+      // Prompt guest winners to create account to save their achievement
+      if (!isAuthenticated) {
+        setTimeout(() => {
+          const shouldCreateAccount = window.confirm(
+            '🎉 Congratulations on winning!\n\n' +
+            'Want to save this victory?\n' +
+            'Create an account to:\n' +
+            '• Track your wins and achievements\n' +
+            '• Build your gaming statistics\n' +
+            '• Show off your victories to friends\n\n' +
+            'Create account now?'
+          );
+          
+          if (shouldCreateAccount) {
+            setShowAuthModal(true);
+          }
+        }, 2000); // Show after confetti
+      }
+    } else {
+      // Also prompt non-winners to create accounts for stats tracking
+      if (!isAuthenticated) {
+        setTimeout(() => {
+          const shouldCreateAccount = window.confirm(
+            'Great game!\n\n' +
+            'Want to track your gaming progress?\n' +
+            'Create an account to:\n' +
+            '• Save your game statistics\n' +
+            '• Track improvements over time\n' +
+            '• Unlock achievements\n\n' +
+            'Create account now?'
+          );
+          
+          if (shouldCreateAccount) {
+            setShowAuthModal(true);
+          }
+        }, 3000); // Show after celebration
+      }
+      }
+    };
 
-  newSocket.on('tournamentStatus', (data) => {
+    const handleTournamentStatus = (data) => {
     console.log('📊 Tournament status:', data);
-    setTournamentStatus(data);
-  });
+      setTournamentStatus(data);
+    };
 
-  newSocket.on('roundStarted', (data) => {
+    const handleRoundStarted = (data) => {
     console.log('🚀 Round started:', data);
-    addToast(`🚀 ${data.message}`, 'success');
+    addToast(`${data.message}`, 'success');
     setShowRoundEndModal(false);
-    setNextRoundTimer(0);
-  });
+      setNextRoundTimer(0);
+    };
 
-  return () => {
-    console.log('🔌 Cleaning up socket connection');
-    newSocket.close();
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []); // Intentionally empty dependency array to prevent reconnection loops
+    // Register all event handlers
+    socket.on('gameUpdate', handleGameUpdate);
+    socket.on('handUpdate', handleHandUpdate);
+    socket.on('error', handleError);
+    socket.on('success', handleSuccess);
+    socket.on('cardPlayed', handleCardPlayed);
+    socket.on('newDeckAdded', handleNewDeckAdded);
+    socket.on('playerDrewCards', handlePlayerDrewCards);
+    socket.on('drawComplete', handleDrawComplete);
+    socket.on('playerPassedTurn', handlePlayerPassedTurn);
+    socket.on('timerUpdate', handleTimerUpdate);
+    socket.on('playAgainError', handlePlayAgainError);
+    socket.on('playAgainVoteUpdate', handlePlayAgainVoteUpdate);
+    socket.on('newGameStarted', handleNewGameStarted);
+    socket.on('playerSafe', handlePlayerSafe);
+    socket.on('roundEnded', handleRoundEnded);
+    socket.on('tournamentFinished', handleTournamentFinished);
+    socket.on('tournamentStatus', handleTournamentStatus);
+    socket.on('roundStarted', handleRoundStarted);
+
+
+    // Cleanup function
+    return () => {
+      console.log('🔌 Cleaning up game socket event listeners');
+      socket.off('gameUpdate', handleGameUpdate);
+      socket.off('handUpdate', handleHandUpdate);
+      socket.off('error', handleError);
+      socket.off('success', handleSuccess);
+      socket.off('cardPlayed', handleCardPlayed);
+      socket.off('newDeckAdded', handleNewDeckAdded);
+      socket.off('playerDrewCards', handlePlayerDrewCards);
+      socket.off('drawComplete', handleDrawComplete);
+      socket.off('playerPassedTurn', handlePlayerPassedTurn);
+      socket.off('timerUpdate', handleTimerUpdate);
+      socket.off('playAgainError', handlePlayAgainError);
+      socket.off('playAgainVoteUpdate', handlePlayAgainVoteUpdate);
+      socket.off('newGameStarted', handleNewGameStarted);
+      socket.off('playerSafe', handlePlayerSafe);
+      socket.off('roundEnded', handleRoundEnded);
+      socket.off('tournamentFinished', handleTournamentFinished);
+      socket.off('tournamentStatus', handleTournamentStatus);
+      socket.off('roundStarted', handleRoundStarted);
+    };
+  }, [socket, gameState, playerId, isAuthenticated, addToast, isDrawing, playerIdRef, setHasDrawnThisTurn, setIsDrawing, setIsSkipping, setSelectedCards, setGameState, setPlayerHand, hasDrawnThisTurnRef, setPlayAgainVotes, setRoundEndData, setShowRoundEndModal, setNextRoundTimer, setTournamentWinnerData, setShowTournamentWinnerModal, setShowAuthModal, setTournamentStatus, setGlobalTimer]); // Dependencies for game event handlers
+
+  // Set playerId when socket is available and connected
+  useEffect(() => {
+    if (socket && socket.connected && socket.id) {
+      console.log('🔌 Setting playerId from socket:', socket.id);
+      setPlayerId(socket.id);
+    }
+  }, [socket, socket?.connected, socket?.id, setPlayerId]);
+
+  // Listen for connection events from ConnectionContext
+  useEffect(() => {
+    const handleConnectionEvent = (event, data) => {
+      if (event === 'connected' && data.socketId) {
+        console.log('🔌 Connection established, setting playerId:', data.socketId);
+        setPlayerId(data.socketId);
+        removeToast();
+        
+        // Request game state if we were in a game
+        if (gameId || (gameState && gameState.gameState !== 'waiting')) {
+          console.log('🎮 Requesting game state restoration after connection');
+          requestGameState();
+        }
+      }
+    };
+
+    const unsubscribe = addConnectionListener(handleConnectionEvent);
+    return () => unsubscribe();
+  }, [addConnectionListener, gameId, gameState, requestGameState, removeToast, setPlayerId]);
+
+  // Authentication event handlers
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleAuthenticated = (data) => {
+      console.log('✅ Socket authenticated as user:', data.user?.username);
+      if (data.user) {
+        setPlayerName(data.user.displayName || data.user.username);
+        // Migrate settings from localStorage if this is first login
+        if (playerId) {
+          authMigrateSettings(playerId);
+        }
+      }
+    };
+
+    const handleGuestConnected = () => {
+      console.log('✅ Connected as guest');
+    };
+
+    const handleConnectSuccess = (data) => {
+      console.log('✅ Connection confirmed by server:', data);
+    };
+
+    socket.on('authenticated', handleAuthenticated);
+    socket.on('guest_connected', handleGuestConnected);
+    socket.on('connect_success', handleConnectSuccess);
+
+    return () => {
+      socket.off('authenticated', handleAuthenticated);
+      socket.off('guest_connected', handleGuestConnected);
+      socket.off('connect_success', handleConnectSuccess);
+    };
+  }, [socket, playerId, authMigrateSettings, setPlayerName]);
 
   const parseTopCard = (cardString) => {
     if (!cardString) return null;
@@ -2541,39 +2229,48 @@ newSocket.on('playerDrewCards', (data) => {
       const topCard = parseTopCard(gameState.topCard);
       if (!topCard) return;
 
-      // Use the enhanced frontend validation
-      const valid = getValidCardsForSelection(playerHand, gameState, selectedCards, topCard);
-      
+      // Calculate valid cards with empty selection for UI highlighting
+      const valid = getValidCardsForSelection(playerHand, gameState, [], topCard);
       setValidCards(valid);
+      
+      // Clear invalid selected cards when top card changes
+      setSelectedCards(prev => {
+        if (prev.length > 0) {
+          const stillValid = prev.filter(selectedCard => 
+            valid.some(validCard => validCard.id === selectedCard.id)
+          );
+          
+          if (stillValid.length !== prev.length) {
+            console.log('🔄 Clearing invalid selected cards due to game state change');
+            return stillValid;
+          }
+        }
+        return prev;
+      });
     } else {
       setValidCards([]);
+      setSelectedCards([]); // Clear selected cards when no valid cards
     }
-  }, [playerHand, gameState, selectedCards]);
+  }, [playerHand, gameState, setSelectedCards, setValidCards]);
 
-// Listen for timer updates from server
-useEffect(() => {
-  if (!socket) return;
+  // Update valid cards when selected cards change (for stacking)
+  useEffect(() => {
+    if (gameState && playerHand.length > 0) {
+      const topCard = parseTopCard(gameState.topCard);
+      if (!topCard) return;
 
-  socket.on('timerUpdate', (timerData) => {
-    console.log('⏰ Timer update received:', timerData);
-    setGlobalTimer({
-      timeLeft: timerData.timeLeft,
-      isWarning: timerData.isWarning,
-      isActive: true
-    });
-  });
-
-  return () => {
-    socket.off('timerUpdate');
-  };
-}, [socket]);
+      // Calculate valid cards with current selection for stacking logic
+      const valid = getValidCardsForSelection(playerHand, gameState, selectedCards, topCard);
+      setValidCards(valid);
+    }
+  }, [selectedCards, playerHand, gameState, setValidCards]);
 
 // Handle game state changes to manage timer visibility
 useEffect(() => {
   if (gameState?.gameState !== 'playing') {
     setGlobalTimer(prev => ({ ...prev, isActive: false }));
   }
-}, [gameState?.gameState]);
+}, [gameState?.gameState, setGlobalTimer]);
 
   const startGame = () => {
   console.log('🚀 Starting game:', gameState?.gameId);
@@ -2591,12 +2288,13 @@ useEffect(() => {
   // Reset states when turn changes away from us
   if (gameState?.currentPlayerId !== playerId) {
     setIsSkipping(false);
+    setSelectedCards([]); // Clear selected cards when it's not our turn
     // Cancel any pending skip actions
     if (lastSkipTimeRef.current && Date.now() - lastSkipTimeRef.current < 1000) {
       lastSkipTimeRef.current = 0; // Reset to prevent stale skips
     }
   }
-}, [gameState?.currentPlayerId, playerId]);
+}, [gameState?.currentPlayerId, playerId, setSelectedCards]);
 
   // Create a debug game on the server
   const startDebugGame = () => {
@@ -2617,35 +2315,18 @@ useEffect(() => {
     setShowDebugPanel(false);
   };
 
-  const joinGame = () => {
-    if (!playerName.trim() || !gameId.trim()) {
-      addToast('Please enter both name and game ID', 'error');
-      return;
-    }
-
-    console.log('🚪 Joining game:', gameId, 'as', playerName);
-    socket.emit('joinGame', {
-      gameId: gameId.trim(),
-      playerName: playerName.trim()
-    });
-  };
-
-  const createGame = () => {
-    if (!playerName.trim()) {
-      addToast('Please enter your name', 'error');
-      return;
-    }
-
-    console.log('🎮 Creating game as:', playerName);
-    socket.emit('createGame', {
-      playerName: playerName.trim()
-    });
-  };
 
   
 
   const handleCardSelect = (card) => {
     console.log(`🎯 Selecting card: ${card.rank} of ${card.suit} (ID: ${card.id})`);
+    
+    // Only allow card selection when it's the player's turn
+    if (!isMyTurn) {
+      addToast('⏳ Wait for your turn to select cards', 'warning');
+      return;
+    }
+    
     const isSelected = selectedCards.some(sc => isSameCard(sc, card));
     
     if (isSelected) {
@@ -2679,6 +2360,30 @@ useEffect(() => {
   const playSelectedCards = () => {
     if (selectedCards.length === 0) {
       addToast('Please select at least one card', 'error');
+      return;
+    }
+
+    // Check if it's the player's turn
+    if (!isMyTurn) {
+      addToast('⏳ Wait for your turn to play cards', 'warning');
+      return;
+    }
+    
+    // Validate that all selected cards are still valid against current game state
+    const topCard = parseTopCard(gameState.topCard);
+    if (!topCard) {
+      addToast('Unable to determine current top card', 'error');
+      return;
+    }
+    
+    const validCards = getValidCardsForSelection(playerHand, gameState, selectedCards, topCard);
+    const allSelectedAreValid = selectedCards.every(selectedCard => 
+      validCards.some(validCard => validCard.id === selectedCard.id)
+    );
+    
+    if (!allSelectedAreValid) {
+      addToast('Selected cards are no longer valid - game state has changed', 'error');
+      setSelectedCards([]); // Clear invalid selection
       return;
     }
 
@@ -2768,6 +2473,7 @@ useEffect(() => {
       }
     });
   };
+
 
   // Allow the player to manually skip their turn after drawing
   const skipTurn = () => {
@@ -2886,6 +2592,65 @@ const handleStartNewGame = () => {
   addToast('Starting new game...', 'info');
 };
 
+// Show auth upgrade prompt for guests (currently unused, kept for future features)
+// const showAuthUpgradePrompt = (action = 'access this feature') => {
+//   if (isAuthenticated) return false;
+//   
+//   const shouldUpgrade = window.confirm(
+//     `🎮 Want to ${action}?\n\n` +
+//     '✨ Create an account to:\n' +
+//     '• Save your game progress and statistics\n' +
+//     '• Track achievements and leaderboards\n' +
+//     '• Sync settings across devices\n' +
+//     '• Access social features\n\n' +
+//     'Continue as guest or create account?'
+//   );
+//   
+//   if (shouldUpgrade) {
+//     setShowAuthModal(true);
+//     return true;
+//   }
+//   
+//   return false;
+// };
+
+// Handle logout with confirmation
+const handleLogout = async () => {
+  // Show confirmation dialog
+  const confirmLogout = window.confirm(
+    '🚪 Are you sure you want to logout?\n\n' +
+    '• Your current game will continue\n' +
+    '• Your settings will be saved\n' +
+    '• You can sign back in anytime'
+  );
+
+  if (!confirmLogout) {
+    return;
+  }
+
+  try {
+    // Save current game state info for toast
+    const wasInGame = gameState?.gameId && gameState?.gameState !== 'waiting';
+    
+    // Perform logout
+    await logout();
+    
+    // Show success message
+    if (wasInGame) {
+      addToast('✅ Logged out successfully. Your game continues as guest.', 'success');
+    } else {
+      addToast('✅ Logged out successfully. You can continue playing as guest.', 'success');
+    }
+    
+    // Close any open modals
+    setShowAuthModal(false);
+    
+  } catch (error) {
+    console.error('❌ Logout error:', error);
+    addToast('❌ Logout failed. Please try again.', 'error');
+  }
+};
+
   const sliderStyles = `
     input[type="range"] {
       -webkit-appearance: none;
@@ -2964,123 +2729,63 @@ const handleStartNewGame = () => {
 
   if (!gameState) {
     return (
-      <div style={{ 
-        padding: '20px', 
-        maxWidth: '400px', 
-        margin: '50px auto',
-        backgroundColor: '#ecf0f1',
-        minHeight: '100vh'
-      }}>
-        <div style={{
-          backgroundColor: '#fff',
-          borderRadius: '10px',
-          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-          padding: '30px'
-        }}>
-          <h1 style={{ textAlign: 'center', color: '#2c3e50', margin: '0 0 30px 0' }}>
-            🎴 Crazy 8's
-          </h1>
-          
-          {/* Debug Info */}
-          <div style={{
-            backgroundColor: '#f8f9fa',
-            padding: '10px',
-            borderRadius: '5px',
-            marginBottom: '20px',
-            fontSize: '12px',
-            color: '#6c757d'
-          }}>
-            🆔 Your Socket ID: {playerId}
-          </div>
-          
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#2c3e50' }}>
-              Your Name:
-            </label>
-            <input
-              type="text"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '2px solid #ddd',
-                borderRadius: '8px',
-                fontSize: '16px',
-                boxSizing: 'border-box'
-              }}
-              placeholder="Enter your name"
-            />
-          </div>
-
-          <div style={{ marginBottom: '25px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#2c3e50' }}>
-              Game ID (to join existing game):
-            </label>
-            <input
-              type="text"
-              value={gameId}
-              onChange={(e) => setGameId(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '2px solid #ddd',
-                borderRadius: '8px',
-                fontSize: '16px',
-                boxSizing: 'border-box'
-              }}
-              placeholder="Enter game ID"
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              onClick={createGame}
-              style={{
-                flex: 1,
-                padding: '15px',
-                backgroundColor: '#27ae60',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                transition: 'background-color 0.2s ease'
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#229954'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = '#27ae60'}
-            >
-              🎮 Create Game
-            </button>
-            <button
-              onClick={joinGame}
-              style={{
-                flex: 1,
-                padding: '15px',
-                backgroundColor: '#3498db',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                transition: 'background-color 0.2s ease'
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
-            >
-              🚪 Join Game
-            </button>
-          </div>
-        </div>
+      <>
+        <MainMenu 
+          onGameCreated={({ playerName, resetLoading }) => {
+            setPlayerName(playerName);
+            if (!playerName.trim()) {
+              addToast('Please enter your name', 'error');
+              if (resetLoading) resetLoading();
+              return;
+            }
+            console.log('🎮 Creating game as:', playerName);
+            
+            // Store resetLoading callback to call it when we get a response
+            const resetLoadingRef = { current: resetLoading };
+            
+            // Set up one-time listeners for the response
+            const handleGameCreatedSuccess = (data) => {
+              console.log('✅ Game created successfully:', data);
+              if (resetLoadingRef.current) resetLoadingRef.current();
+              socket.off('gameUpdate', handleGameCreatedSuccess);
+              socket.off('error', handleGameCreatedError);
+            };
+            
+            const handleGameCreatedError = (error) => {
+              console.log('❌ Game creation failed:', error);
+              if (resetLoadingRef.current) resetLoadingRef.current();
+              socket.off('gameUpdate', handleGameCreatedSuccess);
+              socket.off('error', handleGameCreatedError);
+            };
+            
+            socket.once('gameUpdate', handleGameCreatedSuccess);
+            socket.once('error', handleGameCreatedError);
+            
+            socket.emit('createGame', {
+              playerName: playerName.trim()
+            });
+          }}
+          onGameJoined={({ gameId, playerName }) => {
+            setPlayerName(playerName);
+            setGameId(gameId);
+            if (!playerName.trim() || !gameId.trim()) {
+              addToast('Please enter both name and game ID', 'error');
+              return;
+            }
+            console.log('🚪 Joining game:', gameId, 'as', playerName);
+            socket.emit('joinGame', {
+              gameId: gameId.trim(),
+              playerName: playerName.trim()
+            });
+          }}
+        />
         
         {/* Toast Notifications */}
         <ToastContainer 
           toasts={toasts}
           onRemoveToast={removeToast}
         />
-      </div>
+      </>
     );
   }
 
@@ -3104,38 +2809,175 @@ const handleStartNewGame = () => {
       boxSizing: 'border-box',
       overflow: 'hidden'
     }}>
-      <h1 style={{ textAlign: 'center', color: '#2c3e50', margin: '0 0 20px 0' }}>
-        🎴 Crazy 8's
-        <button
-          onClick={() => setShowSettings(true)}
-          style={{
-            marginLeft: '15px',
-            padding: '8px 12px',
-            backgroundColor: '#95a5a6',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: 'bold'
-          }}
-        >
-          ⚙️ Settings
-        </button>
-      </h1>
-
-      {/* Debug Info */}
+      {/* Enhanced Header with User Info */}
       <div style={{
-        backgroundColor: '#f8f9fa',
-        padding: '10px',
-        borderRadius: '5px',
-        marginBottom: '15px',
-        fontSize: '12px',
-        color: '#6c757d',
-        textAlign: 'center'
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '20px',
+        backgroundColor: '#fff',
+        padding: '15px 20px',
+        borderRadius: '12px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+        flexWrap: 'wrap',
+        gap: '10px'
       }}>
-        🆔 My ID: {playerId} | Current Player ID: {gameState.currentPlayerId} | Is My Turn: {isMyTurn ? 'YES' : 'NO'}
+        {/* Game Title */}
+        <h1 style={{ 
+          color: '#2c3e50', 
+          margin: 0, 
+          fontSize: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          🎴 Crazy 8's
+        </h1>
+
+        {/* User Info & Controls */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          flexWrap: 'wrap'
+        }}>
+          {/* User Status Display */}
+          {isAuthenticated ? (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '8px 12px',
+              backgroundColor: '#f8f9fa',
+              borderRadius: '8px',
+              border: '1px solid #e9ecef'
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <div style={{
+                  width: '8px',
+                  height: '8px',
+                  backgroundColor: '#27ae60',
+                  borderRadius: '50%'
+                }}></div>
+                <span style={{
+                  color: '#2c3e50',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}>
+                  {user?.displayName || user?.username}
+                </span>
+              </div>
+              <div style={{
+                fontSize: '12px',
+                color: '#6c757d',
+                borderLeft: '1px solid #dee2e6',
+                paddingLeft: '8px'
+              }}>
+                Member since {new Date(user?.createdAt).toLocaleDateString('en-US', { 
+                  month: 'short', 
+                  year: 'numeric' 
+                })}
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 12px',
+              backgroundColor: '#fff3cd',
+              borderRadius: '8px',
+              border: '1px solid #ffeaa7'
+            }}>
+              <div style={{
+                width: '8px',
+                height: '8px',
+                backgroundColor: '#f39c12',
+                borderRadius: '50%'
+              }}></div>
+              <span style={{
+                color: '#856404',
+                fontSize: '14px',
+                fontWeight: 'bold'
+              }}>
+                Playing as Guest
+              </span>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div style={{
+            display: 'flex',
+            gap: '8px'
+          }}>
+            {isAuthenticated ? (
+              <>
+                <button
+                  onClick={() => setShowUserDashboard(true)}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: '#3498db',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  👤 Dashboard
+                </button>
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: '#e74c3c',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  🚪 Logout
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setShowAuthModal(true)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#27ae60',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                🔑 Sign In / Register
+              </button>
+            )}
+            
+          </div>
+        </div>
       </div>
+
 
       {/* Game Info */}
       <div style={{ 
@@ -3146,27 +2988,45 @@ const handleStartNewGame = () => {
         borderRadius: '10px',
         boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-          <div>
-            <strong>Round:</strong> {gameState.roundNumber}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1', textAlign: 'left' }}>
+            <strong style={{ color: '#000' }}>Round:</strong> <span style={{ color: '#000' }}>{gameState.roundNumber}</span>
           </div>
-          <div style={{ 
-            color: isMyTurn ? '#e74c3c' : '#2c3e50', 
-            fontWeight: isMyTurn ? 'bold' : 'normal',
-            textAlign: 'center',
-            flex: '1 1 200px'
-          }}>
-            <strong>Current Player:</strong> {gameState.currentPlayer}
+          
+          <div style={{ flex: '1', textAlign: 'center' }}>
+            <button
+              onClick={() => setShowSettings(true)}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#95a5a6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 'bold',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#7f8c8d'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#95a5a6'}
+            >
+              ⚙️ Settings
+            </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div>
-              <strong>Game ID:</strong> 
+          
+          <div style={{ flex: '1', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+              <strong style={{ color: '#000' }}>Game ID:</strong> 
               <span style={{ 
                 fontFamily: 'monospace', 
                 backgroundColor: '#f8f9fa', 
                 padding: '2px 6px', 
                 borderRadius: '4px',
-                marginLeft: '5px'
+                marginLeft: '5px',
+                color: '#000'
               }}>
                 {gameState.gameId}
               </span>
@@ -3187,7 +3047,8 @@ const handleStartNewGame = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 width: '24px',
-                height: '24px'
+                height: '24px',
+                flexShrink: 0
               }}
               title={copiedGameId ? 'Copied!' : 'Copy Game ID'}
             >
@@ -3215,6 +3076,35 @@ const handleStartNewGame = () => {
             >
               🚀 Start Game ({gameState.players.length} players)
             </button>
+            
+            {/* Auth Upgrade Hint for Guests */}
+            {!isAuthenticated && (
+              <div style={{
+                marginTop: '10px',
+                padding: '8px 12px',
+                backgroundColor: '#fff3cd',
+                border: '1px solid #ffeaa7',
+                borderRadius: '6px',
+                fontSize: '12px',
+                color: '#856404'
+              }}>
+                💡 <strong>Tip:</strong> Create an account to save your game stats and track achievements!{' '}
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#27ae60',
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  Sign up now
+                </button>
+              </div>
+            )}
           </div>
         )}
         
@@ -3233,6 +3123,67 @@ const handleStartNewGame = () => {
             🎯 It's your turn!
           </div>
         )}
+        
+        {/* Tournament Dropdown Toggle - Only show if tournament is active */}
+        {gameState?.tournament?.active && (
+          <>
+            <div 
+              onClick={() => setShowTournamentInfo(!showTournamentInfo)}
+              style={{
+                backgroundColor: '#f8f9fa',
+                borderTop: '1px solid #dee2e6',
+                padding: '8px 20px',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px',
+                color: '#6c757d',
+                transition: 'all 0.2s ease',
+                marginTop: '10px',
+                borderRadius: '0 0 10px 10px'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#e9ecef'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#f8f9fa'}
+            >
+              <FaTrophy style={{ fontSize: '12px', color: 'gold' }} />
+              <span>Tournament Info</span>
+              <span style={{
+                transform: showTournamentInfo ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+                fontSize: '10px'
+              }}>
+                ▼
+              </span>
+            </div>
+            
+            {/* Tournament Info Dropdown */}
+            <div style={{
+              maxHeight: showTournamentInfo ? '500px' : '0px',
+              overflow: 'hidden',
+              transition: 'max-height 0.3s ease-in-out',
+              backgroundColor: '#fff',
+              borderRadius: '0 0 10px 10px'
+            }}>
+              <div style={{ 
+                padding: showTournamentInfo ? '15px 20px' : '0 20px',
+                transition: 'padding 0.3s ease-in-out'
+              }}>
+                <TournamentStatus gameState={gameState} />
+                <SafePlayerNotification 
+                  isPlayerSafe={(gameState?.players?.find(p => p.id === playerId)?.isSafe || false) && gameState?.gameState !== 'finished' && gameState?.tournament?.currentRound > 1}
+                  playerName={playerName}
+                  gameState={gameState}
+                  onStartNextRound={handleStartNextRound}
+                  playerId={playerId}
+                  currentPlayerId={playerId}
+                />
+                <TournamentPlayerDisplay players={gameState?.players || []} gameState={gameState} />
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Players */}
@@ -3247,13 +3198,13 @@ const handleStartNewGame = () => {
         <div
             key={index}
             style={{
-            padding: '12px 18px',
+            padding: '8px 16px',
             backgroundColor: player.isCurrentPlayer ? '#3498db' : '#95a5a6',
             color: '#fff',
-            borderRadius: '25px',
+            borderRadius: '20px',
             fontWeight: 'bold',
             textAlign: 'center',
-            minWidth: '140px',
+            minWidth: '100px',
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
             transform: player.isCurrentPlayer ? 'scale(1.05)' : 'scale(1)',
             transition: 'all 0.3s ease',
@@ -3261,17 +3212,11 @@ const handleStartNewGame = () => {
             }}
         >
             <div style={{ fontSize: '14px' }}>
-            {player.name}
+            {player.name} ({player.handSize})
             {!player.isConnected && ' 🔴'}
             {player.id === playerId && ' (YOU)'}
-            </div>
-            <div style={{ fontSize: '12px', opacity: 0.9 }}>
-            {player.handSize} cards
             {player.isSafe && ' ✅'}
             {player.isEliminated && ' ❌'}
-            </div>
-            <div style={{ fontSize: '10px', opacity: 0.7 }}>
-            ID: {player.id?.slice(-4)}
             </div>
             
             {/* TIMER COMPONENT ADDED HERE */}
@@ -3285,19 +3230,7 @@ const handleStartNewGame = () => {
     </div>
 
       {/* Game Board */}
-      {/* Tournament Components */}
-      <TournamentStatus gameState={gameState} />
-      
-      <SafePlayerNotification 
-        isPlayerSafe={(gameState?.players?.find(p => p.id === playerId)?.isSafe || false) && gameState?.gameState !== 'finished' && gameState?.tournament?.currentRound > 1}
-        playerName={playerName}
-        gameState={gameState}
-        onStartNextRound={handleStartNextRound}
-        playerId={playerId}
-        currentPlayerId={playerId}
-      />
-      
-      <TournamentPlayerDisplay players={gameState?.players || []} gameState={gameState} />
+
 
       <GameBoard 
         gameState={gameState}
@@ -3731,7 +3664,7 @@ const handleStartNewGame = () => {
               onMouseEnter={(e) => e.target.style.backgroundColor = '#5a6268'}
               onMouseLeave={(e) => e.target.style.backgroundColor = '#6c757d'}
             >
-              🏠 Return to Lobby
+              <FaHome style={{ marginRight: '8px' }} />Return to Lobby
             </button>
           </div>
 
@@ -3763,6 +3696,24 @@ const handleStartNewGame = () => {
         onSettingsChange={handleSettingsChange}
         setToasts={setToasts}
       />
+
+
+      {/* Authentication Modal */}
+      {showAuthModal && (
+        <AuthModal onClose={() => setShowAuthModal(false)} />
+      )}
+
+      {/* User Dashboard Modal */}
+      {showUserDashboard && (
+        <UserDashboard 
+          onClose={() => setShowUserDashboard(false)}
+          onJoinGame={() => {
+            setShowUserDashboard(false);
+            // Game is already active, just close dashboard
+          }}
+          currentGameState={gameState}
+        />
+      )}
 
       {/* Tournament Modals */}
       <RoundEndModal 
@@ -3889,6 +3840,17 @@ const handleStartNewGame = () => {
         ${sliderStyles}
       `}</style>
     </div>
+  );
+};
+
+// Main App component with AuthProvider and ConnectionProvider wrapper
+const App = () => {
+  return (
+    <AuthProvider>
+      <ConnectionProvider>
+        <GameApp />
+      </ConnectionProvider>
+    </AuthProvider>
   );
 };
 

@@ -15,7 +15,9 @@ Crazy 8's is a strategic card game similar to Uno, played with a standard 52-car
 - **Customizable settings** (experienced mode, visual preferences)
 - **Responsive design** with mobile support
 - **Real-time chat** and game notifications
+- **Robust disconnection/reconnection system** with session preservation
 - **Comprehensive test suite** with 95%+ coverage
+- **Duplicate game creation prevention** (frontend protection implemented)
 
 ## 🚀 Quick Start
 
@@ -148,6 +150,37 @@ When you draw penalty cards (from Aces/2s):
 - **Aces counter**: Other Aces or same-suit 2s
 - **2s counter**: Other 2s or same-suit Aces
 
+## 🔌 Disconnection/Reconnection System
+
+The game features a sophisticated reconnection system that preserves your game session and allows seamless recovery from network interruptions.
+
+### How It Works
+- **Session Preservation**: Your game state is automatically saved for 30 minutes after disconnection
+- **Automatic Reconnection**: The game attempts to reconnect automatically using exponential backoff
+- **Game State Restoration**: Your hand, turn state, and game progress are fully restored
+- **Visual Feedback**: Real-time connection status with latency monitoring
+
+### Connection States
+- 🟢 **Connected**: Stable connection with server
+- 🟡 **Connecting**: Initial connection in progress
+- 🟠 **Reconnecting**: Attempting to reconnect after interruption
+- 🔴 **Disconnected**: No connection, but session preserved
+- ❌ **Failed**: Connection failed after maximum attempts
+
+### Reconnection Features
+- **Network Blip Detection**: Brief disconnections (< 5 seconds) are handled gracefully
+- **Mid-Turn Recovery**: If you disconnect during your turn, you can resume exactly where you left off
+- **Guest & Authenticated Users**: Full support for both guest players and authenticated users
+- **Multi-Player Coordination**: Other players see your connection status and receive notifications
+- **Edge Case Handling**: Special handling for disconnections during round transitions, eliminations, etc.
+
+### User Experience
+- **Connection Status Indicator**: Always-visible indicator in the top-right corner
+- **Smart Notifications**: Contextual messages about connection events
+- **Latency Monitoring**: Real-time ping display with quality ratings
+- **Progressive Reconnection**: Up to 5 automatic attempts with increasing delays
+- **Manual Recovery**: Clear instructions if automatic reconnection fails
+
 ## 🏗️ Project Structure
 
 ```
@@ -160,39 +193,136 @@ crazy8s-game/
 │   │   │   ├── Card.js       # Card entity
 │   │   │   ├── Deck.js       # Deck management
 │   │   │   └── Player.js     # Player entity
-│   │   ├── controllers/      # API request handlers
+│   │   ├── controllers/      # API request handlers & authentication
 │   │   ├── routes/           # Express route definitions
+│   │   ├── stores/           # Session and state management
+│   │   │   ├── SessionStore.js # Session persistence for reconnection
+│   │   │   └── UserStore.js    # User management and authentication
 │   │   ├── utils/            # Utility functions
-│   │   ├── app.js           # Express app setup
-│   │   └── server.js        # Socket.IO server with turn control logic
+│   │   │   ├── connectionHandler.js # Reconnection edge case handling
+│   │   │   ├── eventEmitter.js # Standardized event emissions
+│   │   │   ├── connectionLogger.js # Connection monitoring & analytics
+│   │   │   └── socketValidator.js # Socket validation utilities
+│   │   ├── middleware/       # Express middleware
+│   │   ├── config/          # Database and configuration
+│   │   ├── migrations/      # Database migrations
+│   │   ├── app.js           # Express app setup with authentication
+│   │   └── server.js        # Socket.IO server with enhanced reconnection
 │   ├── tests/               # Comprehensive test suites
 │   │   ├── game.test.js     # Core game logic tests (150+ tests)
 │   │   ├── cardPlayLogic.test.js # Validation system tests (200+ tests)
-│   │   └── crazy8.test.js   # Integration tests
+│   │   ├── crazy8.test.js   # Integration tests
+│   │   └── test-reconnection.js # Reconnection system tests
 │   └── package.json
 ├── frontend/
 │   ├── src/
-│   │   ├── components/      # React components
-│   │   │   └── App.js       # Complete game interface with stacking UI
+│   │   ├── components/      # React components (modular architecture)
+│   │   │   ├── App.js       # Main application component
+│   │   │   ├── auth/        # Authentication components
+│   │   │   │   ├── AuthModal.js    # Login/register modal
+│   │   │   │   ├── Login.js        # Login form
+│   │   │   │   ├── Register.js     # Registration form
+│   │   │   │   ├── Profile.js      # User profile
+│   │   │   │   └── UserDashboard.js # User dashboard
+│   │   │   ├── game/        # Game-specific components
+│   │   │   │   └── Card.js         # Individual card component
+│   │   │   ├── ui/          # Reusable UI components
+│   │   │   │   ├── Toast.js        # Toast notification
+│   │   │   │   ├── ToastContainer.js # Toast container
+│   │   │   │   └── TurnTimer.js     # Turn timer
+│   │   │   ├── ConnectionStatus.js # Real-time connection indicator
+│   │   │   └── ConnectionNotifications.js # Toast notifications
+│   │   ├── contexts/        # React context providers
+│   │   │   ├── AuthContext.js      # Authentication state
+│   │   │   └── ConnectionContext.js # Connection state management
+│   │   ├── hooks/           # Custom React hooks
+│   │   │   ├── useGameState.js     # Game state management
+│   │   │   ├── useSettings.js      # Settings management
+│   │   │   ├── useToasts.js        # Toast notifications
+│   │   │   ├── useModals.js        # Modal state
+│   │   │   ├── usePlayerHand.js    # Player hand logic
+│   │   │   ├── useTimer.js         # Timer functionality
+│   │   │   ├── useTournament.js    # Tournament logic
+│   │   │   ├── usePlayAgainVoting.js # Voting system
+│   │   │   └── useReconnectionHandler.js # Reconnection logic
+│   │   ├── utils/           # Utility functions
+│   │   │   ├── cardUtils.js        # Card manipulation utilities
+│   │   │   ├── cardValidation.js   # Card validation logic
+│   │   │   ├── animationUtils.js   # Animation helpers
+│   │   │   ├── settingsMigration.js # Settings migration
+│   │   │   ├── socketAuth.js       # Socket authentication
+│   │   │   └── theme.js            # Theme utilities
 │   │   ├── styles/          # CSS styling
 │   │   └── index.js         # React entry point
 │   ├── public/
 │   └── package.json
+├── claude-workspace/        # Documentation and development notes
+│   ├── COMPONENT_DOCUMENTATION.md # Comprehensive component docs
+│   ├── DEVELOPER_GUIDE.md   # Development guidelines
+│   └── [other documentation files]
 └── README.md
 ```
+
+## 🔄 Recent Refactoring (2024)
+
+The frontend codebase underwent a major refactoring to improve maintainability, reusability, and developer experience:
+
+### Refactoring Highlights
+
+#### **Modular Component Architecture**
+- **Before**: Monolithic `App.js` component (1000+ lines)
+- **After**: Modular components organized by feature (`auth/`, `game/`, `ui/`)
+- **Benefits**: Easier maintenance, better collaboration, improved testing
+
+#### **Custom Hooks Extraction**
+- Extracted reusable logic into 10+ custom hooks
+- State management separated from UI concerns
+- Improved code reusability across components
+
+#### **Context Providers**
+- **AuthContext**: Centralized authentication state and methods
+- **ConnectionContext**: Real-time connection management
+- **Benefits**: Eliminated prop drilling, cleaner component APIs
+
+#### **Authentication System**
+- Complete user authentication with JWT tokens
+- Local settings migration to authenticated accounts
+- Profile management and persistent settings
+- Guest mode support maintained
+
+#### **Enhanced Documentation**
+- Comprehensive JSDoc documentation for all components and hooks
+- Detailed component documentation in `claude-workspace/`
+- Code quality improvements and inline comments
+
+### Migration Benefits
+
+1. **Developer Experience**: Clearer code organization and easier onboarding
+2. **Maintainability**: Smaller, focused components easier to debug and modify
+3. **Reusability**: Components and hooks can be reused across the application
+4. **Testing**: Better unit test coverage with isolated components
+5. **Performance**: Optimized re-rendering and code splitting opportunities
+
+For detailed component documentation, see [`claude-workspace/COMPONENT_DOCUMENTATION.md`](claude-workspace/COMPONENT_DOCUMENTATION.md).
 
 ## 🔧 Technical Implementation
 
 ### Backend Architecture
 - **Express.js** for RESTful API endpoints
-- **Socket.IO** for real-time multiplayer communication
+- **Socket.IO** for real-time multiplayer communication with enhanced reconnection
 - **Advanced Game Engine** with sequential turn simulation
 - **Multi-stage Validation System** with detailed error feedback
+- **Session Store** for disconnection/reconnection state management
+- **Connection Handler** for edge case scenarios and network blips
+- **Event Emitter System** for standardized client communication
 - **In-memory storage** for game state (easily extensible to database)
 
 ### Frontend Architecture
 - **React** with modern hooks and state management
-- **Socket.IO Client** for real-time server communication
+- **Socket.IO Client** for real-time server communication with auto-reconnection
+- **Connection Context** for centralized connection state management
+- **Reconnection Hook** for game state restoration and edge case handling
+- **Connection Status Components** for real-time visual feedback
 - **Local Storage** for user settings persistence
 - **Responsive CSS** with mobile-first design
 - **Advanced Card Selection UI** with visual stacking indicators
@@ -208,7 +338,8 @@ crazy8s-game/
 #### Real-time Multiplayer
 - **Instant game state synchronization**
 - **Live player actions and chat**
-- **Automatic reconnection handling**
+- **Robust disconnection/reconnection system** with session preservation
+- **Automatic reconnection handling** with game state restoration
 - **Advanced debugging tools** for turn control analysis
 
 #### Card Stacking Interface
@@ -265,6 +396,7 @@ npm run test:coverage      # Coverage report
 - [x] Real-time multiplayer with comprehensive debugging
 - [x] Advanced UI with visual stacking indicators
 - [x] Penalty card system with counter mechanics
+- [x] Robust disconnection/reconnection system with session preservation
 - [x] Comprehensive test coverage (95%+)
 - [x] Responsive design with mobile support
 
@@ -304,6 +436,23 @@ This project is licensed under the MIT License.
 - React community for excellent documentation
 - Jest testing framework for comprehensive testing
 - Contributors and beta testers who helped refine the stacking logic
+
+## 🔧 Known Issues & Limitations
+
+### Duplicate Game Creation
+**Status**: Partially Fixed (Frontend Protection Only)
+
+- **Issue**: Multiple rapid clicks on "Create Game" can create duplicate games
+- **Current Fix**: Frontend prevents duplicate button clicks with loading state protection
+- **Limitation**: Backend duplicate prevention mechanism is not functioning correctly
+- **Impact**: Users who bypass frontend protection may still create duplicate games
+- **Recommendation**: Always wait for game creation to complete before clicking again
+
+### Best Practices for Game Creation
+- Click "Create Game" once and wait for response
+- Don't refresh the page during game creation
+- If game creation appears stuck, wait 5 seconds before trying again
+- Report persistent issues through GitHub
 
 ## 📞 Support
 
