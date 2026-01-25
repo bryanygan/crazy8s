@@ -4,6 +4,9 @@ import { AuthModal, UserDashboard } from './auth';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ConnectionProvider, useConnection } from '../contexts/ConnectionContext';
 import MainMenu from './MainMenu';
+
+// Tutorial system imports
+import { TutorialProvider, useTutorialContext, TutorialOverlay } from '../tutorial';
 import {
   validateCardStackFrontend,
   canStackCardsFrontend
@@ -119,25 +122,27 @@ const PlayerHand = ({ cards, validCards = [], selectedCards = [], onCardSelect, 
   const cardGroups = getCardGroups();
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      margin: '20px 0',
-      padding: '15px 15px 25px 15px',
-      backgroundColor: '#2ecc71',
-      borderRadius: '15px',
-      minHeight: '180px',
-      boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-      width: '100%',
-      maxWidth: '100vw',
-      boxSizing: 'border-box',
-      overflow: 'visible'
-    }}>
-      <div style={{ 
-        color: '#fff', 
-        fontSize: '14px', 
-        fontWeight: 'bold', 
+    <div
+      data-tutorial="player-hand"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        margin: '20px 0',
+        padding: '15px 15px 25px 15px',
+        backgroundColor: '#2ecc71',
+        borderRadius: '15px',
+        minHeight: '180px',
+        boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+        width: '100%',
+        maxWidth: '100vw',
+        boxSizing: 'border-box',
+        overflow: 'visible'
+      }}>
+      <div style={{
+        color: '#fff',
+        fontSize: '14px',
+        fontWeight: 'bold',
         marginBottom: '10px',
         textAlign: 'center'
       }}>
@@ -227,8 +232,9 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
           <div style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold' }}>
             Draw Pile
           </div>
-          <div 
+          <div
             onClick={onDrawCard}
+            data-tutorial="draw-pile"
             style={{
               width: '80px',
               height: '120px',
@@ -294,7 +300,8 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
             Top Card
           </div>
           {topCard ? (
-            <div 
+            <div
+              data-tutorial="discard-pile"
               style={{
                 width: '90px',        // Increased from 60px
                 height: '135px',      // Increased from 90px
@@ -416,13 +423,15 @@ const SuitSelector = ({ onSuitSelect, onCancel }) => {
       justifyContent: 'center',
       zIndex: 1000
     }}>
-      <div style={{
-        backgroundColor: '#fff',
-        padding: '30px',
-        borderRadius: '15px',
-        textAlign: 'center',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
-      }}>
+      <div
+        data-tutorial="suit-selector"
+        style={{
+          backgroundColor: '#fff',
+          padding: '30px',
+          borderRadius: '15px',
+          textAlign: 'center',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+        }}>
         <h3 style={{ margin: '0 0 20px 0', color: '#2c3e50' }}>Choose a Suit for your 8</h3>
         <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
           {suits.map(suit => (
@@ -1483,6 +1492,9 @@ const GameApp = () => {
     tournamentWinnerData, setTournamentWinnerData, setTournamentStatus
   } = useTournament();
   const { playAgainVotes, setPlayAgainVotes } = usePlayAgainVoting();
+
+  // Tutorial context
+  const tutorial = useTutorialContext();
 
   // Debug mode state
   const [debugMode, setDebugMode] = useState(false);
@@ -2973,7 +2985,28 @@ const handleLogout = async () => {
                 🔑 Sign In / Register
               </button>
             )}
-            
+
+            {/* Tutorial Button */}
+            <button
+              onClick={() => tutorial.showTutorial('basics')}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#9b59b6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+              title="Learn how to play Crazy 8's"
+            >
+              <FaBook /> Tutorial
+            </button>
+
           </div>
         </div>
       </div>
@@ -3258,6 +3291,7 @@ const handleLogout = async () => {
             <button
               onClick={playSelectedCards}
               disabled={selectedCards.length === 0}
+              data-tutorial="play-button"
               style={{
                 padding: '12px 25px',
                 backgroundColor: selectedCards.length > 0 ? '#27ae60' : '#bdc3c7',
@@ -3274,9 +3308,10 @@ const handleLogout = async () => {
               🎴 Play {selectedCards.length} Card{selectedCards.length !== 1 ? 's' : ''}
             </button>
             <button
-            onClick={drawCard}
-            disabled={isDrawing || hasDrawnThisTurn}
-            style={{
+              onClick={drawCard}
+              disabled={isDrawing || hasDrawnThisTurn}
+              data-tutorial="draw-button"
+              style={{
                 padding: '12px 25px',
                 backgroundColor: (isDrawing || hasDrawnThisTurn) ? '#95a5a6' : '#e67e22',
                 color: '#fff',
@@ -3288,9 +3323,9 @@ const handleLogout = async () => {
                 boxShadow: (isDrawing || hasDrawnThisTurn) ? 'none' : '0 2px 4px rgba(0,0,0,0.2)',
                 transition: 'all 0.2s ease',
                 opacity: (isDrawing || hasDrawnThisTurn) ? 0.6 : 1
-            }}
+              }}
             >
-            {isDrawing ? '⏳ Drawing...' : hasDrawnThisTurn ? '✅ Already Drew' : '📚 Draw Card'}
+              {isDrawing ? '⏳ Drawing...' : hasDrawnThisTurn ? '✅ Already Drew' : '📚 Draw Card'}
             </button>
             <button
               onClick={skipTurn}
@@ -3310,6 +3345,24 @@ const handleLogout = async () => {
               }}
             >
               {isSkipping ? '⏳ Skipping...' : '⏭️ Skip Turn'}
+            </button>
+            <button
+              onClick={() => tutorial.showTutorial('basics')}
+              style={{
+                padding: '12px 16px',
+                backgroundColor: '#9b59b6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                transition: 'all 0.2s ease'
+              }}
+              title="Need help? Start the tutorial"
+            >
+              ❓ Help
             </button>
           </div>
           
@@ -3805,6 +3858,17 @@ const handleLogout = async () => {
   100% { transform: scale(1); }
 }
 
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 /* FIXED: Minimal card styles without entrance animation */
 .card {
   transform-origin: center center;
@@ -3843,12 +3907,125 @@ const handleLogout = async () => {
   );
 };
 
-// Main App component with AuthProvider and ConnectionProvider wrapper
+// Tutorial Feedback Toast - displays feedback messages
+const TutorialFeedbackToast = ({ feedback, onClose }) => {
+  if (!feedback) return null;
+
+  const getStyle = () => {
+    const baseStyle = {
+      position: 'fixed',
+      bottom: '100px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      padding: '16px 24px',
+      borderRadius: '12px',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+      zIndex: 10001,
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      maxWidth: '400px',
+      animation: 'slideUp 0.3s ease-out'
+    };
+
+    switch (feedback.type) {
+      case 'success':
+      case 'objective_complete':
+      case 'lesson_complete':
+        return { ...baseStyle, backgroundColor: '#27ae60', color: '#fff' };
+      case 'error':
+        return { ...baseStyle, backgroundColor: '#e74c3c', color: '#fff' };
+      case 'hint':
+        return { ...baseStyle, backgroundColor: '#f39c12', color: '#fff' };
+      default:
+        return { ...baseStyle, backgroundColor: '#3498db', color: '#fff' };
+    }
+  };
+
+  const getIcon = () => {
+    switch (feedback.type) {
+      case 'success':
+      case 'objective_complete':
+      case 'lesson_complete':
+        return '\u2714';
+      case 'error':
+        return '\u2718';
+      case 'hint':
+        return '\uD83D\uDCA1';
+      default:
+        return '\u2139';
+    }
+  };
+
+  return (
+    <div style={getStyle()}>
+      <span style={{ fontSize: '24px' }}>{getIcon()}</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 'bold', marginBottom: feedback.hints?.length ? '4px' : 0 }}>
+          {feedback.message}
+        </div>
+        {feedback.hints?.length > 0 && (
+          <div style={{ fontSize: '13px', opacity: 0.9 }}>
+            {feedback.hints[0]}
+          </div>
+        )}
+      </div>
+      <button
+        onClick={onClose}
+        style={{
+          background: 'rgba(255,255,255,0.2)',
+          border: 'none',
+          color: '#fff',
+          width: '24px',
+          height: '24px',
+          borderRadius: '50%',
+          cursor: 'pointer',
+          fontSize: '14px'
+        }}
+      >
+        \u2715
+      </button>
+    </div>
+  );
+};
+
+// Tutorial Overlay Wrapper - uses tutorial context
+const TutorialOverlayWrapper = () => {
+  const tutorial = useTutorialContext();
+
+  if (!tutorial.isTutorialVisible) {
+    return null;
+  }
+
+  return (
+    <>
+      <TutorialOverlay
+        tutorialEngine={tutorial.getEngine()}
+        tutorialState={tutorial.tutorialState}
+        simulatedGameState={tutorial.simulatedGameState}
+        onClose={tutorial.hideTutorial}
+        onAction={tutorial.handleTutorialAction}
+        onNextLesson={tutorial.advanceToNextLesson}
+        onResetLesson={tutorial.resetCurrentLesson}
+        isVisible={tutorial.isTutorialVisible}
+      />
+      <TutorialFeedbackToast
+        feedback={tutorial.feedback}
+        onClose={tutorial.clearFeedback}
+      />
+    </>
+  );
+};
+
+// Main App component with AuthProvider, ConnectionProvider, and TutorialProvider wrappers
 const App = () => {
   return (
     <AuthProvider>
       <ConnectionProvider>
-        <GameApp />
+        <TutorialProvider>
+          <GameApp />
+          <TutorialOverlayWrapper />
+        </TutorialProvider>
       </ConnectionProvider>
     </AuthProvider>
   );

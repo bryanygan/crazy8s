@@ -15,8 +15,11 @@ import TutorialControls from './TutorialControls';
  * @param {Object} props - Component props
  * @param {Object} props.tutorialEngine - Tutorial engine instance
  * @param {Object} props.tutorialState - Current tutorial state
+ * @param {Object} props.simulatedGameState - Simulated game state for tutorial
  * @param {Function} props.onClose - Callback when tutorial is closed
  * @param {Function} props.onAction - Callback for tutorial actions
+ * @param {Function} props.onNextLesson - Callback to advance to next lesson
+ * @param {Function} props.onResetLesson - Callback to reset current lesson
  * @param {Object} props.gameElements - References to game elements for highlighting
  * @param {boolean} props.isVisible - Whether tutorial overlay is visible
  * @param {Object} props.theme - Theme configuration for styling
@@ -24,8 +27,11 @@ import TutorialControls from './TutorialControls';
 const TutorialOverlay = ({
     tutorialEngine,
     tutorialState,
+    simulatedGameState = null,
     onClose,
     onAction,
+    onNextLesson = null,
+    onResetLesson = null,
     gameElements = {},
     isVisible = true,
     theme = {}
@@ -40,7 +46,7 @@ const TutorialOverlay = ({
     
     // Refs
     const overlayRef = useRef(null);
-    const animationRef = useRef(null);
+    // animationRef reserved for future animations
     
     // Theme configuration
     const tutorialTheme = {
@@ -176,45 +182,53 @@ const TutorialOverlay = ({
 
     /**
      * Get highlight target for specific objective
+     * Uses data-tutorial attributes to find elements
      */
     const getHighlightTargetForObjective = (objective) => {
+        // Helper to find element by data-tutorial attribute
+        const findElement = (attr) => document.querySelector(`[data-tutorial="${attr}"]`);
+
         switch (objective.type) {
             case 'playCard':
                 return {
                     id: 'play-card-target',
-                    element: gameElements.playButton,
+                    element: gameElements.playButton || findElement('play-button'),
+                    selector: '[data-tutorial="play-button"]',
                     type: 'button',
                     pulse: true,
                     tooltip: 'Click here to play your selected cards'
                 };
-                
+
             case 'selectCards':
                 return {
                     id: 'card-selection-target',
-                    element: gameElements.playerHand,
+                    element: gameElements.playerHand || findElement('player-hand'),
+                    selector: '[data-tutorial="player-hand"]',
                     type: 'area',
                     pulse: true,
                     tooltip: 'Select cards from your hand'
                 };
-                
+
             case 'drawCard':
                 return {
                     id: 'draw-card-target',
-                    element: gameElements.drawPile,
+                    element: gameElements.drawPile || findElement('draw-pile'),
+                    selector: '[data-tutorial="draw-pile"]',
                     type: 'card',
                     pulse: true,
                     tooltip: 'Click the deck to draw a card'
                 };
-                
+
             case 'declareSuit':
                 return {
                     id: 'suit-selector-target',
-                    element: gameElements.suitSelector,
+                    element: gameElements.suitSelector || findElement('suit-selector'),
+                    selector: '[data-tutorial="suit-selector"]',
                     type: 'modal',
                     pulse: true,
                     tooltip: 'Choose a suit for your wild card'
                 };
-                
+
             default:
                 return null;
         }
@@ -251,25 +265,49 @@ const TutorialOverlay = ({
     const handleTutorialAction = async (actionType, actionData) => {
         try {
             setIsAnimating(true);
-            
+
+            // Handle acknowledgement action (for intro lessons) - advance to next lesson
+            if (actionType === 'acknowledge') {
+                // Check if this is the final intro lesson
+                const currentLesson = tutorialState.currentLesson;
+                if (currentLesson?.isFinalIntro) {
+                    showFeedback('Good luck! Have fun playing!', 'success');
+                    // Close the tutorial
+                    setTimeout(() => {
+                        onClose();
+                    }, 500);
+                    setIsAnimating(false);
+                    return;
+                }
+
+                showFeedback('Great! Let\'s continue!', 'success');
+
+                // Use the next lesson callback
+                if (onNextLesson) {
+                    await onNextLesson();
+                }
+                setIsAnimating(false);
+                return;
+            }
+
             const result = await onAction(actionType, actionData);
-            
+
             if (result.success) {
                 showFeedback('Action completed successfully!', 'success');
-                
+
                 if (result.lessonCompleted) {
                     showFeedback('Lesson completed! 🎉', 'success', 3000);
                 }
             } else {
                 showFeedback(result.error || 'Action failed', 'error');
-                
+
                 if (result.hint) {
                     setTimeout(() => {
                         showFeedback(result.hint.content, 'info', 5000);
                     }, 1500);
                 }
             }
-            
+
         } catch (error) {
             console.error('Tutorial action error:', error);
             showFeedback('An error occurred. Please try again.', 'error');
@@ -317,20 +355,30 @@ const TutorialOverlay = ({
     const handleControlAction = async (action) => {
         switch (action) {
             case 'next':
-                await tutorialEngine.getNextLesson?.();
+                // Use the provided callback if available, otherwise fall back to engine
+                if (onNextLesson) {
+                    await onNextLesson();
+                } else {
+                    await tutorialEngine?.lessonManager?.getNextLesson?.();
+                }
                 break;
             case 'previous':
-                await tutorialEngine.getPreviousLesson?.();
+                await tutorialEngine?.lessonManager?.getPreviousLesson?.();
                 break;
             case 'restart':
-                await tutorialEngine.resetCurrentLesson?.();
+                // Use the provided callback if available
+                if (onResetLesson) {
+                    onResetLesson();
+                } else {
+                    await tutorialEngine?.lessonManager?.resetCurrentLesson?.();
+                }
                 break;
             case 'skip':
-                await tutorialEngine.skipLesson?.();
+                await tutorialEngine?.lessonManager?.skipLesson?.();
                 break;
             case 'hint':
-                const hint = tutorialEngine.requestHint();
-                if (hint.success) {
+                const hint = tutorialEngine?.requestHint?.();
+                if (hint?.success) {
                     showFeedback(hint.hint.content, 'info', 5000);
                 }
                 break;

@@ -3,23 +3,65 @@
  * Provides easy access to all tutorial components
  */
 
-// Main tutorial engine
-export { default as TutorialEngine } from './TutorialEngine.js';
+// Core imports for re-export
+import TutorialEngineClass from './TutorialEngine.js';
+import LessonManagerClass from './LessonManager.js';
+import ProgressTrackerClass from './ProgressTracker.js';
+import ValidationSystemClass from './ValidationSystem.js';
+import HintSystemClass from './HintSystem.js';
 
-// Core components
-export { default as LessonManager } from './LessonManager.js';
-export { default as ProgressTracker } from './ProgressTracker.js';
-export { default as ValidationSystem } from './ValidationSystem.js';
-export { default as HintSystem } from './HintSystem.js';
+// React integration imports
+import useTutorialHook from './hooks/useTutorial.js';
+import {
+    TutorialProvider as TutorialProviderComponent,
+    useTutorialContext as useTutorialContextHook,
+    withTutorial as withTutorialHOC
+} from './TutorialContext.js';
+import TutorialActionInterceptorClass from './TutorialActionInterceptor.js';
 
-// Lesson definitions
-export { 
-    tutorialLessons, 
-    getAvailableModules, 
-    getModuleLessons, 
-    getLesson,
-    validateLessonStructure 
+// UI Component imports
+import TutorialOverlayComponent from './components/TutorialOverlay.js';
+
+// Lesson definition imports
+import {
+    tutorialLessons as tutorialLessonsData,
+    getAvailableModules as getAvailableModulesFunc,
+    getModuleLessons as getModuleLessonsFunc,
+    getLesson as getLessonFunc,
+    validateLessonStructure as validateLessonStructureFunc,
+    getTotalLessonCount as getTotalLessonCountFunc,
+    getModuleLessonCount as getModuleLessonCountFunc,
+    getNextLessonInfo as getNextLessonInfoFunc
 } from './lessons/index.js';
+
+// Named exports - Main tutorial engine
+export const TutorialEngine = TutorialEngineClass;
+
+// Named exports - React integration
+export const useTutorial = useTutorialHook;
+export const TutorialProvider = TutorialProviderComponent;
+export const useTutorialContext = useTutorialContextHook;
+export const withTutorial = withTutorialHOC;
+export const TutorialActionInterceptor = TutorialActionInterceptorClass;
+
+// Named exports - UI Components
+export const TutorialOverlay = TutorialOverlayComponent;
+
+// Named exports - Core components
+export const LessonManager = LessonManagerClass;
+export const ProgressTracker = ProgressTrackerClass;
+export const ValidationSystem = ValidationSystemClass;
+export const HintSystem = HintSystemClass;
+
+// Named exports - Lesson definitions
+export const tutorialLessons = tutorialLessonsData;
+export const getAvailableModules = getAvailableModulesFunc;
+export const getModuleLessons = getModuleLessonsFunc;
+export const getLesson = getLessonFunc;
+export const validateLessonStructure = validateLessonStructureFunc;
+export const getTotalLessonCount = getTotalLessonCountFunc;
+export const getModuleLessonCount = getModuleLessonCountFunc;
+export const getNextLessonInfo = getNextLessonInfoFunc;
 
 /**
  * Tutorial System Version
@@ -34,8 +76,7 @@ export const TUTORIAL_VERSION = '1.0.0';
  * @returns {TutorialEngine} Configured tutorial engine instance
  */
 export const createTutorialEngine = (gameState, onStateChange, onComplete) => {
-    const TutorialEngine = require('./TutorialEngine.js').default;
-    return new TutorialEngine(gameState, onStateChange, onComplete);
+    return new TutorialEngineClass(gameState, onStateChange, onComplete);
 };
 
 /**
@@ -48,21 +89,21 @@ export const TUTORIAL_CONFIG = {
         autoSave: true,
         saveInterval: 30000 // 30 seconds
     },
-    
+
     // Hint system settings
     hints: {
         enabled: true,
         progressive: true,
         maxHistorySize: 50
     },
-    
+
     // Validation settings
     validation: {
         strictMode: false,
         allowRetry: true,
         showDetailedErrors: true
     },
-    
+
     // Lesson progression
     progression: {
         requireCompletion: true,
@@ -81,23 +122,23 @@ export const TUTORIAL_EVENTS = {
     TUTORIAL_RESUMED: 'tutorial:resumed',
     TUTORIAL_STOPPED: 'tutorial:stopped',
     TUTORIAL_COMPLETED: 'tutorial:completed',
-    
+
     // Lesson events
     LESSON_LOADED: 'lesson:loaded',
     LESSON_STARTED: 'lesson:started',
     LESSON_COMPLETED: 'lesson:completed',
     LESSON_FAILED: 'lesson:failed',
     LESSON_RESET: 'lesson:reset',
-    
+
     // Progress events
     PROGRESS_UPDATED: 'progress:updated',
     ACHIEVEMENT_EARNED: 'progress:achievement',
     MODULE_COMPLETED: 'progress:module_completed',
-    
+
     // Validation events
     ACTION_VALIDATED: 'validation:action',
     VALIDATION_FAILED: 'validation:failed',
-    
+
     // Hint events
     HINT_REQUESTED: 'hint:requested',
     HINT_SHOWN: 'hint:shown'
@@ -190,10 +231,10 @@ export const TutorialUtils = {
      * @returns {boolean} Whether tutorial can be used
      */
     isAvailable() {
-        return typeof window !== 'undefined' && 
+        return typeof window !== 'undefined' &&
                typeof localStorage !== 'undefined';
     },
-    
+
     /**
      * Get tutorial compatibility info
      * @returns {Object} Compatibility information
@@ -206,7 +247,7 @@ export const TutorialUtils = {
             version: TUTORIAL_VERSION
         };
     },
-    
+
     /**
      * Format time duration
      * @param {number} milliseconds - Duration in milliseconds
@@ -216,7 +257,7 @@ export const TutorialUtils = {
         const seconds = Math.floor(milliseconds / 1000);
         const minutes = Math.floor(seconds / 60);
         const hours = Math.floor(minutes / 60);
-        
+
         if (hours > 0) {
             return `${hours}h ${minutes % 60}m`;
         } else if (minutes > 0) {
@@ -225,7 +266,7 @@ export const TutorialUtils = {
             return `${seconds}s`;
         }
     },
-    
+
     /**
      * Generate card display string
      * @param {Object} card - Card object
@@ -235,30 +276,30 @@ export const TutorialUtils = {
         if (!card || !card.rank || !card.suit) {
             return 'Unknown Card';
         }
-        
+
         const suitSymbols = {
-            'Hearts': '♥',
-            'Diamonds': '♦',
-            'Clubs': '♣',
-            'Spades': '♠'
+            'Hearts': '\u2665',
+            'Diamonds': '\u2666',
+            'Clubs': '\u2663',
+            'Spades': '\u2660'
         };
-        
+
         const symbol = suitSymbols[card.suit] || card.suit;
         return `${card.rank}${symbol}`;
     },
-    
+
     /**
      * Validate card structure
      * @param {Object} card - Card to validate
      * @returns {boolean} Whether card is valid
      */
     isValidCard(card) {
-        return card && 
-               typeof card.suit === 'string' && 
+        return card &&
+               typeof card.suit === 'string' &&
                typeof card.rank === 'string' &&
                typeof card.id === 'string';
     },
-    
+
     /**
      * Deep clone object (for game state simulation)
      * @param {Object} obj - Object to clone
@@ -268,25 +309,25 @@ export const TutorialUtils = {
         if (obj === null || typeof obj !== 'object') {
             return obj;
         }
-        
+
         if (obj instanceof Date) {
             return new Date(obj.getTime());
         }
-        
+
         if (obj instanceof Array) {
-            return obj.map(item => this.deepClone(item));
+            return obj.map(item => TutorialUtils.deepClone(item));
         }
-        
+
         if (typeof obj === 'object') {
             const cloned = {};
             for (const key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    cloned[key] = this.deepClone(obj[key]);
+                if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                    cloned[key] = TutorialUtils.deepClone(obj[key]);
                 }
             }
             return cloned;
         }
-        
+
         return obj;
     }
 };
@@ -300,7 +341,7 @@ export const TUTORIAL_INFO = {
     description: 'Comprehensive tutorial engine for learning Crazy 8\'s card game',
     features: [
         'Progressive lesson system',
-        'Real-time action validation', 
+        'Real-time action validation',
         'Contextual hint system',
         'Progress tracking with achievements',
         'Modular lesson architecture',
@@ -316,13 +357,35 @@ export const TUTORIAL_INFO = {
 
 // Export everything as default for convenience
 export default {
-    TutorialEngine,
-    LessonManager,
-    ProgressTracker,
-    ValidationSystem,
-    HintSystem,
-    tutorialLessons,
+    // React integration
+    useTutorial: useTutorialHook,
+    TutorialProvider: TutorialProviderComponent,
+    useTutorialContext: useTutorialContextHook,
+    withTutorial: withTutorialHOC,
+    TutorialOverlay: TutorialOverlayComponent,
+    TutorialActionInterceptor: TutorialActionInterceptorClass,
+
+    // Core classes
+    TutorialEngine: TutorialEngineClass,
+    LessonManager: LessonManagerClass,
+    ProgressTracker: ProgressTrackerClass,
+    ValidationSystem: ValidationSystemClass,
+    HintSystem: HintSystemClass,
+
+    // Lessons
+    tutorialLessons: tutorialLessonsData,
+    getAvailableModules: getAvailableModulesFunc,
+    getModuleLessons: getModuleLessonsFunc,
+    getLesson: getLessonFunc,
+    validateLessonStructure: validateLessonStructureFunc,
+    getTotalLessonCount: getTotalLessonCountFunc,
+    getModuleLessonCount: getModuleLessonCountFunc,
+    getNextLessonInfo: getNextLessonInfoFunc,
+
+    // Factory
     createTutorialEngine,
+
+    // Constants
     TUTORIAL_CONFIG,
     TUTORIAL_EVENTS,
     TUTORIAL_ACTIONS,
@@ -331,6 +394,8 @@ export default {
     VALIDATION_RULES,
     PROGRESS_CONSTANTS,
     LESSON_TEMPLATE,
+
+    // Utilities
     TutorialUtils,
     TUTORIAL_INFO,
     TUTORIAL_VERSION

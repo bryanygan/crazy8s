@@ -26,7 +26,7 @@ const HighlightSystem = ({
     
     // Refs
     const containerRef = useRef(null);
-    const resizeObserverRef = useRef(null);
+    // resizeObserverRef reserved for future use
     const mutationObserverRef = useRef(null);
     
     /**

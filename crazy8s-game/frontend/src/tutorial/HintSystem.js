@@ -3,7 +3,7 @@
  * Delivers progressive hints based on player progress and context
  */
 
-import { FaLightbulb, FaCheck, FaSync, FaBook, FaBullseye, FaTrash, FaSearch, FaExclamationTriangle, FaExclamationCircle, FaDice, FaBookOpen, FaMagic } from 'react-icons/fa';
+// Icons removed - not used in class-based system
 
 /**
  * Provides contextual hints and guidance for tutorial lessons
@@ -454,7 +454,7 @@ class HintSystem {
      * @private
      */
     generateValidationHint(validationResult) {
-        const { errors, actionType } = validationResult;
+        const { errors } = validationResult;
         
         let specificHint = 'Please check your action and try again.';
         

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { FaCheck, FaLightbulb, FaExclamationTriangle, FaExclamationCircle } from 'react-icons/fa';
+import { FaCheck, FaLightbulb } from 'react-icons/fa';
 
 /**
  * Feedback toast component for tutorial notifications
@@ -33,9 +33,9 @@ const FeedbackToast = ({
     actionLabel = 'Action'
 }) => {
     // State management
-    const [isVisible, setIsVisible] = useState(false);
+    const [, setIsVisible] = useState(false);
     const [isExiting, setIsExiting] = useState(false);
-    const [progress, setProgress] = useState(100);
+    const [progress] = useState(100);
     const [isPaused, setIsPaused] = useState(false);
     
     // Refs

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { FaCheck, FaBullseye, FaCircle, FaLightbulb, FaBook } from 'react-icons/fa';
+import { FaCheck, FaBullseye, FaCircle, FaLightbulb, FaBook, FaArrowRight } from 'react-icons/fa';
 
 /**
  * Instruction modal component for displaying lesson information
@@ -27,16 +27,33 @@ const InstructionModal = ({
     autoHideDelay = 10000
 }) => {
     // State management
-    const [currentObjectiveIndex, setCurrentObjectiveIndex] = useState(0);
+    const [, setCurrentObjectiveIndex] = useState(0);
     const [showHints, setShowHints] = useState(false);
     const [expandedSections, setExpandedSections] = useState(new Set(['objectives']));
     const [isMinimized, setIsMinimized] = useState(false);
-    const [autoHideTimer, setAutoHideTimer] = useState(null);
+    const [, setAutoHideTimer] = useState(null);
     
     // Refs
     const modalRef = useRef(null);
     const objectiveRefs = useRef([]);
-    
+
+    /**
+     * Check if lesson has acknowledgement-type objectives
+     */
+    const hasAcknowledgementObjective = () => {
+        return lesson.objectives?.some(obj => obj.type === 'acknowledgement' || obj.requiresAcknowledgement);
+    };
+
+    /**
+     * Handle continue button click for intro lessons
+     */
+    const handleContinue = () => {
+        if (onAction) {
+            // Mark the acknowledgement objective as complete and advance
+            onAction('acknowledge', { lessonId: lesson.id });
+        }
+    };
+
     /**
      * Set up auto-hide timer
      */
@@ -608,12 +625,56 @@ const InstructionModal = ({
                                 style={{
                                     margin: 0,
                                     color: theme.colors.text,
-                                    lineHeight: 1.5,
-                                    fontSize: '14px'
+                                    lineHeight: 1.6,
+                                    fontSize: '15px'
                                 }}
                             >
                                 {lesson.description}
                             </p>
+
+                            {/* Continue button for intro/acknowledgement lessons */}
+                            {(lesson.isIntroLesson || hasAcknowledgementObjective()) && (
+                                <button
+                                    onClick={handleContinue}
+                                    className="tutorial-continue-btn"
+                                    style={{
+                                        marginTop: theme.spacing.medium,
+                                        padding: '12px 24px',
+                                        background: lesson.isFinalIntro
+                                            ? 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)'
+                                            : 'linear-gradient(135deg, #27ae60 0%, #2ecc71 100%)',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        color: 'white',
+                                        fontSize: '16px',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '8px',
+                                        width: '100%',
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: lesson.isFinalIntro
+                                            ? '0 4px 12px rgba(52, 152, 219, 0.3)'
+                                            : '0 4px 12px rgba(39, 174, 96, 0.3)'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.transform = 'translateY(-2px)';
+                                        e.currentTarget.style.boxShadow = lesson.isFinalIntro
+                                            ? '0 6px 16px rgba(52, 152, 219, 0.4)'
+                                            : '0 6px 16px rgba(39, 174, 96, 0.4)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.transform = 'translateY(0)';
+                                        e.currentTarget.style.boxShadow = lesson.isFinalIntro
+                                            ? '0 4px 12px rgba(52, 152, 219, 0.3)'
+                                            : '0 4px 12px rgba(39, 174, 96, 0.3)';
+                                    }}
+                                >
+                                    {lesson.isFinalIntro ? 'Start Playing!' : 'Continue'} <FaArrowRight />
+                                </button>
+                            )}
                         </div>
 
                         {/* Objectives Section */}

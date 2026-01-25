@@ -3,7 +3,7 @@
  * Integrates with existing game logic to ensure tutorial actions are valid
  */
 
-import { FaCheck, FaExclamationCircle, FaSync, FaTrash, FaSearch, FaClipboardList } from 'react-icons/fa';
+// Icons removed - not used in class-based system
 
 /**
  * Validates player actions within the tutorial context
@@ -498,7 +498,7 @@ class ValidationSystem {
         };
         
         for (const requirement of this.lessonRequirements) {
-            const requirementResult = this.validateSingleRequirement(requirement, actionData, gameState);
+            const requirementResult = this.validateSingleRequirement(requirement, actionData, gameState, validationResult);
             
             if (!requirementResult.isValid) {
                 result.errors.push(...requirementResult.errors);
@@ -523,10 +523,11 @@ class ValidationSystem {
      * @param {Object} requirement - Lesson requirement
      * @param {Object} actionData - Action data
      * @param {Object} gameState - Current game state
+     * @param {Object} validationResult - Current validation result with actionType
      * @returns {Object} Requirement validation result
      * @private
      */
-    validateSingleRequirement(requirement, actionData, gameState) {
+    validateSingleRequirement(requirement, actionData, gameState, validationResult = {}) {
         const result = {
             isValid: true,
             errors: []

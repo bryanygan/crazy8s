@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useConnection } from '../contexts/ConnectionContext';
+import { useTutorialContext } from '../tutorial';
 import gameBackground from '../game-background.jpg';
-import { FaUserFriends, FaPlay, FaUsers, FaCog, FaLock, FaRocket, FaSignInAlt } from "react-icons/fa";
+import { FaUserFriends, FaPlay, FaUsers, FaCog, FaLock, FaRocket, FaSignInAlt, FaGraduationCap } from "react-icons/fa";
 import { GoTrophy } from "react-icons/go";
 import { LuCrown } from "react-icons/lu";
 
 const MainMenu = ({ onGameCreated, onGameJoined }) => {
   const { isAuthenticated, user, login, register, logout } = useAuth();
   const { socket } = useConnection();
+  const { showTutorial } = useTutorialContext();
   
   const [currentView, setCurrentView] = useState('main'); // 'main', 'startGame', 'joinGame', 'login', 'signup'
   const [formData, setFormData] = useState({
@@ -568,12 +570,13 @@ const MainMenu = ({ onGameCreated, onGameJoined }) => {
           {/* Feature cards */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: window.innerWidth < 768 ? '1fr' : 'repeat(3, 1fr)',
+            gridTemplateColumns: window.innerWidth < 768 ? '1fr' : window.innerWidth < 1024 ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
             gap: '24px',
-            maxWidth: '1024px',
+            maxWidth: '1200px',
             width: '100%'
           }}>
-            <div 
+            {/* Tutorial Card */}
+            <div
               className="arena-card group"
               style={{
                 background: 'var(--card-gradient)',
@@ -588,10 +591,123 @@ const MainMenu = ({ onGameCreated, onGameJoined }) => {
                 const card = e.currentTarget;
                 const iconBg = card.querySelector('.icon-bg');
                 const icon = card.querySelector('.icon-svg');
-                
+
+                card.style.transform = 'scale(1.05)';
+                card.style.boxShadow = '0 0 0 1px hsl(var(--success) / 0.2), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
+
+                if (iconBg) {
+                  iconBg.style.backgroundColor = 'hsl(var(--success) / 0.2)';
+                }
+                if (icon) {
+                  icon.style.color = 'hsl(142 71% 55%)'; // Brighter success green
+                }
+              }}
+              onMouseLeave={(e) => {
+                const card = e.currentTarget;
+                const iconBg = card.querySelector('.icon-bg');
+                const icon = card.querySelector('.icon-svg');
+
+                card.style.transform = 'scale(1)';
+                card.style.boxShadow = '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)';
+
+                if (iconBg) {
+                  iconBg.style.backgroundColor = 'hsl(var(--success) / 0.1)';
+                }
+                if (icon) {
+                  icon.style.color = 'hsl(var(--success))';
+                }
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                textAlign: 'center',
+                gap: '16px',
+                pointerEvents: 'none'
+              }}>
+                <div
+                  className="icon-bg"
+                  style={{
+                    padding: '16px',
+                    background: 'hsl(var(--success) / 0.1)',
+                    borderRadius: '50%',
+                    transition: 'background-color 0.3s ease'
+                  }}
+                >
+                  <FaGraduationCap
+                    className="icon-svg"
+                    size={32}
+                    color="hsl(var(--success))"
+                    style={{ transition: 'color 0.3s ease' }}
+                  />
+                </div>
+                <h3 style={{
+                  fontSize: '20px',
+                  fontFamily: 'Inter, sans-serif',
+                  fontWeight: 600,
+                  color: 'hsl(var(--foreground))',
+                  margin: 0
+                }}>Learn to Play</h3>
+                <p style={{
+                  color: 'hsl(var(--muted-foreground))',
+                  fontSize: '14px',
+                  lineHeight: 1.5,
+                  margin: 0,
+                  fontFamily: 'Inter, sans-serif'
+                }}>Master the rules with our interactive tutorial</p>
+                <button
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    background: 'transparent',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '6px',
+                    color: 'hsl(var(--foreground))',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontFamily: 'Inter, sans-serif',
+                    fontWeight: 500,
+                    transition: 'all 0.2s ease',
+                    pointerEvents: 'auto'
+                  }}
+                  onClick={() => showTutorial('basics')}
+                  onMouseEnter={(e) => {
+                    e.stopPropagation();
+                    e.target.style.backgroundColor = 'hsl(var(--accent))';
+                    e.target.style.color = 'hsl(var(--accent-foreground))';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.stopPropagation();
+                    e.target.style.backgroundColor = 'transparent';
+                    e.target.style.color = 'hsl(var(--foreground))';
+                  }}
+                >
+                  Start Tutorial
+                </button>
+              </div>
+            </div>
+
+            {/* Friends Card */}
+            <div
+              className="arena-card group"
+              style={{
+                background: 'var(--card-gradient)',
+                border: '1px solid hsl(var(--border) / 0.5)',
+                borderRadius: '8px',
+                padding: '24px',
+                transition: 'all 0.3s ease',
+                cursor: 'pointer',
+                boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)'
+              }}
+              onMouseEnter={(e) => {
+                const card = e.currentTarget;
+                const iconBg = card.querySelector('.icon-bg');
+                const icon = card.querySelector('.icon-svg');
+
                 card.style.transform = 'scale(1.05)';
                 card.style.boxShadow = '0 0 0 1px hsl(var(--primary) / 0.2), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
-                
+
                 if (iconBg) {
                   iconBg.style.backgroundColor = 'hsl(var(--primary) / 0.2)';
                 }
@@ -603,10 +719,10 @@ const MainMenu = ({ onGameCreated, onGameJoined }) => {
                 const card = e.currentTarget;
                 const iconBg = card.querySelector('.icon-bg');
                 const icon = card.querySelector('.icon-svg');
-                
+
                 card.style.transform = 'scale(1)';
                 card.style.boxShadow = '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)';
-                
+
                 if (iconBg) {
                   iconBg.style.backgroundColor = 'hsl(var(--primary) / 0.1)';
                 }
@@ -623,7 +739,7 @@ const MainMenu = ({ onGameCreated, onGameJoined }) => {
                 gap: '16px',
                 pointerEvents: 'none'
               }}>
-                <div 
+                <div
                   className="icon-bg"
                   style={{
                     padding: '16px',
@@ -632,7 +748,7 @@ const MainMenu = ({ onGameCreated, onGameJoined }) => {
                     transition: 'background-color 0.3s ease'
                   }}
                 >
-                  <FaUserFriends 
+                  <FaUserFriends
                     className="icon-svg"
                     size={32}
                     color="hsl(var(--primary))"
@@ -653,7 +769,7 @@ const MainMenu = ({ onGameCreated, onGameJoined }) => {
                   margin: 0,
                   fontFamily: 'Inter, sans-serif'
                 }}>Connect with friends and challenge them to matches</p>
-                <button 
+                <button
                   style={{
                     width: '100%',
                     padding: '8px 16px',

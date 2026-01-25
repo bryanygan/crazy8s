@@ -7,7 +7,7 @@ import LessonManager from './LessonManager.js';
 import ProgressTracker from './ProgressTracker.js';
 import ValidationSystem from './ValidationSystem.js';
 import HintSystem from './HintSystem.js';
-import { FaGamepad, FaLightbulb, FaCheck, FaSync, FaBook, FaTrophy, FaGraduationCap, FaStop, FaSearch } from 'react-icons/fa';
+// Icons removed - not used in class-based system
 
 /**
  * Main tutorial engine that orchestrates all tutorial systems
@@ -580,6 +580,21 @@ class TutorialEngine {
      */
     handleLessonStateChange(lessonState) {
         console.log('Lesson state changed:', lessonState);
+
+        // Sync currentLesson from LessonManager to TutorialEngine
+        if (this.lessonManager.currentLesson) {
+            this.currentLesson = this.lessonManager.currentLesson;
+
+            // Also update simulated game state for the new lesson
+            this.simulatedGameState = this.createSimulatedGameState(this.currentLesson);
+
+            // Update validation system with new lesson requirements
+            this.validationSystem.setLessonRequirements(this.currentLesson.requirements || []);
+
+            // Update hint system with new lesson hints
+            this.hintSystem.setLessonHints(this.currentLesson.hints || []);
+        }
+
         this.notifyStateChange();
     }
 

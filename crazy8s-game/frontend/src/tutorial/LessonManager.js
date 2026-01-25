@@ -4,7 +4,7 @@
  */
 
 import { tutorialLessons } from './lessons/index.js';
-import { FaBook, FaCheck, FaSync, FaTrash } from 'react-icons/fa';
+// Icons removed - not used in class-based system
 
 /**
  * Manages individual lesson state and progression

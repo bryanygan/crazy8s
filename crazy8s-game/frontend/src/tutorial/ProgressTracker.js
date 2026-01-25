@@ -3,7 +3,7 @@
  * Handles progress persistence, completion tracking, and statistics
  */
 
-import { FaCheck, FaSync, FaTrophy, FaBullseye, FaTrash, FaCog, FaDownload, FaUpload, FaChartBar, FaFolder, FaFile, FaExclamationTriangle } from 'react-icons/fa';
+// Icons removed - not used in class-based system
 
 /**
  * Tracks and persists user tutorial progress
@@ -80,7 +80,7 @@ class ProgressTracker {
                         this.progress.modules = new Map(Object.entries(parsed.modules));
                         
                         // Convert lesson Maps within modules
-                        for (const [moduleId, moduleData] of this.progress.modules.entries()) {
+                        for (const [, moduleData] of this.progress.modules.entries()) {
                             if (moduleData.lessons) {
                                 moduleData.lessons = new Map(Object.entries(moduleData.lessons));
                             }
@@ -515,13 +515,13 @@ class ProgressTracker {
             if (importedData.modules) {
                 this.progress.modules = new Map(Object.entries(importedData.modules));
                 
-                for (const [moduleId, moduleData] of this.progress.modules.entries()) {
+                for (const [, moduleData] of this.progress.modules.entries()) {
                     if (moduleData.lessons) {
                         moduleData.lessons = new Map(Object.entries(moduleData.lessons));
                     }
                 }
             }
-            
+
             // Merge imported data
             this.progress = {
                 ...this.progress,
