@@ -27,20 +27,5 @@
 <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"
-            integrity="sha384-9cFFkt4QUcFZgrh5kQz9XGMRpS3yGF6HIe3CVjMaaI9Dh1qZ9Lb3hLGkM8aTn8vO"
-            crossorigin="anonymous"></script>
-    <script>
-        // Fallback mechanism for canvas-confetti
-        if (typeof confetti === 'undefined') {
-            console.warn('CDN failed to load canvas-confetti, loading local fallback...');
-            var fallbackScript = document.createElement('script');
-            fallbackScript.src = '/libs/confetti.browser.min.js';
-            fallbackScript.onerror = function() {
-                console.error('Local fallback for canvas-confetti also failed to load');
-            };
-            document.head.appendChild(fallbackScript);
-        }
-    </script>
 </body>
 </html>

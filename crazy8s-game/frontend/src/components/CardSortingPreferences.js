@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 const CardSortingPreferences = ({ settings, onSettingsChange, theme, onShowToast }) => {
     const [isExpanded, setIsExpanded] = useState(false);
