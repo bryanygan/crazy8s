@@ -1,0 +1,47 @@
+version: "3.8"
+
+# Development override — run frontend locally with npm start,
+# only containerize backend + database.
+#
+# Usage: docker compose -f docker-compose.dev.yml up
+# Then:  cd frontend && npm start
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - JWT_SECRET=dev-secret-not-for-production
+      - DB_TYPE=${DB_TYPE:-none}
+      - CORS_ORIGIN=http://localhost:3000,http://localhost:3001
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=crazy8s
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - MONGODB_URI=mongodb://mongo:27017/crazy8s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=crazy8s
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata_dev:

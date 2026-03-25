@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+*.md
+coverage
+.claude
+claude-workspace
+frontend/node_modules
+frontend/coverage
+frontend/.env
+backend/node_modules
+backend/coverage
+backend/.env
+backend/tests
