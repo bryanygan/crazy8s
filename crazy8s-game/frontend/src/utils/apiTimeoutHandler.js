@@ -96,7 +96,6 @@ export const fetchWithTimeout = async (url, options = {}) => {
     connectionQuality: currentConnectionQuality
   }) * priorityMultiplier;
   
-  console.log(`🌐 API Request: ${url} (timeout: ${adaptiveTimeout}ms, priority: ${priority})`);
   
   for (let attempt = 0; attempt <= retryAttempts; attempt++) {
     try {
@@ -145,7 +144,6 @@ export const fetchWithTimeout = async (url, options = {}) => {
         );
       }
       
-      console.log(`✅ API Success: ${url} (${latency}ms, attempt ${attempt + 1})`);
       
       return response;
       
@@ -158,7 +156,6 @@ export const fetchWithTimeout = async (url, options = {}) => {
       
       if (error.name === 'AbortError') {
         errorType = TIMEOUT_ERROR_TYPES.REQUEST_TIMEOUT;
-        console.warn(`⏰ API Timeout: ${url} (${adaptiveTimeout}ms, attempt ${attempt + 1})`);
         
         if (onTimeout) {
           onTimeout({
@@ -172,7 +169,6 @@ export const fetchWithTimeout = async (url, options = {}) => {
         errorType = error.type;
         shouldRetry = error.retryable;
       } else {
-        console.error(`❌ API Error: ${url}`, error);
       }
       
       // Don't retry on last attempt or non-retryable errors
@@ -190,7 +186,6 @@ export const fetchWithTimeout = async (url, options = {}) => {
           }
         );
         
-        console.error(`💥 API Failed: ${url} (${attempt + 1} attempts, ${Date.now() - startTime}ms total)`);
         throw finalError;
       }
       
@@ -201,7 +196,6 @@ export const fetchWithTimeout = async (url, options = {}) => {
       );
       const jitteredDelay = backoffDelay + (Math.random() * 1000); // Add up to 1s jitter
       
-      console.log(`🔄 API Retry: ${url} in ${Math.round(jitteredDelay)}ms (attempt ${attempt + 1}/${retryAttempts + 1})`);
       
       if (onRetry) {
         onRetry({
@@ -360,7 +354,6 @@ export class RequestProgressTracker {
       try {
         listener(event, data);
       } catch (error) {
-        console.error('Error in request progress listener:', error);
       }
     });
   }
@@ -448,4 +441,3 @@ const generatePerformanceRecommendations = (stats) => {
   return recommendations;
 };
 
-console.log('🚀 API Timeout Handler initialized with enhanced retry mechanisms');

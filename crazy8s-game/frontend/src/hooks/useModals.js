@@ -21,7 +21,6 @@ export const useModals = () => {
         setShowSuitSelector(value);
         break;
       default:
-        console.warn(`Unknown modal: ${modalName}`);
     }
   };
 

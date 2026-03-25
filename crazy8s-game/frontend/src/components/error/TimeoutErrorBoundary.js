@@ -178,7 +178,6 @@ class TimeoutMonitor {
     // Notify listeners
     this.notifyListeners(event);
     
-    console.warn('⏰ Timeout event recorded:', event);
   }
   
   updateMetrics(event) {
@@ -236,7 +235,6 @@ class TimeoutMonitor {
       try {
         listener(event);
       } catch (error) {
-        console.error('Error in timeout event listener:', error);
       }
     });
   }
@@ -402,7 +400,6 @@ class TimeoutErrorBoundary extends Component {
         alert('Diagnostic data copied to clipboard. Please paste it when reporting the issue.');
       })
       .catch(() => {
-        console.log('Diagnostic data:', diagnosticData);
         alert('Diagnostic data logged to console. Please copy it when reporting the issue.');
       });
   };

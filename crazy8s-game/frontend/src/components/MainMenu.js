@@ -92,7 +92,6 @@ const MainMenu = ({ onGameCreated, onGameJoined }) => {
     
     setIsLoading(true);
     try {
-      console.log('🎮 Creating game as:', formData.name);
       // Remove duplicate socket emission - only call the callback which will handle emission
       if (onGameCreated) {
         onGameCreated({ 
@@ -112,7 +111,6 @@ const MainMenu = ({ onGameCreated, onGameJoined }) => {
     
     setIsLoading(true);
     try {
-      console.log('🚪 Joining game:', formData.gameId, 'as', formData.name);
       socket.emit('joinGame', {
         gameId: formData.gameId.trim(),
         playerName: formData.name.trim()

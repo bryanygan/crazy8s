@@ -8,7 +8,6 @@ const Toast = ({ toast, index, onClose }) => {
   useEffect(() => {
     // Create a stable reference to onClose to prevent timer resets
     const stableOnClose = () => {
-      console.log(`🍞 Auto-closing toast: ${toast.message}`);
       setIsExiting(true);
       setTimeout(() => {
         onClose();
@@ -17,12 +16,9 @@ const Toast = ({ toast, index, onClose }) => {
 
     // Auto-close timer with stable reference
     timerRef.current = setTimeout(stableOnClose, 4000);
-    
-    console.log(`🍞 Toast timer started for: ${toast.message}`);
 
     return () => {
       if (timerRef.current) {
-        console.log(`🍞 Toast timer cleared for: ${toast.message}`);
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
@@ -31,7 +27,6 @@ const Toast = ({ toast, index, onClose }) => {
   }, [toast.id]); // ONLY depend on toast.id, NOT onClose
 
   const handleManualClose = () => {
-    console.log(`🍞 Manual close toast: ${toast.message}`);
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;

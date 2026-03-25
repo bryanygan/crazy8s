@@ -65,7 +65,6 @@ class ConnectionQualityMonitor {
       timestamp: Date.now()
     };
     
-    console.log('📶 Browser connection info:', connectionInfo);
     
     // Estimate quality based on browser API
     let estimatedQuality = 'UNKNOWN';
@@ -91,7 +90,6 @@ class ConnectionQualityMonitor {
     if (this.isMonitoring) return;
     
     this.isMonitoring = true;
-    console.log('🔍 Starting connection quality monitoring');
     
     // Perform immediate measurement
     this.measureLatency();
@@ -113,7 +111,6 @@ class ConnectionQualityMonitor {
       this.monitoringInterval = null;
     }
     
-    console.log('⏹️ Stopped connection quality monitoring');
   }
   
   // Measure latency using various methods
@@ -133,7 +130,6 @@ class ConnectionQualityMonitor {
       const median = this.calculateMedian(validResults);
       this.recordMeasurement(median, 'combined');
     } else {
-      console.warn('⚠️ All latency measurements failed');
     }
   }
   
@@ -229,7 +225,6 @@ class ConnectionQualityMonitor {
     // Update quality assessment
     this.assessQuality();
     
-    console.log(`📊 Latency measurement: ${latency}ms (${method}) -> ${measurement.quality}`);
   }
   
   // Classify individual latency measurement
@@ -297,14 +292,12 @@ class ConnectionQualityMonitor {
       details
     };
     
-    console.log(`📶 Connection quality updated: ${oldQuality} -> ${newQuality} (${source})`);
     
     // Notify listeners
     this.listeners.forEach(listener => {
       try {
         listener(qualityUpdate);
       } catch (error) {
-        console.error('Error in quality listener:', error);
       }
     });
   }
@@ -405,7 +398,6 @@ class ConnectionQualityMonitor {
     this.currentQuality = 'UNKNOWN';
     this.lastQualityChange = Date.now();
     
-    console.log('🔄 Connection quality monitor reset');
   }
 }
 
@@ -466,4 +458,3 @@ export const addConnectionQualityListener = (listener) =>
 export const forceConnectionQualityUpdate = (quality) => 
   globalConnectionMonitor.forceQualityUpdate(quality);
 
-console.log('📶 Connection quality monitor initialized');

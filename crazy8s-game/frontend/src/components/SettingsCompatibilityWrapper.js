@@ -117,11 +117,8 @@ const SettingsCompatibilityWrapper = ({ children, playerId, onSettingsChange }) 
   // Migration helper for switching from guest to authenticated
   useEffect(() => {
     if (isAuthenticated && user && legacyMode) {
-      console.log('🔄 User authenticated, switching from legacy mode to synced settings');
       setLegacyMode(false);
-      
       // Migration is handled automatically by AuthContext performAutoMigration
-      // We just need to switch modes
     }
   }, [isAuthenticated, user, legacyMode]);
 

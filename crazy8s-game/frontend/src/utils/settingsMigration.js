@@ -2,13 +2,13 @@ export const migrateLocalSettings = async (playerId, updateSettingsFunction) => 
   try {
     const localKey = `crazy8s_settings_${playerId}`;
     const localSettings = localStorage.getItem(localKey);
-    
+
     if (!localSettings) {
       return { success: true, message: 'No local settings to migrate' };
     }
 
     const settings = JSON.parse(localSettings);
-    
+
     const transformedSettings = {
       sortByRank: settings.sortByRank || false,
       groupBySuit: settings.groupBySuit || false,
@@ -29,12 +29,11 @@ export const migrateLocalSettings = async (playerId, updateSettingsFunction) => 
     };
 
     const result = await updateSettingsFunction(transformedSettings);
-    
+
     if (result.success) {
       localStorage.removeItem(localKey);
-      console.log(`✅ Successfully migrated settings for player ${playerId}`);
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: 'Settings migrated successfully',
         settings: transformedSettings,
         migratedKeys: Object.keys(transformedSettings)
@@ -43,7 +42,6 @@ export const migrateLocalSettings = async (playerId, updateSettingsFunction) => 
       return { success: false, error: result.error };
     }
   } catch (error) {
-    console.error('❌ Settings migration failed:', error);
     return { success: false, error: error.message };
   }
 };
@@ -51,7 +49,7 @@ export const migrateLocalSettings = async (playerId, updateSettingsFunction) => 
 export const getAllLocalSettings = () => {
   const localSettings = {};
   const invalidKeys = [];
-  
+
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && key.startsWith('crazy8s_settings_')) {
@@ -68,48 +66,45 @@ export const getAllLocalSettings = () => {
           }
         };
       } catch (error) {
-        console.error(`❌ Error parsing settings for player ${playerId}:`, error);
         invalidKeys.push(key);
       }
     }
   }
-  
+
   // Clean up invalid keys
   invalidKeys.forEach(key => {
-    console.warn(`🗑️ Removing invalid settings key: ${key}`);
     localStorage.removeItem(key);
   });
-  
+
   return localSettings;
 };
 
 export const clearAllLocalSettings = () => {
   const keysToRemove = [];
-  
+
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && key.startsWith('crazy8s_settings_')) {
       keysToRemove.push(key);
     }
   }
-  
+
   keysToRemove.forEach(key => localStorage.removeItem(key));
-  
+
   return keysToRemove.length;
 };
 
 export const getSettingsForPlayer = (playerId) => {
   const localKey = `crazy8s_settings_${playerId}`;
   const localSettings = localStorage.getItem(localKey);
-  
+
   if (!localSettings) {
     return null;
   }
-  
+
   try {
     return JSON.parse(localSettings);
   } catch (error) {
-    console.error(`Error parsing settings for player ${playerId}:`, error);
     return null;
   }
 };
@@ -121,26 +116,26 @@ export const transformSettingsForAPI = (localSettings) => {
     groupBySuit: localSettings.groupBySuit || false,
     experiencedMode: localSettings.experiencedMode || false,
     autoPlay: localSettings.autoPlay || false,
-    
+
     // Timer settings
     enableTimer: localSettings.enableTimer !== undefined ? localSettings.enableTimer : true,
     timerDuration: localSettings.timerDuration || 60,
     timerWarningTime: localSettings.timerWarningTime || 15,
-    
+
     // UI preferences
     theme: localSettings.theme || 'default',
     soundEnabled: localSettings.soundEnabled !== undefined ? localSettings.soundEnabled : true,
     animationsEnabled: localSettings.animationsEnabled !== undefined ? localSettings.animationsEnabled : true,
     customCardback: localSettings.customCardback || 'default',
-    
+
     // Card preferences
     cardSortingPreferences: localSettings.cardSortingPreferences || {},
-    
+
     // Game data (optional, may be excluded from API)
     gameHistory: localSettings.gameHistory || [],
     achievements: localSettings.achievements || [],
     lastPlayed: localSettings.lastPlayed || null,
-    
+
     // Metadata
     migrationTimestamp: new Date().toISOString(),
     version: '2.0.0'
@@ -157,11 +152,11 @@ export const createSettingsSync = (authContext) => {
 
   const debouncedSync = (settingsUpdate) => {
     syncQueue.push(settingsUpdate);
-    
+
     if (syncTimeout) {
       clearTimeout(syncTimeout);
     }
-    
+
     syncTimeout = setTimeout(async () => {
       await performSync();
     }, SYNC_DEBOUNCE_MS);
@@ -180,25 +175,21 @@ export const createSettingsSync = (authContext) => {
       }), {});
 
       const result = await authContext.updateSettings(mergedSettings);
-      
+
       if (result.success) {
-        console.log(`✅ Settings synchronized: ${Object.keys(mergedSettings).join(', ')}`);
         syncQueue = [];
         lastSyncTime = new Date();
-      } else {
-        console.error('❌ Settings sync failed:', result.error);
       }
     } catch (error) {
-      console.error('❌ Settings sync error:', error);
+      // Sync failed silently
     }
   };
 
   const syncSettingsToServer = (settingsUpdate) => {
     if (!authContext.isAuthenticated) {
-      console.warn('⚠️ Not authenticated, skipping settings sync');
       return;
     }
-    
+
     debouncedSync(settingsUpdate);
   };
 
@@ -210,21 +201,19 @@ export const createSettingsSync = (authContext) => {
     try {
       // Get current user settings from server
       const serverSettings = authContext.user?.settings || {};
-      
+
       // Compare with local settings (if any)
       const localSettings = getAllLocalSettings();
       const hasLocalSettings = Object.keys(localSettings).length > 0;
-      
+
       if (hasLocalSettings && !serverSettings.migrationTimestamp) {
         // Trigger migration if server doesn't have migrated settings
-        console.log('🔄 Triggering full settings migration...');
         await authContext.migrateLocalSettings();
       }
-      
+
       lastSyncTime = new Date();
-      console.log('✅ Full settings sync completed');
     } catch (error) {
-      console.error('❌ Full sync error:', error);
+      // Full sync failed silently
     }
   };
 
@@ -266,12 +255,9 @@ export const resolveSettingsConflicts = (localSettings, serverSettings) => {
   conflicts.forEach(conflict => {
     const localTime = new Date(conflict.lastModified.local || 0);
     const serverTime = new Date(conflict.lastModified.server || 0);
-    
+
     if (localTime > serverTime) {
       resolved[conflict.key] = conflict.localValue;
-      console.log(`🔄 Resolved conflict for ${conflict.key}: using local value`);
-    } else {
-      console.log(`🔄 Resolved conflict for ${conflict.key}: using server value`);
     }
   });
 
@@ -289,17 +275,17 @@ export const createBackwardCompatibleSettings = (authContext) => {
       if (authContext.isAuthenticated) {
         return authContext.user?.settings || {};
       }
-      
+
       // Fallback to localStorage for unauthenticated users
       const playerId = 'guest'; // or generate consistent guest ID
       return getSettingsForPlayer(playerId) || {};
     },
-    
+
     updateSettings: async (settingsUpdate) => {
       if (authContext.isAuthenticated) {
         return await authContext.updateSettings(settingsUpdate);
       }
-      
+
       // Update localStorage for unauthenticated users
       const playerId = 'guest';
       const currentSettings = getSettingsForPlayer(playerId) || {};
@@ -311,7 +297,7 @@ export const createBackwardCompatibleSettings = (authContext) => {
           version: '2.0.0'
         }
       };
-      
+
       localStorage.setItem(`crazy8s_settings_${playerId}`, JSON.stringify(newSettings));
       return { success: true, settings: newSettings };
     }

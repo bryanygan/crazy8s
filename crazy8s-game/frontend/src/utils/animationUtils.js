@@ -1,11 +1,7 @@
 // Confetti function for celebrations
 export const fireConfetti = () => {
-  console.log('🎉 fireConfetti called');
-  
   // Check if confetti is available (loaded from script tag)
   if (typeof window !== 'undefined' && window.confetti) {
-    console.log('✅ Confetti library detected, firing confetti!');
-    
     const count = 200;
 
     // Fire from left corner
@@ -18,7 +14,7 @@ export const fireConfetti = () => {
       });
     }
 
-    // Fire from right corner  
+    // Fire from right corner
     const rightCornerDefaults = { origin: { x: 1, y: 0.7 } };
     function fireRight(particleRatio, opts) {
       window.confetti({
@@ -41,9 +37,5 @@ export const fireConfetti = () => {
       fireLeft(ratio, opts);
       fireRight(ratio, opts);
     });
-    
-    console.log('🎉 Confetti sequences fired!');
-  } else {
-    console.warn('❌ Confetti library not loaded. Available:', typeof window !== 'undefined' ? Object.keys(window).filter(k => k.includes('confetti')) : 'window undefined');
   }
 };

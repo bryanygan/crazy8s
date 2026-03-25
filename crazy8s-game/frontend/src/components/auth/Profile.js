@@ -84,7 +84,6 @@ const Profile = ({ onClose }) => {
       await logout();
       onClose();
     } catch (error) {
-      console.error('Logout failed:', error);
     }
   };
 

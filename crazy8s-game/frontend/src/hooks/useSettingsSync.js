@@ -38,15 +38,13 @@ export const useSettingsSync = () => {
           // Load from user account
           const userSettings = authContext.user?.settings || {};
           setSettings(userSettings);
-          console.log('📱 Loaded settings from user account');
         } else {
           // Load from localStorage for guests
           const localSettings = backwardCompatibleRef.current?.getSettings() || {};
           setSettings(localSettings);
-          console.log('📱 Loaded settings from localStorage');
         }
       } catch (error) {
-        console.error('❌ Failed to load initial settings:', error);
+        // Failed to load initial settings
       } finally {
         setIsLoading(false);
       }
@@ -88,7 +86,6 @@ export const useSettingsSync = () => {
         return { success: false, error: result?.error || 'Settings update failed' };
       }
     } catch (error) {
-      console.error('❌ Settings update error:', error);
       setSyncStatus('error');
       return { success: false, error: error.message };
     }
@@ -116,7 +113,6 @@ export const useSettingsSync = () => {
       
       return { success: true };
     } catch (error) {
-      console.error('❌ Full sync error:', error);
       setSyncStatus('error');
       return { success: false, error: error.message };
     }

@@ -31,7 +31,6 @@ export const AuthProvider = ({ children }) => {
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
       } catch (error) {
-        console.error('Error parsing stored user data:', error);
         sessionStorage.removeItem('auth_token');
         sessionStorage.removeItem('auth_user');
       }
@@ -75,7 +74,6 @@ export const AuthProvider = ({ children }) => {
 
       return data;
     } catch (error) {
-      console.error(`API call failed: ${endpoint}`, error);
       throw error;
     }
   };
@@ -150,7 +148,6 @@ export const AuthProvider = ({ children }) => {
         await apiCall('/api/auth/logout', { method: 'POST' });
       }
     } catch (error) {
-      console.error('Logout API call failed:', error);
     } finally {
       setToken(null);
       setUser(null);
@@ -186,7 +183,6 @@ export const AuthProvider = ({ children }) => {
       
       return newToken;
     } catch (error) {
-      console.error('Token refresh failed:', error);
       logout();
       return null;
     }
@@ -246,7 +242,6 @@ export const AuthProvider = ({ children }) => {
       try {
         listener(newSettings, updatedKeys);
       } catch (error) {
-        console.error('Settings listener error:', error);
       }
     });
   };
@@ -255,13 +250,11 @@ export const AuthProvider = ({ children }) => {
     if (!userData || !token) return;
 
     try {
-      console.log('🔄 Performing automatic settings migration...');
       
       // Check if user already has settings (avoid duplicate migration)
       const hasExistingSettings = userData.settings && Object.keys(userData.settings).length > 0;
       
       if (hasExistingSettings && userData.settings.migrationTimestamp) {
-        console.log('✅ User already has migrated settings, skipping migration');
         return;
       }
 
@@ -270,11 +263,9 @@ export const AuthProvider = ({ children }) => {
       const settingsToMigrate = Object.keys(localSettings);
       
       if (settingsToMigrate.length === 0) {
-        console.log('ℹ️ No local settings found to migrate');
         return;
       }
 
-      console.log(`🔄 Found ${settingsToMigrate.length} local settings to migrate:`, settingsToMigrate);
       
       // Migrate the most recent settings or merge multiple if needed
       let finalSettings = {};
@@ -311,15 +302,10 @@ export const AuthProvider = ({ children }) => {
       const result = await updateSettings(finalSettings);
       
       if (result.success) {
-        // Clean up localStorage
-        const removedCount = clearAllLocalSettings();
-        console.log(`✅ Successfully migrated settings and cleaned up ${removedCount} local storage entries`);
-      } else {
-        console.error('❌ Settings migration failed:', result.error);
+        clearAllLocalSettings();
       }
       
     } catch (error) {
-      console.error('❌ Auto migration error:', error);
     }
   };
 
@@ -348,7 +334,6 @@ export const AuthProvider = ({ children }) => {
         
         if (result.success) {
           localStorage.removeItem(localKey);
-          console.log(`✅ Successfully migrated settings for player ${playerId}`);
         }
         
         return result;
@@ -356,7 +341,6 @@ export const AuthProvider = ({ children }) => {
       
       return { success: true, message: 'No local settings to migrate' };
     } catch (error) {
-      console.error('❌ Settings migration failed:', error);
       return { success: false, error: error.message };
     }
   };

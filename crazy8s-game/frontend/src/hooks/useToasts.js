@@ -51,7 +51,6 @@ export const useToasts = () => {
    * @param {number|string} toastId - The unique ID of the toast to remove
    */
   const removeToast = useCallback((toastId) => {
-    console.log(`🗑️ Removing toast with ID: ${toastId}`);
     setToasts(prevToasts => prevToasts.filter(toast => toast.id !== toastId));
   }, []);
 

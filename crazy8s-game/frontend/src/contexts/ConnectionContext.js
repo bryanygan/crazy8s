@@ -29,15 +29,13 @@ export const ConnectionProvider = ({ children }) => {
       try {
         listener(event, data);
       } catch (error) {
-        console.error('Connection listener error:', error);
+        // listener error
       }
     });
   }, []);
   
   // Error handling
   const handleSocketError = useCallback((error, context = 'unknown') => {
-    console.error(`❌ Socket error in ${context}:`, error);
-    
     setConnectionError(error.message || error.toString());
     
     emitConnectionEvent('error', { error, context });
@@ -48,16 +46,13 @@ export const ConnectionProvider = ({ children }) => {
     let newSocket;
     
     if (token) {
-      console.log('🔌 Creating authenticated socket connection');
       newSocket = createAuthenticatedSocket(token);
     } else {
-      console.log('🔌 Creating guest socket connection');
       newSocket = createGuestSocket();
     }
 
     // Basic connection event handlers
     newSocket.on('connect', () => {
-      console.log('✅ Socket connected with ID:', newSocket.id);
       setIsConnected(true);
       setConnectionStatus('connected');
       setConnectionError(null);
@@ -66,7 +61,6 @@ export const ConnectionProvider = ({ children }) => {
     });
 
     newSocket.on('disconnect', (reason) => {
-      console.log('🔌 Socket disconnected:', reason);
       setIsConnected(false);
       setConnectionStatus('disconnected');
       
@@ -74,7 +68,6 @@ export const ConnectionProvider = ({ children }) => {
     });
 
     newSocket.on('connect_error', (error) => {
-      console.error('❌ Connection error:', error);
       handleSocketError(error, 'connect');
       setConnectionStatus('failed');
       
@@ -83,24 +76,20 @@ export const ConnectionProvider = ({ children }) => {
 
     // Authentication event handlers
     newSocket.on('authenticated', (data) => {
-      console.log('✅ Socket authenticated:', data);
       emitConnectionEvent('authenticated', data);
     });
 
     newSocket.on('auth_error', (error) => {
-      console.error('❌ Authentication error:', error);
       handleSocketError(error, 'auth');
       emitConnectionEvent('auth_error', { error: error.message });
     });
 
     newSocket.on('guest_connected', (data) => {
-      console.log('✅ Connected as guest:', data);
       emitConnectionEvent('guest_connected', data);
     });
     
     // Add error handler for undefined socket errors
     newSocket.on('error', (error) => {
-      console.error('❌ Undefined socket error:', error);
       handleSocketError(error, 'undefined');
     });
 
@@ -116,14 +105,13 @@ export const ConnectionProvider = ({ children }) => {
   const connectWithAuth = useCallback((token) => {
     // Prevent duplicate connections
     if (connectionStatus === 'connecting' || connectionStatus === 'connected') {
-      console.log('⚠️ Connection already in progress or established');
       return socketRef.current;
     }
-    
+
     if (socketRef.current) {
       socketRef.current.disconnect();
     }
-    
+
     setConnectionStatus('connecting');
     const newSocket = createSocket(token);
     setSocket(newSocket);
@@ -134,14 +122,13 @@ export const ConnectionProvider = ({ children }) => {
   const connectAsGuest = useCallback(() => {
     // Prevent duplicate connections
     if (connectionStatus === 'connecting' || connectionStatus === 'connected') {
-      console.log('⚠️ Connection already in progress or established');
       return socketRef.current;
     }
-    
+
     if (socketRef.current) {
       socketRef.current.disconnect();
     }
-    
+
     setConnectionStatus('connecting');
     const newSocket = createSocket();
     setSocket(newSocket);
