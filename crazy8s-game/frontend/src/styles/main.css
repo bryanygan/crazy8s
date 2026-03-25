@@ -96,24 +96,6 @@ body {
     }
 }
 
-@keyframes card-flip {
-    0% {
-        transform: rotateY(0deg);
-    }
-    100% {
-        transform: rotateY(180deg);
-    }
-}
-
-@keyframes shimmer {
-    0% {
-        background-position: -200% 0;
-    }
-    100% {
-        background-position: 200% 0;
-    }
-}
-
 @keyframes bounce-in {
     0% {
         transform: scale(0.3);
@@ -152,21 +134,6 @@ body {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-}
-
-.card-enhanced {
-    background: var(--card-gradient);
-    border: 1px solid hsl(var(--border) / 0.5);
-    backdrop-filter: blur(20px);
-    border-radius: var(--radius);
-    transition: var(--transition-smooth);
-    position: relative;
-    overflow: visible;
-}
-
-.card-enhanced:hover {
-    transform: translateY(-5px) scale(1.02);
-    border-color: hsl(var(--primary) / 0.3);
 }
 
 .button-enhanced {
