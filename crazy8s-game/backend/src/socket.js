@@ -116,7 +116,27 @@ const initSocket = (server) => {
     io.use(authenticateSocket);
 
     io.on('connection', (socket) => {
-        
+        // Per-socket rate limiting
+        const rateLimitWindow = 1000; // 1 second window
+        const maxEventsPerWindow = 30;
+        let eventCount = 0;
+        let windowStart = Date.now();
+
+        const originalEmitHandler = socket.onevent;
+        socket.onevent = function (packet) {
+            const now = Date.now();
+            if (now - windowStart > rateLimitWindow) {
+                eventCount = 0;
+                windowStart = now;
+            }
+            eventCount++;
+            if (eventCount > maxEventsPerWindow) {
+                logger.warn(`Rate limit exceeded for socket ${socket.id}`);
+                return;
+            }
+            originalEmitHandler.call(this, packet);
+        };
+
         if (socket.isAuthenticated) {
             logger.info(`Authenticated user connected: ${socket.user.username} (${socket.id})`);
             

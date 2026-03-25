@@ -1,6 +1,7 @@
 // Enhanced gameController.js with new draw mechanics and duplicate prevention
 
 const Game = require('../models/game');
+const logger = require('../utils/logger');
 
 // Duplicate prevention tracking for REST API (shared with Socket.IO)
 const restGameCreationRequests = new Map(); // requesterId -> { timestamp, requestHash, gameId }
@@ -58,7 +59,7 @@ exports.startGame = (req, res) => {
         // LAYER 1: Check for recent duplicate requests from same requester
         const lastRequest = restGameCreationRequests.get(requesterId);
         if (lastRequest && (now - lastRequest.timestamp) < 3000) { // 3 second cooldown for REST
-            console.log(`🛡️ REST: Duplicate request blocked for ${requesterId} (${now - lastRequest.timestamp}ms ago)`);
+            logger.debug(`🛡️ REST: Duplicate request blocked for ${requesterId} (${now - lastRequest.timestamp}ms ago)`);
             return res.status(429).json({
                 success: false,
                 error: 'Game creation request too frequent. Please wait.',
@@ -69,7 +70,7 @@ exports.startGame = (req, res) => {
         // LAYER 2: Check if requester is currently creating a game
         const currentCreationState = restGameCreationStates.get(requesterId);
         if (currentCreationState === "creating") {
-            console.log(`🛡️ REST: Creation in progress blocked for ${requesterId}`);
+            logger.debug(`🛡️ REST: Creation in progress blocked for ${requesterId}`);
             return res.status(409).json({
                 success: false,
                 error: 'Game creation already in progress. Please wait.'
@@ -81,7 +82,7 @@ exports.startGame = (req, res) => {
             .find(([_, reqData]) => reqData.requestHash === requestHash && (now - reqData.timestamp) < 10000);
         
         if (duplicateRequest) {
-            console.log(`🛡️ REST: Content duplicate blocked for ${requesterId}`);
+            logger.debug(`🛡️ REST: Content duplicate blocked for ${requesterId}`);
             return res.status(409).json({
                 success: false,
                 error: 'Duplicate game creation request detected. Please wait.'
@@ -91,7 +92,7 @@ exports.startGame = (req, res) => {
         // Set creation state to prevent concurrent requests
         restGameCreationStates.set(requesterId, "creating");
         
-        console.log(`🎮 REST: Starting game creation for ${requesterId}`);
+        logger.debug(`🎮 REST: Starting game creation for ${requesterId}`);
 
         try {
             const newGame = new Game(playerIds, playerNames, requesterId);
@@ -127,7 +128,7 @@ exports.startGame = (req, res) => {
                 
                 const gameState = newGame.getGameState();
                 
-                console.log(`✅ REST: Game ${newGame.id} created successfully by ${requesterId}`);
+                logger.debug(`✅ REST: Game ${newGame.id} created successfully by ${requesterId}`);
                 res.status(200).json({ 
                     success: true,
                     message: 'Game started', 
@@ -147,7 +148,7 @@ exports.startGame = (req, res) => {
             throw gameCreationError;
         }
     } catch (error) {
-        console.error('REST: Error creating game:', error);
+        logger.error('REST: Error creating game:', error);
         // Ensure creation state is cleaned up on error
         if (req.body.requesterId) {
             restGameCreationStates.delete(req.body.requesterId);

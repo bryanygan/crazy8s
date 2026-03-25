@@ -2,6 +2,7 @@
 // Enhanced card play logic for Crazy 8's game
 
 const Game = require('./game');
+const logger = require('../utils/logger');
 
 class CardPlayValidator {
     constructor(game) {
@@ -368,7 +369,7 @@ class EnhancedGame extends Game {
         const is2PlayerGame = playerCount === 2;
         
         if (isPureJackStack && is2PlayerGame) {
-            console.log('🎯 Pure Jack stack in 2-player game - original player keeps turn');
+            logger.debug('🎯 Pure Jack stack in 2-player game - original player keeps turn');
             return true; // Original player always keeps turn
         }
         
@@ -425,14 +426,14 @@ class EnhancedGame extends Game {
             return { isValid: true };
         }
 
-        console.log('🔍 Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
+        logger.debug('🔍 Validating card stack:', cards.map(c => `${c.rank} of ${c.suit}`));
 
         // Check each card-to-card transition in the stack
         for (let i = 1; i < cards.length; i++) {
             const prevCard = cards[i - 1];
             const currentCard = cards[i];
             
-            console.log(`  Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
+            logger.debug(`  Checking transition: ${prevCard.rank} of ${prevCard.suit} → ${currentCard.rank} of ${currentCard.suit}`);
             
             // Cards must match by suit or rank
             const matchesSuit = prevCard.suit === currentCard.suit;
@@ -444,11 +445,11 @@ class EnhancedGame extends Game {
                 (prevCard.rank === '2' && currentCard.rank === 'Ace')
             ) && prevCard.suit === currentCard.suit;
             
-            console.log(`    Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
+            logger.debug(`    Matches suit: ${matchesSuit}, Matches rank: ${matchesRank}, Ace/2 cross: ${isAce2Cross}`);
             
             // Basic matching requirement
             if (!matchesSuit && !matchesRank && !isAce2Cross) {
-                console.log(`    ❌ Invalid transition - no suit/rank match!`);
+                logger.debug(`    ❌ Invalid transition - no suit/rank match!`);
                 return {
                     isValid: false,
                     error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Cards must match suit or rank.`
@@ -461,7 +462,7 @@ class EnhancedGame extends Game {
                 const wouldHaveTurnControl = this.simulateTurnControl(stackUpToHere);
                 
                 if (!wouldHaveTurnControl) {
-                    console.log(`    ❌ Invalid transition - no turn control after previous cards!`);
+                    logger.debug(`    ❌ Invalid transition - no turn control after previous cards!`);
                     return {
                         isValid: false,
                         error: `Cannot stack ${currentCard.rank} of ${currentCard.suit} after ${prevCard.rank} of ${prevCard.suit}. Previous cards don't maintain turn control.`
@@ -469,10 +470,10 @@ class EnhancedGame extends Game {
                 }
             }
             
-            console.log(`    ✅ Valid transition`);
+            logger.debug(`    ✅ Valid transition`);
         }
         
-        console.log('✅ Stack validation passed');
+        logger.debug('✅ Stack validation passed');
         return { isValid: true };
     }
 }

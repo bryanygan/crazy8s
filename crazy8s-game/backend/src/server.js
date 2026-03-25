@@ -24,13 +24,17 @@ function validateEnvironment() {
     process.exit(1);
   }
   
-  // Validate JWT_SECRET is not the default value
-  if (process.env.JWT_SECRET === 'your-super-secret-jwt-key-change-this-in-production') {
-    logger.error('JWT_SECRET is set to the default value. Please change it for security.');
+  // Validate JWT_SECRET is not a default/test value
+  const insecureSecrets = [
+    'your-super-secret-jwt-key-change-this-in-production',
+    'test-jwt-secret-for-development-only-12345',
+  ];
+  if (insecureSecrets.includes(process.env.JWT_SECRET)) {
     if (process.env.NODE_ENV === 'production') {
+      logger.error('JWT_SECRET is set to an insecure default value. Change it before deploying.');
       process.exit(1);
     } else {
-      logger.warn('Using default JWT_SECRET in development mode - this is insecure!');
+      logger.warn('Using insecure JWT_SECRET in development mode');
     }
   }
   
@@ -135,16 +139,20 @@ const authenticateSocket = async (socket, next) => {
   }
 };
 
-// Updated CORS configuration for production with optimized timeouts
+// Parse CORS origins from environment variable (comma-separated) or use defaults
+const parseCorsOrigins = () => {
+    if (process.env.CORS_ORIGIN) {
+        return process.env.CORS_ORIGIN.split(',').map(s => s.trim());
+    }
+    return ['http://localhost:3000', 'http://localhost:3001'];
+};
+const allowedOrigins = parseCorsOrigins();
+
+// CORS configuration with optimized timeouts
 const socketTimeouts = getTimeout('socket');
 const io = socketIo(server, {
     cors: {
-        origin: process.env.NODE_ENV === 'production' 
-            ? [
-                "https://crazy8s.me/", 
-                "https://crazy8s-production.up.railway.app",
-              ]
-            : ["http://localhost:3000", "http://localhost:3001"],
+        origin: allowedOrigins,
         methods: ["GET", "POST"],
         allowedHeaders: ["Content-Type", "Authorization"],
         credentials: true
@@ -175,13 +183,6 @@ io.use(authenticateSocket);
 
 // Add Express CORS middleware as well
 app.use((req, res, next) => {
-    const allowedOrigins = process.env.NODE_ENV === 'production'
-        ? [
-            "https://crazy8s.me/", 
-            "https://crazy8s-production.up.railway.app",
-          ]
-        : ["http://localhost:3000", "http://localhost:3001"];
-    
     const origin = req.headers.origin;
     if (allowedOrigins.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
@@ -287,13 +288,13 @@ const getSocketForPlayer = (gameId, playerId) => {
 
 // Helper function to broadcast game state to all players in a game
 const broadcastGameState = (gameId) => {
-    console.log(`broadcastGameState called for gameId: ${gameId}`);
+    logger.debug(`broadcastGameState called for gameId: ${gameId}`);
     const game = Game.findById(gameId);
     if (game) {
         const gameState = game.getGameState();
-        console.log(`Broadcasting game state for ${gameId}:`);
-        console.log(`  Current Player: ${gameState.currentPlayer} (ID: ${gameState.currentPlayerId})`);
-        console.log(`  Players: ${gameState.players.map(p => `${p.name}(${p.isCurrentPlayer ? 'CURRENT' : 'waiting'})`).join(', ')}`);
+        logger.debug(`Broadcasting game state for ${gameId}:`);
+        logger.debug(`  Current Player: ${gameState.currentPlayer} (ID: ${gameState.currentPlayerId})`);
+        logger.debug(`  Players: ${gameState.players.map(p => `${p.name}(${p.isCurrentPlayer ? 'CURRENT' : 'waiting'})`).join(', ')}`);
         
         // Send game state to all players in the game
         io.to(gameId).emit('gameUpdate', gameState);
@@ -301,7 +302,7 @@ const broadcastGameState = (gameId) => {
         // Send each player their updated hand
         game.players.forEach(player => {
             const hand = game.getPlayerHand(player.id);
-            console.log(`  Sending hand to ${player.name}: ${hand.length} cards`);
+            logger.debug(`  Sending hand to ${player.name}: ${hand.length} cards`);
             const targetSocket = getSocketForPlayer(gameId, player.id);
             if (targetSocket) {
                 io.to(targetSocket).emit('handUpdate', hand);
@@ -411,7 +412,7 @@ io.on('connection', (socket) => {
             // LAYER 1: Check for recent duplicate requests from same socket
             const lastSocketRequest = recentGameCreationRequests.get(socket.id);
             if (lastSocketRequest && (now - lastSocketRequest.timestamp) < 2000) {
-                console.log(`🛡️ Duplicate request blocked: Socket ${socket.id} (${now - lastSocketRequest.timestamp}ms ago)`);
+                logger.debug(`Duplicate request blocked: Socket ${socket.id} (${now - lastSocketRequest.timestamp}ms ago)`);
                 socket.emit('error', 'Game creation request too frequent. Please wait.');
                 return;
             }
@@ -422,7 +423,7 @@ io.on('connection', (socket) => {
                     .filter(([_, reqData]) => reqData.userId === socket.userId && (now - reqData.timestamp) < 2000);
                 
                 if (existingUserRequests.length > 0) {
-                    console.log(`🛡️ Duplicate user request blocked: User ${socket.userId} has recent request from different socket`);
+                    logger.debug(`Duplicate user request blocked: User ${socket.userId} has recent request from different socket`);
                     socket.emit('error', 'You have a recent game creation request. Please wait.');
                     return;
                 }
@@ -431,7 +432,7 @@ io.on('connection', (socket) => {
             // LAYER 3: Check if user is currently creating a game
             const currentCreationState = gameCreationStates.get(userIdentifier);
             if (currentCreationState === "creating") {
-                console.log(`🛡️ Creation in progress blocked: ${userIdentifier} is already creating a game`);
+                logger.debug(`Creation in progress blocked: ${userIdentifier} is already creating a game`);
                 socket.emit('error', 'Game creation already in progress. Please wait.');
                 return;
             }
@@ -441,7 +442,7 @@ io.on('connection', (socket) => {
                 .find(([_, reqData]) => reqData.requestHash === requestHash && (now - reqData.timestamp) < 5000);
             
             if (duplicateRequest) {
-                console.log(`🛡️ Content duplicate blocked: Same request content from ${userIdentifier}`);
+                logger.debug(`Content duplicate blocked: Same request content from ${userIdentifier}`);
                 socket.emit('error', 'Duplicate game creation request detected. Please wait.');
                 return;
             }
@@ -449,7 +450,7 @@ io.on('connection', (socket) => {
             // LAYER 5: Check if user already has an active game creation lock
             const existingLock = userGameCreationLocks.get(userIdentifier);
             if (existingLock && (now - existingLock.timestamp) < 10000) { // 10 second lock
-                console.log(`🛡️ User lock blocked: ${userIdentifier} has active game creation lock`);
+                logger.debug(`User lock blocked: ${userIdentifier} has active game creation lock`);
                 socket.emit('error', 'You recently created a game. Please wait before creating another.');
                 return;
             }
@@ -457,7 +458,7 @@ io.on('connection', (socket) => {
             // LAYER 6: Check if player is already in a game
             const existingPlayerInfo = connectedPlayers.get(socket.id);
             if (existingPlayerInfo && existingPlayerInfo.gameId) {
-                console.log(`🛡️ Already in game blocked: ${socket.id} is in game ${existingPlayerInfo.gameId}`);
+                logger.debug(`Already in game blocked: ${socket.id} is in game ${existingPlayerInfo.gameId}`);
                 socket.emit('error', 'You are already in a game. Leave current game first.');
                 return;
             }
@@ -465,7 +466,7 @@ io.on('connection', (socket) => {
             // Set creation state to prevent concurrent requests
             gameCreationStates.set(userIdentifier, "creating");
             
-            console.log(`🎮 Starting game creation for ${displayName} (${userIdentifier})`);
+            logger.debug(`Starting game creation for ${displayName} (${userIdentifier})`);
             
             try {
                 // Create new game with this player
@@ -513,7 +514,7 @@ io.on('connection', (socket) => {
                     gameCreationStates.delete(userIdentifier);
                 }, 30000);
 
-                console.log(`✅ Game ${game.id} created successfully by ${displayName} (${socket.id}) - ${socket.isAuthenticated ? 'Authenticated' : 'Guest'}`);
+                logger.debug(`Game ${game.id} created successfully by ${displayName} (${socket.id}) - ${socket.isAuthenticated ? 'Authenticated' : 'Guest'}`);
                 socket.emit('success', `Game created! Game ID: ${game.id}`);
                 broadcastGameState(game.id);
                 
@@ -524,7 +525,7 @@ io.on('connection', (socket) => {
             }
 
         } catch (error) {
-            console.error('Error creating game:', error);
+            logger.error('Error creating game:', error);
             socket.emit('error', 'Failed to create game');
         }
     });
@@ -534,7 +535,7 @@ io.on('connection', (socket) => {
         try {
             const { playerIds, playerNames, customHands, startingCard, debugMode } = data;
 
-            console.log('🐛 Creating debug game:', {
+            logger.debug('Creating debug game:', {
                 playerCount: playerIds.length,
                 playerNames,
                 startingCard: `${startingCard.rank} of ${startingCard.suit}`
@@ -580,12 +581,12 @@ io.on('connection', (socket) => {
 
             socket.join(game.id);
 
-            console.log(`🐛 Debug game ${game.id} created successfully`);
+            logger.debug(`Debug game ${game.id} created successfully`);
             socket.emit('success', `Debug game created! Game ID: ${game.id}`);
             broadcastGameState(game.id);
 
         } catch (error) {
-            console.error('🐛 Error creating debug game:', error);
+            logger.error('Error creating debug game:', error);
             socket.emit('error', 'Failed to create debug game: ' + error.message);
         }
     });
@@ -623,7 +624,7 @@ io.on('connection', (socket) => {
             broadcastGameState(info.gameId);
 
         } catch (error) {
-            console.error('Error switching player:', error);
+            logger.error('Error switching player:', error);
             socket.emit('error', 'Failed to switch player');
         }
     });
@@ -688,14 +689,14 @@ io.on('connection', (socket) => {
             // Join socket room for this game
             socket.join(gameId);
 
-            console.log(`${displayName} (${socket.id}) joined game ${gameId} - ${socket.isAuthenticated ? 'Authenticated' : 'Guest'}`);
+            logger.debug(`${displayName} (${socket.id}) joined game ${gameId} - ${socket.isAuthenticated ? 'Authenticated' : 'Guest'}`);
             socket.emit('success', `Joined game ${gameId}!`);
             
             // Notify all players in the game
             broadcastGameState(gameId);
 
         } catch (error) {
-            console.error('Error joining game:', error);
+            logger.error('Error joining game:', error);
             socket.emit('error', 'Failed to join game');
         }
     });
@@ -711,12 +712,12 @@ io.on('connection', (socket) => {
             return;
             }
 
-            console.log(`Starting game ${gameId} with players:`, game.players.map(p => `${p.name}(${p.id})`));
+            logger.debug(`Starting game ${gameId} with players:`, game.players.map(p => `${p.name}(${p.id})`));
 
             const result = game.startGame();
             
             if (result.success) {
-            console.log(`Game ${gameId} started successfully`);
+            logger.debug(`Game ${gameId} started successfully`);
             
             // Start the timer if timer settings provided
             if (timerSettings && timerSettings.enableTimer) {
@@ -727,12 +728,12 @@ io.on('connection', (socket) => {
             broadcastGameState(game.id);
             io.to(gameId).emit('success', 'Game started!');
             } else {
-            console.log(`Failed to start game ${gameId}:`, result.error);
+            logger.debug(`Failed to start game ${gameId}:`, result.error);
             socket.emit('error', result.error);
             }
 
         } catch (error) {
-            console.error('Error starting game:', error);
+            logger.error('Error starting game:', error);
             socket.emit('error', 'Failed to start game');
         }
         });
@@ -768,12 +769,12 @@ io.on('connection', (socket) => {
             return;
             }
 
-            console.log(`${player.name} (${socket.id}) attempting to play cards:`, cards);
+            logger.debug(`${player.name} (${socket.id}) attempting to play cards:`, cards);
 
             const result = game.playCard(playerId, cards, declaredSuit);
             
             if (result.success) {
-            console.log(`Card play successful by ${player.name}`);
+            logger.debug(`Card play successful by ${player.name}`);
             
             // Reset timer for next player's turn
             if (timerSettings && timerSettings.enableTimer) {
@@ -797,12 +798,12 @@ io.on('connection', (socket) => {
             });
 
             } else {
-            console.log(`Card play failed by ${player.name}: ${result.error}`);
+            logger.debug(`Card play failed by ${player.name}: ${result.error}`);
             socket.emit('error', result.error);
             }
 
         } catch (error) {
-            console.error('Error playing card:', error);
+            logger.error('Error playing card:', error);
             socket.emit('error', 'Failed to play card: ' + error.message);
         }
     });
@@ -844,7 +845,7 @@ io.on('connection', (socket) => {
             socket.emit('success', message);
             
         } catch (error) {
-            console.error('Error updating timer settings:', error);
+            logger.error('Error updating timer settings:', error);
             socket.emit('error', 'Failed to update timer settings');
         }
         });
@@ -869,12 +870,12 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            console.log(`${player.name} attempting to draw ${count} cards`);
+            logger.debug(`${player.name} attempting to draw ${count} cards`);
 
             const result = game.drawCards(playerId, count);
             
             if (result.success) {
-                console.log(`${player.name} drew ${result.drawnCards.length} cards`);
+                logger.debug(`${player.name} drew ${result.drawnCards.length} cards`);
                 
                 // Broadcast updated game state to all players
                 broadcastGameState(gameId);
@@ -900,17 +901,17 @@ io.on('connection', (socket) => {
                 // If the current player changed after drawing (meaning turn was passed automatically)
                 const currentPlayerAfterDraw = game.getCurrentPlayer();
                 if (currentPlayerAfterDraw && currentPlayerAfterDraw.id !== playerId && timerSettings && timerSettings.enableTimer) {
-                    console.log(`⏰ Turn passed to ${currentPlayerAfterDraw.name} after draw - resetting timer`);
+                    logger.debug(`⏰ Turn passed to ${currentPlayerAfterDraw.name} after draw - resetting timer`);
                     manageGameTimer(gameId, 'reset', timerSettings);
                 }
 
             } else {
-                console.log(`Draw cards failed for ${player.name}: ${result.error}`);
+                logger.debug(`Draw cards failed for ${player.name}: ${result.error}`);
                 socket.emit('error', result.error);
             }
 
         } catch (error) {
-            console.error('Error drawing cards:', error);
+            logger.error('Error drawing cards:', error);
             socket.emit('error', 'Failed to draw cards');
         }
     });
@@ -934,16 +935,16 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            console.log(`${player.name} passing turn after drawing`);
+            logger.debug(`${player.name} passing turn after drawing`);
 
             const result = game.passTurnAfterDraw(playerId);
             
             if (result.success) {
-                console.log(`${player.name} passed turn successfully`);
+                logger.debug(`${player.name} passed turn successfully`);
                 
                 // RESET TIMER FOR NEXT PLAYER 
                 if (timerSettings && timerSettings.enableTimer) {
-                    console.log(`⏰ ${player.name} passed turn - resetting timer for next player`);
+                    logger.debug(`⏰ ${player.name} passed turn - resetting timer for next player`);
                     manageGameTimer(gameId, 'reset', timerSettings);
                 }
                 
@@ -958,12 +959,12 @@ io.on('connection', (socket) => {
                 });
 
             } else {
-                console.log(`Pass turn failed for ${player.name}: ${result.error}`);
+                logger.debug(`Pass turn failed for ${player.name}: ${result.error}`);
                 socket.emit('error', result.error);
             }
 
         } catch (error) {
-            console.error('Error passing turn:', error);
+            logger.error('Error passing turn:', error);
             socket.emit('error', 'Failed to pass turn');
         }
     });
@@ -975,16 +976,16 @@ io.on('connection', (socket) => {
             if (player) {
                 const formattedMessage = `${player.name}: ${message}`;
                 io.to(player.gameId).emit('chat message', formattedMessage);
-                console.log(`Chat message in game ${player.gameId}: ${formattedMessage}`);
+                logger.debug(`Chat message in game ${player.gameId}: ${formattedMessage}`);
             }
         } catch (error) {
-            console.error('Error handling chat message:', error);
+            logger.error('Error handling chat message:', error);
         }
     });
 
     // Handle disconnection (enhanced with session preservation)
     socket.on('disconnect', (reason) => {
-        console.log(`Player disconnected: ${socket.id} - Reason: ${reason}`);
+        logger.debug(`Player disconnected: ${socket.id} - Reason: ${reason}`);
         
         try {
             const player = connectedPlayers.get(socket.id);
@@ -995,7 +996,7 @@ io.on('connection', (socket) => {
                     const gamePlayer = game.players.find(p => p.id === player.playerId);
                     if (gamePlayer) {
                         gamePlayer.isConnected = false;
-                        console.log(`${gamePlayer.name} disconnected from game ${player.gameId}`);
+                        logger.debug(`${gamePlayer.name} disconnected from game ${player.gameId}`);
                         logger.info(`Player ${gamePlayer.name} disconnected from game ${player.gameId} (${socket.id}) - Reason: ${reason}`);
                     }
                     
@@ -1045,14 +1046,14 @@ io.on('connection', (socket) => {
                     // Clear creation state if it was set by this socket
                     if (gameCreationStates.get(userIdentifier) === "creating") {
                         gameCreationStates.delete(userIdentifier);
-                        console.log(`🧹 Cleared creation state for disconnected user ${userIdentifier}`);
+                        logger.debug(`Cleared creation state for disconnected user ${userIdentifier}`);
                     }
                     
                     // Clear user lock if it was set by this socket
                     const userLock = userGameCreationLocks.get(userIdentifier);
                     if (userLock && userLock.socketId === socket.id) {
                         userGameCreationLocks.delete(userIdentifier);
-                        console.log(`🧹 Cleared user lock for disconnected user ${userIdentifier}`);
+                        logger.debug(`Cleared user lock for disconnected user ${userIdentifier}`);
                     }
                 } else {
                     // For guest users, clean up by socket ID
@@ -1061,7 +1062,7 @@ io.on('connection', (socket) => {
                 }
             }
         } catch (error) {
-            console.error('Error handling disconnect:', error);
+            logger.error('Error handling disconnect:', error);
             logger.error(`Error handling disconnect for ${socket.id}:`, error);
         }
     });
@@ -1130,7 +1131,7 @@ io.on('connection', (socket) => {
             logger.info(`Player ${playerName} successfully reconnected to game ${gameId} (${socket.id})`);
 
         } catch (error) {
-            console.error('Error handling reconnection:', error);
+            logger.error('Error handling reconnection:', error);
             logger.error(`Reconnection error for ${playerName} to ${gameId}:`, error);
             socket.emit('error', 'Failed to reconnect');
         }
@@ -1160,17 +1161,17 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            console.log(`🔄 Play again requested by ${player.name} for game ${gameId}`);
+            logger.debug(`Play again requested by ${player.name} for game ${gameId}`);
 
             // Call the resetForNewGame method
             const result = game.resetForNewGame();
             
             if (result.success) {
-                console.log(`🔄 Game ${gameId} successfully reset for new game`);
+                logger.debug(`Game ${gameId} successfully reset for new game`);
                 
                 // Restart timer if timer settings are available and enabled
                 if (game.timerSettings && game.timerSettings.enableTimer) {
-                    console.log('🔄 Restarting timer for new game');
+                    logger.debug('Restarting timer for new game');
                     manageGameTimer(gameId, 'start', game.timerSettings);
                 }
                 
@@ -1187,22 +1188,22 @@ io.on('connection', (socket) => {
                     startedBy: player.name
                 });
 
-                console.log(`🔄 New game notifications sent to all players in ${gameId}`);
+                logger.debug(`New game notifications sent to all players in ${gameId}`);
                 
             } else {
-                console.log(`🔄 Failed to reset game ${gameId}: ${result.error}`);
+                logger.debug(`Failed to reset game ${gameId}: ${result.error}`);
                 socket.emit('error', result.error);
             }
 
         } catch (error) {
-            console.error('🔄 Error handling play again:', error);
+            logger.error('Error handling play again:', error);
             socket.emit('error', 'Failed to start new game: ' + error.message);
         }
     });
 
     // Handle play again vote
     socket.on('votePlayAgain', (data) => {
-        console.log('🗳️ [SERVER] Received votePlayAgain:', data);
+        logger.debug('[SERVER] Received votePlayAgain:', data);
         try {
             const { gameId } = data;
             
@@ -1225,7 +1226,7 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            console.log(`🗳️ Play again vote by ${player.name} for game ${gameId}`);
+            logger.debug(`Play again vote by ${player.name} for game ${gameId}`);
 
             // Add the vote
             const voteResult = game.addPlayAgainVote(player.playerId);
@@ -1241,20 +1242,20 @@ io.on('connection', (socket) => {
                     gameCreator: voteResult.gameCreator
                 });
 
-                console.log(`🗳️ Vote update sent: ${voteResult.votedPlayers.length}/${voteResult.totalPlayers} voted`);
+                logger.debug(`Vote update sent: ${voteResult.votedPlayers.length}/${voteResult.totalPlayers} voted`);
             } else {
                 socket.emit('error', voteResult.error);
             }
 
         } catch (error) {
-            console.error('🗳️ Error handling play again vote:', error);
+            logger.error('Error handling play again vote:', error);
             socket.emit('error', 'Failed to process vote: ' + error.message);
         }
     });
 
     // Handle removing play again vote
     socket.on('removePlayAgainVote', (data) => {
-        console.log('🗳️ [SERVER] Received removePlayAgainVote:', data);
+        logger.debug('[SERVER] Received removePlayAgainVote:', data);
         try {
             const { gameId } = data;
             const game = Game.findById(gameId);
@@ -1265,7 +1266,7 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            console.log(`🗳️ Removing play again vote by ${player.name} for game ${gameId}`);
+            logger.debug(`Removing play again vote by ${player.name} for game ${gameId}`);
 
             const voteResult = game.removePlayAgainVote(player.playerId);
             
@@ -1281,7 +1282,7 @@ io.on('connection', (socket) => {
             }
 
         } catch (error) {
-            console.error('🗳️ Error removing play again vote:', error);
+            logger.error('Error removing play again vote:', error);
             socket.emit('error', 'Failed to remove vote: ' + error.message);
         }
     });
@@ -1310,17 +1311,17 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            console.log(`🚀 Starting new game by creator ${player.name} for game ${gameId}`);
+            logger.debug(`Starting new game by creator ${player.name} for game ${gameId}`);
 
             // Call the resetForNewGame method
             const result = game.resetForNewGame();
             
             if (result.success) {
-                console.log(`🔄 Game ${gameId} successfully reset for new game`);
+                logger.debug(`Game ${gameId} successfully reset for new game`);
                 
                 // Restart timer if timer settings are available and enabled
                 if (game.timerSettings && game.timerSettings.enableTimer) {
-                    console.log('🔄 Restarting timer for new game');
+                    logger.debug('Restarting timer for new game');
                     manageGameTimer(gameId, 'start', game.timerSettings);
                 }
                 
@@ -1337,15 +1338,15 @@ io.on('connection', (socket) => {
                     startedBy: player.name
                 });
 
-                console.log(`🔄 New game notifications sent to all players in ${gameId}`);
+                logger.debug(`New game notifications sent to all players in ${gameId}`);
                 
             } else {
-                console.log(`🔄 Failed to reset game ${gameId}: ${result.error}`);
+                logger.debug(`Failed to reset game ${gameId}: ${result.error}`);
                 socket.emit('error', result.error);
             }
 
         } catch (error) {
-            console.error('🚀 Error starting new game:', error);
+            logger.error('Error starting new game:', error);
             socket.emit('error', 'Failed to start new game: ' + error.message);
         }
     });
@@ -1365,7 +1366,7 @@ io.on('connection', (socket) => {
             socket.emit('tournamentStatus', tournamentStatus);
 
         } catch (error) {
-            console.error('Error getting tournament status:', error);
+            logger.error('Error getting tournament status:', error);
             socket.emit('error', 'Failed to get tournament status');
         }
     });
@@ -1420,10 +1421,10 @@ io.on('connection', (socket) => {
             socket.emit('success', 'Reconnected to tournament successfully');
             socket.to(gameId).emit('playerReconnected', { playerName });
 
-            console.log(`Player ${playerName} reconnected to tournament ${gameId}`);
+            logger.debug(`Player ${playerName} reconnected to tournament ${gameId}`);
 
         } catch (error) {
-            console.error('Error handling tournament reconnection:', error);
+            logger.error('Error handling tournament reconnection:', error);
             socket.emit('error', 'Failed to reconnect to tournament');
         }
     });
@@ -1446,9 +1447,9 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            console.log(`🚀 Manual start next round requested by ${player.name} for game ${gameId}`);
-            console.log(`🔍 Debug - Socket ID: ${socket.id}, Player ID from mapping: ${player.playerId}`);
-            console.log(`🔍 Debug - Game players:`, game.players.map(p => ({ id: p.id, name: p.name, isSafe: p.isSafe })));
+            logger.debug(`Manual start next round requested by ${player.name} for game ${gameId}`);
+            logger.debug(`Debug - Socket ID: ${socket.id}, Player ID from mapping: ${player.playerId}`);
+            logger.debug(`Debug - Game players:`, game.players.map(p => ({ id: p.id, name: p.name, isSafe: p.isSafe })));
 
             const result = game.manualStartNextRound(player.playerId);
             
@@ -1470,7 +1471,7 @@ io.on('connection', (socket) => {
             }
 
         } catch (error) {
-            console.error('Error starting next round:', error);
+            logger.error('Error starting next round:', error);
             socket.emit('error', 'Failed to start next round');
         }
     });
@@ -1499,7 +1500,7 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            console.log(`🔧 Force next round requested by ${player.name} for game ${gameId}`);
+            logger.debug(`Force next round requested by ${player.name} for game ${gameId}`);
 
             // Force end current round if in progress
             if (game.roundInProgress) {
@@ -1521,7 +1522,7 @@ io.on('connection', (socket) => {
             }
 
         } catch (error) {
-            console.error('Error forcing next round:', error);
+            logger.error('Error forcing next round:', error);
             socket.emit('error', 'Failed to force next round');
         }
     });
@@ -1590,7 +1591,7 @@ io.on('connection', (socket) => {
                 statistics: socket.user.statistics
             });
         } catch (error) {
-            console.error('Error getting user stats:', error);
+            logger.error('Error getting user stats:', error);
             socket.emit('error', 'Failed to get user statistics');
         }
     });
@@ -1621,7 +1622,7 @@ io.on('connection', (socket) => {
             
             logger.info(`Settings updated for ${socket.user.username}`);
         } catch (error) {
-            console.error('Error updating user settings:', error);
+            logger.error('Error updating user settings:', error);
             socket.emit('error', 'Failed to update settings');
         }
     });
@@ -1667,14 +1668,14 @@ const manageGameTimer = (gameId, action, settings = {}) => {
         if (game && game.gameState === 'playing') {
           const currentPlayer = game.getCurrentPlayer();
           if (currentPlayer) {
-            console.log(`⏰ Timer expired for ${currentPlayer.name}`);
+            logger.debug(`⏰ Timer expired for ${currentPlayer.name}`);
             
             // Check if player has already drawn this turn
             const hasDrawn = game.playersWhoHaveDrawn.has(currentPlayer.id);
             
             if (!hasDrawn) {
               // Player hasn't drawn yet - auto-draw card
-              console.log(`Auto-drawing card for ${currentPlayer.name}`);
+              logger.debug(`Auto-drawing card for ${currentPlayer.name}`);
               const drawResult = game.drawCards(currentPlayer.id, 1);
               if (drawResult.success) {
                 setTimeout(() => {
@@ -1691,7 +1692,7 @@ const manageGameTimer = (gameId, action, settings = {}) => {
               }
             } else {
               // Player has drawn but hasn't passed turn - force pass
-              console.log(`Force passing turn for ${currentPlayer.name} who already drew`);
+              logger.debug(`Force passing turn for ${currentPlayer.name} who already drew`);
               if (game.pendingTurnPass === currentPlayer.id) {
                 game.passTurnAfterDraw(currentPlayer.id);
               } else {
@@ -1783,9 +1784,9 @@ process.on('unhandledRejection', (reason, promise) => {
 // Start the server
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-    logger.info(`🚀 Server is running on port ${PORT}`);
-    logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-    logger.info(`🗄️  Database type: ${process.env.DB_TYPE || 'mongodb'}`);
+    logger.info(`Server is running on port ${PORT}`);
+    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`Database type: ${process.env.DB_TYPE || 'mongodb'}`);
 });
 
 // Export server for testing
