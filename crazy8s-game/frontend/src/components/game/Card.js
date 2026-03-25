@@ -175,10 +175,14 @@ const Card = ({
       )}
       
       {/* Card Element */}
-      <div 
+      <div
         className={`card ${isPlayable ? 'playable' : ''} ${isSelected ? 'selected' : ''}`}
         onClick={handleClick}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick(); } }}
         style={getCardStyles()}
+        role="button"
+        tabIndex={isPlayable ? 0 : -1}
+        aria-label={`${card.rank} of ${card.suit}${isSelected ? ', selected' : ''}${isPlayable ? ', playable' : ''}`}
       >
         <div style={{ fontWeight: 'bold', fontSize: '8px' }}>
           {card.rank}
