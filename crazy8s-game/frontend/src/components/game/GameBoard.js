@@ -5,7 +5,7 @@ const GameBoard = ({ gameState, onDrawCard, topCard, drawPileSize }) => {
   return (
     <div style={{
       display: 'flex',
-      justifyContent: 'center',
+      flexDirection: 'column',
       alignItems: 'center',
       padding: '40px 20px',
       backgroundColor: '#27ae60',

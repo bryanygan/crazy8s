@@ -14,27 +14,26 @@ const Card = ({
   // Style calculation functions
   const getCardStyles = () => {
     const baseStyles = {
-      width: '60px',
-      height: '90px',
+      width: 'clamp(50px, 8vw, 72px)',
+      height: 'clamp(75px, 12vw, 108px)',
       border: `2px solid ${getBorderColor()}`,
-      borderRadius: '8px',
+      borderRadius: 'clamp(6px, 1vw, 10px)',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'space-between',
       backgroundColor: getBackgroundColor(),
       cursor: getCursor(),
-      fontSize: '10px',
-      padding: '4px',
+      padding: 'clamp(3px, 0.5vw, 6px)',
       color: getTextColor(),
       flexShrink: 0,
-      minWidth: '50px',
-      maxWidth: '60px',
+      overflow: 'hidden',
       opacity: getOpacity(),
       transform: getTransform(),
       boxShadow: getBoxShadow(),
       transition: getTransition(),
-      transformOrigin: 'center center'
+      transformOrigin: 'center center',
+      boxSizing: 'border-box',
     };
 
     return baseStyles;
@@ -121,12 +120,12 @@ const Card = ({
   const handleMouseLeave = () => setIsHovered(false);
 
   return (
-    <div 
-      style={{ 
-        position: 'relative', 
-        margin: '3px',
+    <div
+      style={{
+        position: 'relative',
+        margin: 'clamp(2px, 0.4vw, 4px)',
         flexShrink: 0,
-        minWidth: '60px',
+        minWidth: 'clamp(50px, 8vw, 72px)',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         zIndex: isSelected ? 15 : (isHovered ? 10 : 1)
       }}
@@ -184,16 +183,26 @@ const Card = ({
         tabIndex={isPlayable ? 0 : -1}
         aria-label={`${card.rank} of ${card.suit}${isSelected ? ', selected' : ''}${isPlayable ? ', playable' : ''}`}
       >
-        <div style={{ fontWeight: 'bold', fontSize: '8px' }}>
+        <div style={{
+          fontWeight: 'bold',
+          fontSize: 'clamp(10px, 1.6vw, 14px)',
+          lineHeight: 1,
+          whiteSpace: 'nowrap',
+        }}>
           {card.rank}
         </div>
-        <div style={{ fontSize: '16px' }}>
+        <div style={{
+          fontSize: 'clamp(16px, 2.8vw, 24px)',
+          lineHeight: 1,
+        }}>
           {getSuitSymbol()}
         </div>
-        <div style={{ 
-          fontWeight: 'bold', 
-          fontSize: '8px', 
-          transform: 'rotate(180deg)' 
+        <div style={{
+          fontWeight: 'bold',
+          fontSize: 'clamp(10px, 1.6vw, 14px)',
+          lineHeight: 1,
+          whiteSpace: 'nowrap',
+          transform: 'rotate(180deg)',
         }}>
           {card.rank}
         </div>
